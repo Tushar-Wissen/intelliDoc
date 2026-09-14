@@ -1,0 +1,179 @@
+openapi: 3.0.3
+info:
+  title: IntelliDoc AI Service API
+  description: API contract between Spring Boot backend and Python AI Service microservice for document processing and Q&A.
+  version: 1.0.0
+paths:
+  /health:
+    get:
+      summary: Health check endpoint
+      operationId: checkHealth
+      responses:
+        '200':
+          description: AI Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/analyze:
+    post:
+      summary: Analyze document text and extract summary, entities, key themes, and sentiment
+      operationId: analyzeDocument
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeRequest'
+      responses:
+        '200':
+          description: Document analysis completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeResponse'
+        '400':
+          description: Invalid input request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/qa:
+    post:
+      summary: Answer question based on document context
+      operationId: askQuestion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QARequest'
+      responses:
+        '200':
+          description: Question answered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/QAResponse'
+        '400':
+          description: Invalid input request
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: UP
+        service:
+          type: string
+          example: intellidoc-ai-service
+        version:
+          type: string
+          example: 1.0.0
+        model_loaded:
+          type: boolean
+          example: true
+
+    AnalyzeRequest:
+      type: object
+      required:
+        - document_id
+        - content
+      properties:
+        document_id:
+          type: string
+          example: doc_12345
+        title:
+          type: string
+          example: Quarterly Financial Report Q3.pdf
+        content:
+          type: string
+          example: The company recorded revenue growth of 18% in Q3...
+        max_summary_length:
+          type: integer
+          default: 150
+
+    AnalyzeResponse:
+      type: object
+      required:
+        - document_id
+        - summary
+        - entities
+        - sentiment
+        - key_topics
+      properties:
+        document_id:
+          type: string
+          example: doc_12345
+        summary:
+          type: string
+          example: Executive summary highlighting 18% quarterly revenue growth...
+        entities:
+          type: array
+          items:
+            type: string
+          example: ["Q3", "18% Revenue", "Finance Corp"]
+        sentiment:
+          type: string
+          enum: [POSITIVE, NEUTRAL, NEGATIVE]
+          example: POSITIVE
+        key_topics:
+          type: array
+          items:
+            type: string
+          example: ["Revenue", "Earnings", "Financial Growth"]
+        confidence_score:
+          type: number
+          format: float
+          example: 0.95
+
+    QARequest:
+      type: object
+      required:
+        - document_id
+        - context
+        - question
+      properties:
+        document_id:
+          type: string
+          example: doc_12345
+        context:
+          type: string
+          example: The net margin increased to 22 percent in fiscal year 2025.
+        question:
+          type: string
+          example: What was the net margin percentage?
+
+    QAResponse:
+      type: object
+      required:
+        - document_id
+        - question
+        - answer
+        - confidence
+      properties:
+        document_id:
+          type: string
+          example: doc_12345
+        question:
+          type: string
+          example: What was the net margin percentage?
+        answer:
+          type: string
+          example: The net margin percentage increased to 22%.
+        confidence:
+          type: number
+          format: float
+          example: 0.92
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        detail:
+          type: string
