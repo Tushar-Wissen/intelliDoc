@@ -31,3 +31,4 @@ logging:
   level:
     root: INFO
     com.intellidoc: DEBUG
+
