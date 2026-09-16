@@ -88,8 +88,14 @@
     @apply border-border;
   }
 
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
   body {
-    @apply bg-background text-foreground antialiased;
+    @apply bg-background text-foreground antialiased overflow-hidden;
     font-feature-settings: 'cv11', 'ss01';
     text-rendering: optimizeLegibility;
   }

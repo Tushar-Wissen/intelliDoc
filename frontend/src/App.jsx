@@ -1,27 +1,30 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import axios from 'axios';
-import { Search, Plus, FolderOpen, BadgeCheck } from 'lucide-react';
+import { Search, Plus, FolderOpen, BadgeCheck, Loader2 } from 'lucide-react';
 
 import { AppShell } from '@/components/layout/app-shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { DocumentCard } from '@/components/features/document-card';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { FolderCard } from '@/components/features/folder-card';
 import { UploadDialog } from '@/components/features/upload-dialog';
-import { DocumentDetailDialog } from '@/components/features/document-detail-dialog';
 import { CopilotSidebar } from '@/components/features/copilot-sidebar';
 
 import copilotIcon from '@/assets/copilot-icon.png';
+import { fetchMockFolders } from '@/lib/mock-folders';
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const FOLDERS_PAGE_SIZE = 12;
 
 const VIEWS = {
   all: {
-    title: 'Documents',
-    subtitle: 'Analyze and query your documents with AI',
+    title: 'My Documents',
+    subtitle: 'Browse folders and analyze documents with AI',
   },
   evaluated: {
     title: 'Evaluated Docs',
-    subtitle: 'Documents with completed AI evaluation results',
+    subtitle: 'Folders containing documents with completed AI evaluation',
   },
 };
 
@@ -34,17 +37,62 @@ export default function App() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [copilotOpen, setCopilotOpen] = useState(false);
 
-  const [selectedDoc, setSelectedDoc] = useState(null);
-  const [detailOpen, setDetailOpen] = useState(false);
+  const [activeFolder, setActiveFolder] = useState(null);
 
-  const [question, setQuestion] = useState('');
-  const [qaLoading, setQaLoading] = useState(false);
-  const [qaResult, setQaResult] = useState(null);
+  const [folders, setFolders] = useState([]);
+  const [foldersPage, setFoldersPage] = useState(1);
+  const [foldersHasMore, setFoldersHasMore] = useState(true);
+  const [foldersLoading, setFoldersLoading] = useState(true);
+  const foldersViewRef = useRef(view);
 
   useEffect(() => {
     fetchHealthStatus();
     fetchDocuments();
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    foldersViewRef.current = view;
+    setFolders([]);
+    setFoldersPage(1);
+    setFoldersHasMore(true);
+    setFoldersLoading(true);
+
+    fetchMockFolders({ page: 1, pageSize: FOLDERS_PAGE_SIZE, evaluatedOnly: view === 'evaluated' }).then(
+      ({ items, hasMore }) => {
+        if (cancelled) return;
+        setFolders(items);
+        setFoldersHasMore(hasMore);
+        setFoldersLoading(false);
+      }
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [view]);
+
+  const loadMoreFolders = useCallback(async () => {
+    const requestView = view;
+    setFoldersLoading(true);
+    const nextPage = foldersPage + 1;
+    const { items, hasMore } = await fetchMockFolders({
+      page: nextPage,
+      pageSize: FOLDERS_PAGE_SIZE,
+      evaluatedOnly: requestView === 'evaluated',
+    });
+    if (foldersViewRef.current !== requestView) return;
+    setFolders((prev) => [...prev, ...items]);
+    setFoldersPage(nextPage);
+    setFoldersHasMore(hasMore);
+    setFoldersLoading(false);
+  }, [foldersPage, view]);
+
+  const foldersSentinelRef = useInfiniteScroll({
+    hasMore: foldersHasMore,
+    loading: foldersLoading,
+    onLoadMore: loadMoreFolders,
+  });
 
   const fetchHealthStatus = async () => {
     try {
@@ -71,42 +119,16 @@ export default function App() {
     setDocuments((prev) => [doc, ...prev]);
   };
 
-  const openDocument = (doc) => {
-    setSelectedDoc(doc);
-    setQaResult(null);
-    setQuestion('');
-    setDetailOpen(true);
+  const handleNavigate = (nextView) => {
+    setActiveFolder(null);
+    setView(nextView);
   };
 
-  const handleAskQuestion = async (e) => {
-    e.preventDefault();
-    if (!selectedDoc || !question.trim()) return;
-
-    setQaLoading(true);
-    try {
-      const res = await axios.post(`${API_BASE_URL}/api/v1/documents/${selectedDoc.id}/qa`, {
-        question,
-      });
-      setQaResult(res.data);
-    } catch (err) {
-      alert('Q&A failed: ' + (err.response?.data?.message || err.message));
-    } finally {
-      setQaLoading(false);
-    }
-  };
-
-  const viewDocuments = useMemo(() => {
-    if (view === 'evaluated') {
-      return documents.filter((doc) => doc.status === 'COMPLETED');
-    }
-    return documents;
-  }, [documents, view]);
-
-  const filteredDocuments = useMemo(() => {
+  const filteredFolders = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return viewDocuments;
-    return viewDocuments.filter((doc) => doc.title?.toLowerCase().includes(query));
-  }, [viewDocuments, search]);
+    if (!query) return folders;
+    return folders.filter((folder) => folder.name?.toLowerCase().includes(query));
+  }, [folders, search]);
 
   const { title, subtitle } = VIEWS[view];
 
@@ -117,14 +139,15 @@ export default function App() {
       healthStatus={healthStatus}
       onUploadClick={() => setUploadOpen(true)}
       activeView={view}
-      onNavigate={setView}
+      onNavigate={handleNavigate}
+      activeFolder={activeFolder}
     >
-      <div className="flex flex-col gap-6">
+      <div className="flex min-h-0 flex-1 flex-col gap-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="relative w-full sm:max-w-xs">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Filter documents..."
+              placeholder="Filter folders..."
               className="pl-9"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -143,47 +166,66 @@ export default function App() {
           </div>
         </div>
 
-        {viewDocuments.length === 0 ? (
-          <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-20 text-center">
-            {view === 'evaluated' ? (
-              <>
-                <BadgeCheck className="h-10 w-10 text-muted-foreground" />
-                <p className="font-medium text-muted-foreground">No evaluated documents yet</p>
-                <p className="max-w-xs text-sm text-muted-foreground">
-                  Documents show up here once their AI evaluation finishes successfully.
-                </p>
-              </>
+        <ScrollArea className="-mx-1 min-h-0 flex-1">
+          <div className="px-1 pb-1">
+            {foldersLoading && folders.length === 0 ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : folders.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-20 text-center">
+                {view === 'evaluated' ? (
+                  <>
+                    <BadgeCheck className="h-10 w-10 text-muted-foreground" />
+                    <p className="font-medium text-muted-foreground">No evaluated folders yet</p>
+                    <p className="max-w-xs text-sm text-muted-foreground">
+                      Folders show up here once their documents&apos; AI evaluation finishes successfully.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <FolderOpen className="h-10 w-10 text-muted-foreground" />
+                    <p className="font-medium text-muted-foreground">No folders yet</p>
+                    <p className="max-w-xs text-sm text-muted-foreground">
+                      Upload a document to get instant AI summaries, entities and Q&amp;A.
+                    </p>
+                    <Button className="mt-2 gap-2" onClick={() => setUploadOpen(true)}>
+                      <Plus className="h-4 w-4" />
+                      Upload Document
+                    </Button>
+                  </>
+                )}
+              </div>
+            ) : filteredFolders.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
+                No folders match &ldquo;{search}&rdquo;.
+              </p>
             ) : (
               <>
-                <FolderOpen className="h-10 w-10 text-muted-foreground" />
-                <p className="font-medium text-muted-foreground">No documents yet</p>
-                <p className="max-w-xs text-sm text-muted-foreground">
-                  Upload a document to get instant AI summaries, entities and Q&amp;A.
-                </p>
-                <Button className="mt-2 gap-2" onClick={() => setUploadOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  Upload Document
-                </Button>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                  {filteredFolders.map((folder, idx) => (
+                    <FolderCard
+                      key={folder.id}
+                      folder={folder}
+                      index={idx}
+                      selected={activeFolder?.id === folder.id}
+                      showStatus={view !== 'evaluated'}
+                      onClick={() =>
+                        setActiveFolder((prev) => (prev?.id === folder.id ? null : folder))
+                      }
+                    />
+                  ))}
+                </div>
+
+                {!search && foldersHasMore && (
+                  <div ref={foldersSentinelRef} className="flex h-10 items-center justify-center">
+                    {foldersLoading && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
+                  </div>
+                )}
               </>
             )}
           </div>
-        ) : filteredDocuments.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
-            No documents match &ldquo;{search}&rdquo;.
-          </p>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-            {filteredDocuments.map((doc, idx) => (
-              <DocumentCard
-                key={doc.id}
-                document={doc}
-                index={idx}
-                selected={selectedDoc?.id === doc.id}
-                onClick={() => openDocument(doc)}
-              />
-            ))}
-          </div>
-        )}
+        </ScrollArea>
       </div>
 
       <UploadDialog
@@ -191,17 +233,6 @@ export default function App() {
         onOpenChange={setUploadOpen}
         apiBaseUrl={API_BASE_URL}
         onCreated={handleCreated}
-      />
-
-      <DocumentDetailDialog
-        document={selectedDoc}
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
-        question={question}
-        onQuestionChange={setQuestion}
-        qaLoading={qaLoading}
-        qaResult={qaResult}
-        onAskQuestion={handleAskQuestion}
       />
 
       <CopilotSidebar open={copilotOpen} onOpenChange={setCopilotOpen} />
