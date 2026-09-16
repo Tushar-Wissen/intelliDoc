@@ -11,6 +11,7 @@ export function AppShell({
   activeView,
   onNavigate,
   activeFolder,
+  secondaryPanel,
   children,
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -31,6 +32,8 @@ export function AppShell({
         activeView={activeView}
         onNavigate={onNavigate}
       />
+
+      {secondaryPanel}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Header
