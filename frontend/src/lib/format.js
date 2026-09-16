@@ -1,5 +1,10 @@
 export function formatBytes(content) {
-  const bytes = content ? new Blob([content]).size : 0;
+  let bytes = 0;
+  if (typeof content === 'number') {
+    bytes = content;
+  } else if (content) {
+    bytes = new Blob([content]).size;
+  }
   if (!bytes) return '0 KB';
 
   const units = ['B', 'KB', 'MB', 'GB'];
