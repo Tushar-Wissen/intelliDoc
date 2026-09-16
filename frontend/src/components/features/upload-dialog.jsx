@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
-import { UploadCloud, FileText, ClipboardType, Loader2, Sparkles, X } from 'lucide-react';
+import { UploadCloud, FileText, ClipboardType, Loader2, Sparkles, X, Folder } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -139,7 +139,31 @@ export function UploadDialog({ open, onOpenChange, apiBaseUrl = '', onCreated, o
       newDocs.push(createdDoc);
     }
 
-    onCreated?.(newDocs);
+    if (newDocs.length > 1) {
+      let folderTitle = '';
+      const relativePaths = selectedFiles.map((f) => f.webkitRelativePath).filter(Boolean);
+      if (relativePaths.length > 0 && relativePaths[0] && relativePaths[0].includes('/')) {
+        folderTitle = relativePaths[0].split('/')[0];
+      }
+      if (!folderTitle) {
+        folderTitle = `Batch Upload (${newDocs.length} files)`;
+      }
+
+      const folderItem = {
+        id: 'folder_' + Math.random().toString(36).substring(2, 10),
+        type: 'folder',
+        title: folderTitle,
+        files: newDocs,
+        status: 'PROCESSING',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      onCreated?.(folderItem);
+    } else if (newDocs.length === 1) {
+      onCreated?.(newDocs[0]);
+    }
+
     handleOpenChange(false);
     onShowToast?.('We’ve got your files and are working on them right now. Sit tight—the details will appear shortly.');
     setSubmitting(false);
@@ -220,7 +244,7 @@ export function UploadDialog({ open, onOpenChange, apiBaseUrl = '', onCreated, o
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}
               className={cn(
-                'flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 text-center transition-colors',
+                'flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-9 text-center transition-colors',
                 isDragging
                   ? 'border-primary bg-accent'
                   : 'border-border hover:border-primary/50 hover:bg-accent/50'
@@ -238,14 +262,39 @@ export function UploadDialog({ open, onOpenChange, apiBaseUrl = '', onCreated, o
                   }
                 }}
               />
+              <input
+                id="folder-upload-input"
+                type="file"
+                webkitdirectory="true"
+                directory=""
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files) {
+                    setSelectedFiles((prev) => [...prev, ...Array.from(e.target.files)]);
+                  }
+                }}
+              />
               <UploadCloud className="h-9 w-9 text-muted-foreground" />
               <div>
                 <p className="text-sm font-medium">
-                  <span className="text-primary">Click to browse</span> or drag and drop
+                  <span className="text-primary font-semibold">Click to browse files</span> or drag and drop
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   PDF, DOCX, CSV or TXT &mdash; up to 25MB
                 </p>
+                <div
+                  className="mt-2.5 flex items-center justify-center gap-1.5"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <label
+                    htmlFor="folder-upload-input"
+                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary/80 px-2.5 py-1 text-xs font-medium text-secondary-foreground shadow-sm transition-colors hover:bg-secondary"
+                  >
+                    <Folder className="h-3.5 w-3.5 text-primary" />
+                    Or select a folder
+                  </label>
+                </div>
               </div>
             </label>
 
