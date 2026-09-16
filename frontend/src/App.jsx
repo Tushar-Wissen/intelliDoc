@@ -8,6 +8,9 @@ import { Input } from '@/components/ui/input';
 import { DocumentCard } from '@/components/features/document-card';
 import { UploadDialog } from '@/components/features/upload-dialog';
 import { DocumentDetailDialog } from '@/components/features/document-detail-dialog';
+import { CopilotSidebar } from '@/components/features/copilot-sidebar';
+
+import copilotIcon from '@/assets/copilot-icon.png';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
@@ -29,6 +32,7 @@ export default function App() {
   const [healthStatus, setHealthStatus] = useState({ backend: 'checking', aiService: 'checking' });
 
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [copilotOpen, setCopilotOpen] = useState(false);
 
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -126,12 +130,17 @@ export default function App() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          {view !== 'evaluated' && (
-            <Button className="gap-2" onClick={() => setUploadOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Upload
-            </Button>
-          )}
+          <div className={`flex items-center transition-all duration-300 gap-4 ${copilotOpen ? 'mr-80 sm:mr-96' : ''}`}>
+            {view !== 'evaluated' && (
+              <Button className="gap-2" onClick={() => setUploadOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Upload
+              </Button>
+            )}
+            <div onClick={() => setCopilotOpen(!copilotOpen)} className="cursor-pointer flex items-center justify-center h-10 w-10 rounded-full bg-primary/10 hover:bg-primary/20 transition-colors">
+              <img src={copilotIcon} alt="copilot" className="h-6 w-6" />
+            </div>
+          </div>
         </div>
 
         {viewDocuments.length === 0 ? (
@@ -194,6 +203,8 @@ export default function App() {
         qaResult={qaResult}
         onAskQuestion={handleAskQuestion}
       />
+
+      <CopilotSidebar open={copilotOpen} onOpenChange={setCopilotOpen} />
     </AppShell>
   );
 }
