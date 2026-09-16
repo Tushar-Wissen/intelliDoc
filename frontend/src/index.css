@@ -101,6 +101,17 @@
   }
 }
 
+@layer base {
+  /* Radix ScrollArea wraps its content in a `display: table` div, which sizes to
+     content width instead of the container's. That breaks flex truncation inside
+     it (rows overflow the sidebar instead of shrinking), and since only a vertical
+     scrollbar exists, the overflow is silently clipped rather than reachable. */
+  [data-radix-scroll-area-viewport] > div {
+    display: block !important;
+    width: 100%;
+  }
+}
+
 @layer utilities {
   .scrollbar-thin::-webkit-scrollbar {
     width: 6px;
