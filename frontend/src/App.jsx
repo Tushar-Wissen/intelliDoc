@@ -1,33 +1,38 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
-import { 
-  FileText, 
-  Upload, 
-  Sparkles, 
-  MessageSquare, 
-  Database, 
-  Activity, 
-  CheckCircle2, 
-  AlertCircle, 
-  Search, 
-  Send, 
-  BrainCircuit,
-  Cpu
-} from 'lucide-react';
+import { Search, Plus, FolderOpen, BadgeCheck } from 'lucide-react';
+
+import { AppShell } from '@/components/layout/app-shell';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { DocumentCard } from '@/components/features/document-card';
+import { UploadDialog } from '@/components/features/upload-dialog';
+import { DocumentDetailDialog } from '@/components/features/document-detail-dialog';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 
+const VIEWS = {
+  all: {
+    title: 'Documents',
+    subtitle: 'Analyze and query your documents with AI',
+  },
+  evaluated: {
+    title: 'Evaluated Docs',
+    subtitle: 'Documents with completed AI evaluation results',
+  },
+};
+
 export default function App() {
   const [documents, setDocuments] = useState([]);
-  const [selectedDoc, setSelectedDoc] = useState(null);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState('all');
   const [healthStatus, setHealthStatus] = useState({ backend: 'checking', aiService: 'checking' });
 
-  // Form State
-  const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
 
-  // Q&A State
+  const [selectedDoc, setSelectedDoc] = useState(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+
   const [question, setQuestion] = useState('');
   const [qaLoading, setQaLoading] = useState(false);
   const [qaResult, setQaResult] = useState(null);
@@ -42,7 +47,7 @@ export default function App() {
       const res = await axios.get(`${API_BASE_URL}/api/v1/health`);
       setHealthStatus({
         backend: res.data.status === 'UP' ? 'up' : 'down',
-        aiService: res.data.ai_service?.status === 'UP' ? 'up' : 'down'
+        aiService: res.data.ai_service?.status === 'UP' ? 'up' : 'down',
       });
     } catch (err) {
       setHealthStatus({ backend: 'down', aiService: 'down' });
@@ -53,36 +58,20 @@ export default function App() {
     try {
       const res = await axios.get(`${API_BASE_URL}/api/v1/documents`);
       setDocuments(res.data);
-      if (res.data.length > 0 && !selectedDoc) {
-        setSelectedDoc(res.data[0]);
-      }
     } catch (err) {
       console.error('Failed to fetch documents', err);
     }
   };
 
-  const handleUpload = async (e) => {
-    e.preventDefault();
-    if (!title.trim() || !content.trim()) return;
+  const handleCreated = (doc) => {
+    setDocuments((prev) => [doc, ...prev]);
+  };
 
-    setLoading(true);
-    try {
-      const res = await axios.post(`${API_BASE_URL}/api/v1/documents`, {
-        title,
-        content,
-        contentType: 'text/plain'
-      });
-
-      setDocuments([res.data, ...documents]);
-      setSelectedDoc(res.data);
-      setTitle('');
-      setContent('');
-      setQaResult(null);
-    } catch (err) {
-      alert('Document processing failed: ' + (err.response?.data?.message || err.message));
-    } finally {
-      setLoading(false);
-    }
+  const openDocument = (doc) => {
+    setSelectedDoc(doc);
+    setQaResult(null);
+    setQuestion('');
+    setDetailOpen(true);
   };
 
   const handleAskQuestion = async (e) => {
@@ -92,7 +81,7 @@ export default function App() {
     setQaLoading(true);
     try {
       const res = await axios.post(`${API_BASE_URL}/api/v1/documents/${selectedDoc.id}/qa`, {
-        question
+        question,
       });
       setQaResult(res.data);
     } catch (err) {
@@ -102,227 +91,109 @@ export default function App() {
     }
   };
 
+  const viewDocuments = useMemo(() => {
+    if (view === 'evaluated') {
+      return documents.filter((doc) => doc.status === 'COMPLETED');
+    }
+    return documents;
+  }, [documents, view]);
+
+  const filteredDocuments = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return viewDocuments;
+    return viewDocuments.filter((doc) => doc.title?.toLowerCase().includes(query));
+  }, [viewDocuments, search]);
+
+  const { title, subtitle } = VIEWS[view];
+
   return (
-    <div className="app-container">
-      {/* Header Bar */}
-      <header className="app-header">
-        <div className="brand-section">
-          <div className="brand-icon">
-            <BrainCircuit size={24} />
+    <AppShell
+      title={title}
+      subtitle={subtitle}
+      healthStatus={healthStatus}
+      onUploadClick={() => setUploadOpen(true)}
+      activeView={view}
+      onNavigate={setView}
+    >
+      <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Filter documents..."
+              className="pl-9"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-          <div>
-            <h1 className="brand-title">IntelliDoc</h1>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Enterprise Centralised AI Intelligence Platform</p>
-          </div>
-        </div>
-
-        <div className="system-status-bar">
-          <div className="status-pill">
-            <Database size={14} />
-            <span>Supabase DB</span>
-            <span className="dot-indicator up"></span>
-          </div>
-          <div className="status-pill">
-            <Activity size={14} />
-            <span>Spring Boot API</span>
-            <span className={`dot-indicator ${healthStatus.backend}`}></span>
-          </div>
-          <div className="status-pill">
-            <Cpu size={14} />
-            <span>Python AI Service</span>
-            <span className={`dot-indicator ${healthStatus.aiService}`}></span>
-          </div>
-        </div>
-      </header>
-
-      {/* Main Grid */}
-      <div className="dashboard-grid">
-        {/* Left Column: Upload & Document Vault */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {/* Upload Card */}
-          <div className="glass-panel">
-            <h2 className="section-title">
-              <Upload size={20} color="var(--primary-glow)" /> Upload Document
-            </h2>
-
-            <form onSubmit={handleUpload}>
-              <div className="form-group">
-                <label className="form-label">Document Title</label>
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  placeholder="e.g. Q3 Financial Performance Report.txt"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Document Text Content</label>
-                <textarea 
-                  className="form-textarea" 
-                  rows={4}
-                  placeholder="Paste document text or contract clauses here for instant analysis..."
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  required
-                />
-              </div>
-
-              <button type="submit" className="btn-primary" disabled={loading}>
-                {loading ? (
-                  <>
-                    <Activity size={18} className="spin" /> Processing AI Pipeline...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={18} /> Analyze with AI Engine
-                  </>
-                )}
-              </button>
-            </form>
-          </div>
-
-          {/* Document Vault List */}
-          <div className="glass-panel">
-            <h2 className="section-title">
-              <FileText size={20} color="var(--cyan-accent)" /> Document Vault ({documents.length})
-            </h2>
-
-            {documents.length === 0 ? (
-              <p style={{ color: 'var(--text-dim)', fontSize: '0.9rem', textAlign: 'center', padding: '1.5rem' }}>
-                No documents uploaded yet. Upload a document to trigger automated AI analysis.
-              </p>
-            ) : (
-              <div className="doc-list">
-                {documents.map((doc) => (
-                  <div 
-                    key={doc.id} 
-                    className={`doc-item ${selectedDoc?.id === doc.id ? 'active' : ''}`}
-                    onClick={() => { setSelectedDoc(doc); setQaResult(null); }}
-                  >
-                    <div className="doc-info">
-                      <span className="doc-title">{doc.title}</span>
-                      <span className="doc-meta">ID: {doc.id}</span>
-                    </div>
-
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      {doc.sentiment && (
-                        <span className={`badge ${doc.sentiment}`}>{doc.sentiment}</span>
-                      )}
-                      <span className={`badge ${doc.status}`}>{doc.status}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Right Column: AI Insights & Smart Q&A */}
-        <div>
-          {selectedDoc ? (
-            <div className="glass-panel" style={{ minHeight: '100%' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.25rem' }}>
-                <div>
-                  <h2 className="section-title" style={{ marginBottom: '0.2rem' }}>
-                    <Sparkles size={20} color="var(--purple-accent)" /> {selectedDoc.title}
-                  </h2>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>Document ID: {selectedDoc.id}</p>
-                </div>
-
-                {selectedDoc.sentiment && (
-                  <span className={`badge ${selectedDoc.sentiment}`} style={{ fontSize: '0.85rem' }}>
-                    {selectedDoc.sentiment} SENTIMENT
-                  </span>
-                )}
-              </div>
-
-              {/* Executive Summary */}
-              <div className="insight-box">
-                <div className="insight-label">Executive AI Summary</div>
-                <p style={{ fontSize: '0.95rem', color: '#e5e7eb', lineHeight: '1.6' }}>
-                  {selectedDoc.summary || 'AI summarization processing in progress...'}
-                </p>
-                {selectedDoc.confidenceScore && (
-                  <div style={{ fontSize: '0.75rem', color: 'var(--cyan-accent)', marginTop: '0.5rem' }}>
-                    Model Confidence: {(selectedDoc.confidenceScore * 100).toFixed(0)}%
-                  </div>
-                )}
-              </div>
-
-              {/* Entities & Topics */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div className="insight-box">
-                  <div className="insight-label">Extracted Entities</div>
-                  <div className="tags-cloud">
-                    {selectedDoc.entities && selectedDoc.entities.length > 0 ? (
-                      selectedDoc.entities.map((e, idx) => <span key={idx} className="tag-chip">{e}</span>)
-                    ) : (
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>None detected</span>
-                    )}
-                  </div>
-                </div>
-
-                <div className="insight-box">
-                  <div className="insight-label">Key Topics</div>
-                  <div className="tags-cloud">
-                    {selectedDoc.keyTopics && selectedDoc.keyTopics.length > 0 ? (
-                      selectedDoc.keyTopics.map((t, idx) => <span key={idx} className="tag-chip topic">{t}</span>)
-                    ) : (
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-dim)' }}>General</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Q&A Interactive Assistant */}
-              <div className="qa-section">
-                <h3 className="section-title" style={{ fontSize: '1.1rem' }}>
-                  <MessageSquare size={18} color="var(--cyan-accent)" /> Interactive Smart Q&A
-                </h3>
-
-                <form onSubmit={handleAskQuestion} className="qa-input-row">
-                  <input 
-                    type="text" 
-                    className="form-input" 
-                    placeholder="Ask a question about this document context..."
-                    value={question}
-                    onChange={(e) => setQuestion(e.target.value)}
-                    required
-                  />
-                  <button type="submit" className="btn-primary" style={{ width: 'auto' }} disabled={qaLoading}>
-                    {qaLoading ? <Activity size={16} className="spin" /> : <Send size={16} />}
-                  </button>
-                </form>
-
-                {qaResult && (
-                  <div className="qa-response-box">
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.3rem' }}>
-                      Q: {qaResult.question}
-                    </div>
-                    <div className="qa-answer">
-                      <strong>Answer:</strong> {qaResult.answer}
-                    </div>
-                    <div className="qa-confidence">
-                      Confidence: {(qaResult.confidence * 100).toFixed(0)}%
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="glass-panel" style={{ textAlign: 'center', padding: '4rem 2rem' }}>
-              <BrainCircuit size={48} color="var(--text-dim)" style={{ marginBottom: '1rem' }} />
-              <h3 style={{ color: 'var(--text-muted)' }}>No Document Selected</h3>
-              <p style={{ color: 'var(--text-dim)', fontSize: '0.85rem', marginTop: '0.5rem' }}>
-                Select a document from the vault or upload a new text document to view AI insights.
-              </p>
-            </div>
+          {view !== 'evaluated' && (
+            <Button className="gap-2" onClick={() => setUploadOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Upload
+            </Button>
           )}
         </div>
+
+        {viewDocuments.length === 0 ? (
+          <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-20 text-center">
+            {view === 'evaluated' ? (
+              <>
+                <BadgeCheck className="h-10 w-10 text-muted-foreground" />
+                <p className="font-medium text-muted-foreground">No evaluated documents yet</p>
+                <p className="max-w-xs text-sm text-muted-foreground">
+                  Documents show up here once their AI evaluation finishes successfully.
+                </p>
+              </>
+            ) : (
+              <>
+                <FolderOpen className="h-10 w-10 text-muted-foreground" />
+                <p className="font-medium text-muted-foreground">No documents yet</p>
+                <p className="max-w-xs text-sm text-muted-foreground">
+                  Upload a document to get instant AI summaries, entities and Q&amp;A.
+                </p>
+                <Button className="mt-2 gap-2" onClick={() => setUploadOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  Upload Document
+                </Button>
+              </>
+            )}
+          </div>
+        ) : filteredDocuments.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
+            No documents match &ldquo;{search}&rdquo;.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            {filteredDocuments.map((doc, idx) => (
+              <DocumentCard
+                key={doc.id}
+                document={doc}
+                index={idx}
+                selected={selectedDoc?.id === doc.id}
+                onClick={() => openDocument(doc)}
+              />
+            ))}
+          </div>
+        )}
       </div>
-    </div>
+
+      <UploadDialog
+        open={uploadOpen}
+        onOpenChange={setUploadOpen}
+        apiBaseUrl={API_BASE_URL}
+        onCreated={handleCreated}
+      />
+
+      <DocumentDetailDialog
+        document={selectedDoc}
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        question={question}
+        onQuestionChange={setQuestion}
+        qaLoading={qaLoading}
+        qaResult={qaResult}
+        onAskQuestion={handleAskQuestion}
+      />
+    </AppShell>
   );
 }
