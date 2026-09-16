@@ -167,7 +167,7 @@ export default function App() {
         </div>
 
         <ScrollArea className="-mx-1 min-h-0 flex-1">
-          <div className="px-1 pb-1">
+          <div className={`px-1 pb-1 transition-all duration-300 ${copilotOpen ? 'mr-80 sm:mr-96' : ''}`}>
             {foldersLoading && folders.length === 0 ? (
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -202,7 +202,7 @@ export default function App() {
               </p>
             ) : (
               <>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-4">
                   {filteredFolders.map((folder, idx) => (
                     <FolderCard
                       key={folder.id}

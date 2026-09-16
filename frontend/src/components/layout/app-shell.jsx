@@ -39,7 +39,7 @@ export function AppShell({
           healthStatus={healthStatus}
           onMenuClick={() => setMobileNavOpen(true)}
         />
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-6 sm:px-6 lg:px-8">
+        <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-6 sm:px-6 lg:px-8">
           {children}
         </main>
       </div>
