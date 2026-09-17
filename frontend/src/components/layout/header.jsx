@@ -1,7 +1,9 @@
 import React from 'react';
-import { Bell, Menu, Database, Server, Cpu } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Bell, Menu, Database, Server, Cpu, LogOut } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/context/auth-context';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -34,7 +36,24 @@ function StatusDot({ status }) {
   );
 }
 
+function getInitials(user) {
+  const name = user?.fullName?.trim();
+  if (name) {
+    const parts = name.split(/\s+/);
+    return (parts[0][0] + (parts[1]?.[0] || '')).toUpperCase();
+  }
+  return (user?.email?.[0] || '?').toUpperCase();
+}
+
 export function Header({ title, subtitle, healthStatus, onMenuClick }) {
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login', { replace: true });
+  };
+
   const services = [
     { key: 'db', label: 'Supabase DB', status: 'up', icon: Database },
     { key: 'backend', label: 'Spring Boot API', status: healthStatus.backend, icon: Server },
@@ -93,19 +112,28 @@ export function Header({ title, subtitle, healthStatus, onMenuClick }) {
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" className="gap-2 px-1.5">
+          <Button id="account-menu-trigger" variant="ghost" className="gap-2 px-1.5">
             <Avatar className="h-7 w-7">
-              <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">SC</AvatarFallback>
+              <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+                {getInitials(user)}
+              </AvatarFallback>
             </Avatar>
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuLabel>My account</DropdownMenuLabel>
+          <DropdownMenuLabel className="truncate">{user?.email || 'My account'}</DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>Profile</DropdownMenuItem>
-          <DropdownMenuItem>Settings</DropdownMenuItem>
+          <DropdownMenuItem id="profile-menu-item" onClick={() => navigate('/profile')}>
+            Profile
+          </DropdownMenuItem>
+          <DropdownMenuItem id="settings-menu-item" disabled>
+            Settings
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem>Sign out</DropdownMenuItem>
+          <DropdownMenuItem id="sign-out-menu-item" onClick={handleSignOut}>
+            <LogOut className="h-4 w-4" />
+            Sign out
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </header>
