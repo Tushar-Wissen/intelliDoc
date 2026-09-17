@@ -26,4 +26,7 @@ public class AiAnalysisResponseDto {
 
     @JsonProperty("key_topics")
     private List<String> keyTopics;
+
+    // NEW: Modules returned by Python AI service
+    private List<DocumentModuleDto> modules;
 }

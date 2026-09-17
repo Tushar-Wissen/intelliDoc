@@ -65,6 +65,40 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <!-- PDF text extraction -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>3.0.5</version>
+        </dependency>
+
+        <!-- Word and PowerPoint extraction -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>5.4.1</version>
+        </dependency>
+
+        <!-- OCR for PNG/JPG -->
+        <dependency>
+            <groupId>net.sourceforge.tess4j</groupId>
+            <artifactId>tess4j</artifactId>
+            <version>5.13.0</version>
+        </dependency>
+
+        <!-- Flyway database migration -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+
+        <!-- Flyway PostgreSQL support -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <version>10.8.1</version>
+        </dependency>
     </dependencies>
 
     <build>
