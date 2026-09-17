@@ -6,6 +6,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -18,4 +20,15 @@ public class AiQAResponseDto {
     private String question;
     private String answer;
     private Double confidence;
+    @JsonProperty("is_not_found")
+    private Boolean isNotFound;
+    private List<CitationDto> citations;
+
+    @Data
+    public static class CitationDto {
+        @JsonProperty("page_number")
+        private Integer pageNumber;
+        @JsonProperty("source_excerpt")
+        private String sourceExcerpt;
+    }
 }

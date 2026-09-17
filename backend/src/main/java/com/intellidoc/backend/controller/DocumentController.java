@@ -6,6 +6,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.MediaType;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,6 +24,12 @@ public class DocumentController {
     @PostMapping
     public ResponseEntity<DocumentResponseDto> uploadAndAnalyzeDocument(@Valid @RequestBody DocumentUploadDto uploadDto) {
         DocumentResponseDto response = documentService.processAndSaveDocument(uploadDto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+    }
+
+    @PostMapping(value = "/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<DocumentResponseDto> uploadFile(@RequestParam("file") MultipartFile file) {
+        DocumentResponseDto response = documentService.processAndSaveUploadedDocument(file);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 

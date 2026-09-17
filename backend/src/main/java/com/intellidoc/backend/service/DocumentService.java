@@ -8,13 +8,22 @@ import com.intellidoc.backend.dto.*;
 import com.intellidoc.backend.model.AnalysisResultEntity;
 import com.intellidoc.backend.model.AuditLogEntity;
 import com.intellidoc.backend.model.DocumentEntity;
+import com.intellidoc.backend.model.DocumentPageEntity;
+import com.intellidoc.backend.model.DocumentSectionEntity;
+import com.intellidoc.backend.model.DocumentChunkEntity;
+import com.intellidoc.backend.model.ProcessingJobEntity;
 import com.intellidoc.backend.repository.AnalysisResultRepository;
 import com.intellidoc.backend.repository.AuditLogRepository;
 import com.intellidoc.backend.repository.DocumentRepository;
+import com.intellidoc.backend.repository.DocumentPageRepository;
+import com.intellidoc.backend.repository.DocumentSectionRepository;
+import com.intellidoc.backend.repository.DocumentChunkRepository;
+import com.intellidoc.backend.repository.ProcessingJobRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Collections;
 import java.util.List;
@@ -27,6 +36,10 @@ import java.util.stream.Collectors;
 public class DocumentService {
 
     private final DocumentRepository documentRepository;
+    private final DocumentPageRepository documentPageRepository;
+    private final DocumentSectionRepository documentSectionRepository;
+    private final DocumentChunkRepository documentChunkRepository;
+    private final ProcessingJobRepository processingJobRepository;
     private final AnalysisResultRepository analysisResultRepository;
     private final AuditLogRepository auditLogRepository;
     private final AiServiceClient aiServiceClient;
@@ -36,11 +49,39 @@ public class DocumentService {
     public DocumentResponseDto processAndSaveDocument(DocumentUploadDto uploadDto) {
         String docId = "doc_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
 
+        return processAndAnalyze(
+                docId,
+                uploadDto.getTitle(),
+                uploadDto.getContent(),
+                uploadDto.getContentType() != null ? uploadDto.getContentType() : "text/plain",
+                toExtractionResponse(uploadDto));
+    }
+
+    @Transactional
+    public DocumentResponseDto processAndSaveUploadedDocument(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Uploaded document cannot be empty");
+        }
+
+        String docId = "doc_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        String title = file.getOriginalFilename() != null ? file.getOriginalFilename() : "Uploaded document";
+        AiExtractionResponseDto extraction = aiServiceClient.extractDocument(docId, file);
+        if (extraction == null || extraction.getCombinedText() == null || extraction.getCombinedText().isBlank()) {
+            throw new IllegalStateException("AI Service returned no extractable text");
+        }
+
+        return processAndAnalyze(docId, title, extraction.getCombinedText(),
+            file.getContentType() != null ? file.getContentType() : "application/octet-stream", extraction);
+    }
+
+        private DocumentResponseDto processAndAnalyze(String docId, String title, String content, String contentType,
+                              AiExtractionResponseDto extraction) {
+
         DocumentEntity document = DocumentEntity.builder()
                 .id(docId)
-                .title(uploadDto.getTitle())
-                .content(uploadDto.getContent())
-                .contentType(uploadDto.getContentType() != null ? uploadDto.getContentType() : "text/plain")
+                .title(title)
+                .content(content)
+                .contentType(contentType)
                 .status("PROCESSING")
                 .build();
 
@@ -48,10 +89,14 @@ public class DocumentService {
         logAudit("DOCUMENT_CREATED", "Created document record: " + docId);
 
         try {
+            completeStage(docId, "PARSING");
+            persistExtraction(docId, extraction);
+            completeStage(docId, "EXTRACTING");
+
             AiAnalysisRequestDto aiRequest = AiAnalysisRequestDto.builder()
                     .documentId(docId)
-                    .title(uploadDto.getTitle())
-                    .content(uploadDto.getContent())
+                    .title(title)
+                    .content(content)
                     .maxSummaryLength(200)
                     .build();
 
@@ -68,8 +113,9 @@ public class DocumentService {
                     .build();
 
             analysisResultRepository.save(analysisResult);
+            completeStage(docId, "INDEXING");
 
-            document.setStatus("COMPLETED");
+            document.setStatus("READY");
             documentRepository.save(document);
             logAudit("DOCUMENT_ANALYZED", "AI Analysis completed for document: " + docId);
 
@@ -77,10 +123,79 @@ public class DocumentService {
 
         } catch (Exception e) {
             log.error("Failed to analyze document ID {}: {}", docId, e.getMessage());
+            failStage(docId, e);
             document.setStatus("FAILED");
             documentRepository.save(document);
             logAudit("DOCUMENT_ANALYSIS_FAILED", "AI Analysis failed for document: " + docId + ", error: " + e.getMessage());
             return mapToResponseDto(document, null);
+        }
+    }
+
+    private void completeStage(String documentId, String stage) {
+        processingJobRepository.save(ProcessingJobEntity.builder()
+                .id("job_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12))
+                .documentId(documentId)
+                .stage(stage)
+                .status("COMPLETED")
+                .completedAt(java.time.OffsetDateTime.now())
+                .build());
+    }
+
+    private void failStage(String documentId, Exception error) {
+        processingJobRepository.save(ProcessingJobEntity.builder()
+                .id("job_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12))
+                .documentId(documentId)
+                .stage("FAILED")
+                .status("FAILED")
+                .errorMessage(error.getMessage())
+                .completedAt(java.time.OffsetDateTime.now())
+                .build());
+    }
+
+    private AiExtractionResponseDto toExtractionResponse(DocumentUploadDto uploadDto) {
+        if (uploadDto.getPages() == null || uploadDto.getPages().isEmpty()) {
+            return null;
+        }
+        AiExtractionResponseDto response = new AiExtractionResponseDto();
+        response.setPages(uploadDto.getPages());
+        response.setSections(uploadDto.getSections());
+        response.setChunks(uploadDto.getChunks());
+        return response;
+    }
+
+    private void persistExtraction(String documentId, AiExtractionResponseDto extraction) {
+        if (extraction == null) {
+            return;
+        }
+        if (extraction.getPages() != null) {
+            documentPageRepository.saveAll(extraction.getPages().stream().map(page -> DocumentPageEntity.builder()
+                    .id(documentId + "_page_" + page.getPageNumber())
+                    .documentId(documentId)
+                    .pageNumber(page.getPageNumber())
+                    .rawText(page.getText() == null ? "" : page.getText())
+                    .wasOcr("ocr".equals(page.getMethod()))
+                    .ocrConfidence(page.getConfidence())
+                    .build()).toList());
+        }
+        if (extraction.getSections() != null) {
+            documentSectionRepository.saveAll(extraction.getSections().stream().map(section -> DocumentSectionEntity.builder()
+                    .id(documentId + "_" + section.getSectionId())
+                    .documentId(documentId)
+                    .parentSectionId(section.getParentSectionId())
+                    .heading(section.getHeading())
+                    .startPage(section.getStartPage())
+                    .endPage(section.getEndPage())
+                    .build()).toList());
+        }
+        if (extraction.getChunks() != null) {
+            documentChunkRepository.saveAll(extraction.getChunks().stream().map(chunk -> DocumentChunkEntity.builder()
+                    .id(documentId + "_" + chunk.getChunkId())
+                    .documentId(documentId)
+                    .sectionId(chunk.getSectionId() == null ? null : documentId + "_" + chunk.getSectionId())
+                    .pageNumber(chunk.getPageNumber())
+                    .chunkText(chunk.getChunkText())
+                    .tokenCount(chunk.getTokenCount())
+                    .build()).toList());
         }
     }
 

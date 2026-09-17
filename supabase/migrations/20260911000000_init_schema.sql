@@ -41,30 +41,49 @@ CREATE INDEX IF NOT EXISTS idx_documents_status ON public.documents(status);
 CREATE INDEX IF NOT EXISTS idx_documents_created ON public.documents(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_analysis_doc_id ON public.analysis_results(document_id);
 
--- Sample initial data for demonstration & testing
-INSERT INTO public.documents (id, title, content, status)
-VALUES (
-    'doc_demo_001',
-    'AI Strategy Brief 2026.txt',
-    'IntelliDoc provides automated enterprise document summarization, contract entity extraction, and intelligent QA capabilities built on microservices architecture with full observability and Supabase integration.',
-    'COMPLETED'
-) ON CONFLICT (id) DO NOTHING;
+-- Epic 2 parsing outputs: page, section, and traceable structure-aware chunks
+CREATE TABLE IF NOT EXISTS public.document_page (
+    id VARCHAR(64) PRIMARY KEY,
+    document_id VARCHAR(64) NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+    page_number INTEGER NOT NULL,
+    raw_text TEXT NOT NULL,
+    was_ocr BOOLEAN NOT NULL DEFAULT FALSE,
+    ocr_confidence DOUBLE PRECISION,
+    UNIQUE (document_id, page_number)
+);
 
-INSERT INTO public.analysis_results (id, document_id, summary, sentiment, confidence_score, entities_json, key_topics_json)
-VALUES (
-    'analysis_demo_001',
-    'doc_demo_001',
-    'IntelliDoc enables enterprise automated summarization, entity extraction, and QA via modern microservices architecture.',
-    'POSITIVE',
-    0.98,
-    '["IntelliDoc", "Supabase", "Microservices Architecture"]'::jsonb,
-    '["Enterprise AI", "Document Summarization", "Microservices"]'::jsonb
-) ON CONFLICT (id) DO NOTHING;
+CREATE TABLE IF NOT EXISTS public.document_section (
+    id VARCHAR(64) PRIMARY KEY,
+    document_id VARCHAR(64) NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+    parent_section_id VARCHAR(64),
+    heading VARCHAR(500) NOT NULL,
+    start_page INTEGER NOT NULL,
+    end_page INTEGER NOT NULL
+);
 
-INSERT INTO public.audit_logs (id, event_type, service_name, details)
-VALUES (
-    'audit_demo_001',
-    'SYSTEM_BOOTSTRAP',
-    'Supabase DB Initializer',
-    'Centralised Supabase schema initialized with demo data'
-) ON CONFLICT (id) DO NOTHING;
+CREATE TABLE IF NOT EXISTS public.document_chunk (
+    id VARCHAR(64) PRIMARY KEY,
+    document_id VARCHAR(64) NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+    section_id VARCHAR(64),
+    page_number INTEGER NOT NULL,
+    chunk_text TEXT NOT NULL,
+    token_count INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_page_document ON public.document_page(document_id, page_number);
+CREATE INDEX IF NOT EXISTS idx_document_section_document ON public.document_section(document_id, start_page);
+CREATE INDEX IF NOT EXISTS idx_document_chunk_document ON public.document_chunk(document_id, page_number);
+
+CREATE TABLE IF NOT EXISTS public.processing_job (
+    id VARCHAR(64) PRIMARY KEY,
+    document_id VARCHAR(64) NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+    stage VARCHAR(50) NOT NULL,
+    status VARCHAR(50) NOT NULL,
+    error_message TEXT,
+    started_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_processing_job_document ON public.processing_job(document_id, started_at);
+
+-- The working model starts with an empty vault. Test documents should be uploaded through the UI.

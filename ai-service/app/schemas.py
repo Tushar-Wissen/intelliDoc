@@ -32,6 +32,52 @@ class AnalyzeResponse(BaseModel):
     confidence_score: float = Field(..., json_schema_extra={"example": 0.95})
 
 
+class ExtractionPageInput(BaseModel):
+    page_number: int = Field(..., ge=1)
+    native_text: Optional[str] = None
+    ocr_text: Optional[str] = None
+    ocr_confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0)
+
+
+class ExtractionRequest(BaseModel):
+    document_id: str = Field(..., json_schema_extra={"example": "doc_12345"})
+    pages: List[ExtractionPageInput] = Field(..., min_length=1)
+
+
+class ExtractedPage(BaseModel):
+    page_number: int
+    method: str
+    text: str
+    confidence: Optional[float] = None
+
+
+class ExtractedSection(BaseModel):
+    section_id: str
+    heading: str
+    parent_section_id: Optional[str] = None
+    start_page: int
+    end_page: int
+
+
+class ExtractedChunk(BaseModel):
+    chunk_id: str
+    section_id: Optional[str] = None
+    page_number: int
+    chunk_text: str
+    token_count: int
+
+
+class ExtractionResponse(BaseModel):
+    document_id: str
+    pages: List[ExtractedPage]
+    combined_text: str
+    ocr_pages: List[int]
+    native_pages: List[int]
+    sections: List[ExtractedSection] = Field(default_factory=list)
+    chunks: List[ExtractedChunk] = Field(default_factory=list)
+    extraction_version: str = "selective-ocr-v1"
+
+
 class QARequest(BaseModel):
     document_id: str = Field(..., json_schema_extra={"example": "doc_12345"})
     context: str = Field(..., json_schema_extra={"example": "The net margin increased to 22 percent in fiscal year 2025."})
@@ -43,6 +89,13 @@ class QAResponse(BaseModel):
     question: str = Field(..., json_schema_extra={"example": "What was the net margin percentage?"})
     answer: str = Field(..., json_schema_extra={"example": "The net margin percentage increased to 22%."})
     confidence: float = Field(..., json_schema_extra={"example": 0.92})
+    is_not_found: bool = False
+    citations: List["QACitation"] = Field(default_factory=list)
+
+
+class QACitation(BaseModel):
+    page_number: Optional[int] = None
+    source_excerpt: str
 
 
 class ErrorResponse(BaseModel):

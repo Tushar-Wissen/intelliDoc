@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const AI_SERVICE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000';
 
 export default function App() {
   const [documents, setDocuments] = useState([]);
@@ -25,6 +26,7 @@ export default function App() {
   // Form State
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
   const [loading, setLoading] = useState(false);
 
   // Q&A State
@@ -63,20 +65,39 @@ export default function App() {
 
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!title.trim() || !content.trim()) return;
+    if ((!title.trim() && !selectedFile) || (!content.trim() && !selectedFile)) return;
 
     setLoading(true);
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/v1/documents`, {
-        title,
-        content,
-        contentType: 'text/plain'
-      });
+      let res;
+      if (selectedFile) {
+        const extractionForm = new FormData();
+        const extractionId = `upload_${Date.now()}`;
+        extractionForm.append('document_id', extractionId);
+        extractionForm.append('file', selectedFile);
+        const extraction = await axios.post(`${AI_SERVICE_URL}/api/v1/extract/file`, extractionForm);
+
+        res = await axios.post(`${API_BASE_URL}/api/v1/documents`, {
+          title: selectedFile.name,
+          content: extraction.data.combined_text,
+          contentType: selectedFile.type || 'application/octet-stream',
+          pages: extraction.data.pages,
+          sections: extraction.data.sections,
+          chunks: extraction.data.chunks
+        });
+      } else {
+        res = await axios.post(`${API_BASE_URL}/api/v1/documents`, {
+          title,
+          content,
+          contentType: 'text/plain'
+        });
+      }
 
       setDocuments([res.data, ...documents]);
       setSelectedDoc(res.data);
       setTitle('');
       setContent('');
+      setSelectedFile(null);
       setQaResult(null);
     } catch (err) {
       alert('Document processing failed: ' + (err.response?.data?.message || err.message));
@@ -159,6 +180,16 @@ export default function App() {
               </div>
 
               <div className="form-group">
+                <label className="form-label">Document File (PDF, DOCX, or image)</label>
+                <input
+                  type="file"
+                  className="form-input"
+                  accept=".pdf,.docx,.png,.jpg,.jpeg,.tif,.tiff"
+                  onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                />
+              </div>
+
+              <div className="form-group">
                 <label className="form-label">Document Text Content</label>
                 <textarea 
                   className="form-textarea" 
@@ -166,7 +197,7 @@ export default function App() {
                   placeholder="Paste document text or contract clauses here for instant analysis..."
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  required
+                  disabled={Boolean(selectedFile)}
                 />
               </div>
 
@@ -306,8 +337,17 @@ export default function App() {
                       <strong>Answer:</strong> {qaResult.answer}
                     </div>
                     <div className="qa-confidence">
-                      Confidence: {(qaResult.confidence * 100).toFixed(0)}%
+                      {qaResult.is_not_found
+                        ? 'No supporting evidence found in this document.'
+                        : `Confidence: ${(qaResult.confidence * 100).toFixed(0)}%`}
                     </div>
+                    {qaResult.citations?.length > 0 && (
+                      <div className="qa-confidence">
+                        Source: {qaResult.citations.map((citation) => (
+                          citation.page_number ? `Page ${citation.page_number}` : 'Document text'
+                        )).join(', ')}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
