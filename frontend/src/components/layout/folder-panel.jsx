@@ -65,7 +65,7 @@ function SectionRow({ section, index }) {
   );
 }
 
-function FileRow({ file, expanded, onToggle }) {
+function FileRow({ file, expanded, onToggle, onFileClick }) {
   const tagColor = TAG_COLORS[file.tag] ?? DEFAULT_TAG_COLOR;
   const hasSections = file.sections?.length > 0;
 
@@ -73,7 +73,7 @@ function FileRow({ file, expanded, onToggle }) {
     <div>
       <button
         type="button"
-        onClick={onToggle}
+        onClick={() => { onToggle(); onFileClick?.(); }}
         className="flex w-full items-center gap-2 rounded-md py-1.5 pl-1.5 pr-2 text-left transition-colors hover:bg-sidebar-accent/50"
       >
         {hasSections ? (
@@ -110,7 +110,7 @@ function FileRow({ file, expanded, onToggle }) {
   );
 }
 
-function FolderNode({ folder, index, active, treeOpen, showStatus, expandedFileIds, onToggleFile, onSelect, onToggleTree }) {
+function FolderNode({ folder, index, active, treeOpen, showStatus, expandedFileIds, onToggleFile, onSelect, onToggleTree, onFileClick }) {
   const color = colorForFolder(folder, index);
   const hasFiles = folder.files?.length > 0;
   const showTree = active && treeOpen && hasFiles;
@@ -185,6 +185,7 @@ function FolderNode({ folder, index, active, treeOpen, showStatus, expandedFileI
               file={file}
               expanded={expandedFileIds.has(file.id)}
               onToggle={() => onToggleFile(file.id)}
+              onFileClick={() => onFileClick?.({ ...file, folderId: folder.id, folderName: folder.name })}
             />
           ))}
         </div>
@@ -205,6 +206,7 @@ export function FolderPanel({
   hasMore,
   sentinelRef,
   emptyMessage,
+  onFileClick,
 }) {
   const [expandedFileIds, setExpandedFileIds] = useState(() => new Set());
   const [treeOpen, setTreeOpen] = useState(true);
@@ -266,6 +268,7 @@ export function FolderPanel({
                 onToggleFile={toggleFile}
                 onSelect={() => onSelectFolder(folder)}
                 onToggleTree={() => setTreeOpen((prev) => !prev)}
+                onFileClick={onFileClick}
               />
             ))
           )}

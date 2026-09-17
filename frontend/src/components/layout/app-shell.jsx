@@ -12,6 +12,7 @@ export function AppShell({
   onNavigate,
   activeFolder,
   secondaryPanel,
+  tabsBar,
   children,
 }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -42,6 +43,7 @@ export function AppShell({
           healthStatus={healthStatus}
           onMenuClick={() => setMobileNavOpen(true)}
         />
+        {tabsBar}
         <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden px-4 py-6 sm:px-6 lg:px-8">
           {children}
         </main>
