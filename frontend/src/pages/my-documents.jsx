@@ -14,7 +14,7 @@ import { UploadDialog } from '@/components/features/upload-dialog';
 import { ToastNotification } from '@/components/ui/toast-notification';
 import { CopilotSidebar } from '@/components/features/copilot-sidebar';
 
-import { fetchMockFolders } from '@/lib/mock-folders';
+import { fetchMockDocumentFolders as fetchMockFolders } from '@/lib/mock-document-details';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { useHealthStatus } from '@/hooks/use-health-status';
 
@@ -43,6 +43,7 @@ export function MyDocumentsPage() {
   const [panelSearch, setPanelSearch] = useState('');
 
   const [activeFolder, setActiveFolder] = useState(null);
+  const [activeFileId, setActiveFileId] = useState(null);
 
   const [openTabs, setOpenTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState(null);
@@ -163,11 +164,13 @@ export function MyDocumentsPage() {
 
   const handleNavigate = (nextView) => {
     setActiveFolder(null);
+    setActiveFileId(null);
     setView(nextView);
   };
 
   const handleSelectFolder = (folder) => {
     setActiveFolder(folder);
+    setActiveFileId(null);
 
     const tabId = `folder:${folder.id}`;
     setOpenTabs((prev) => {
@@ -203,11 +206,32 @@ export function MyDocumentsPage() {
       ];
     });
     setActiveTabId(tabId);
-  }, []);
+    setActiveFileId(fileData.id);
+    if (fileData.folderId) {
+      setActiveFolder((prev) => {
+        if (prev?.id === fileData.folderId) return prev;
+        return folders.find((f) => f.id === fileData.folderId) ?? prev;
+      });
+    }
+  }, [folders]);
 
   const handleSelectTab = useCallback((tabId) => {
     setActiveTabId(tabId);
-  }, []);
+
+    const tab = openTabs.find((t) => t.id === tabId);
+    if (!tab) return;
+
+    if (tab.type === 'folder') {
+      const folderId = tabId.replace(/^folder:/, '');
+      setActiveFolder((prev) => (prev?.id === folderId ? prev : folders.find((f) => f.id === folderId) ?? prev));
+      setActiveFileId(null);
+    } else {
+      setActiveFileId(tabId);
+      if (tab.folderId) {
+        setActiveFolder((prev) => (prev?.id === tab.folderId ? prev : folders.find((f) => f.id === tab.folderId) ?? prev));
+      }
+    }
+  }, [openTabs, folders]);
 
   const handleCloseTab = useCallback((tabId) => {
     setOpenTabs((prev) => {
@@ -293,7 +317,7 @@ export function MyDocumentsPage() {
         )
       }
       tabsBar={
-        openTabs.length > 0 && (
+        activeFolder && openTabs.length > 0 && (
           <TabsBar
             tabs={openTabs}
             activeTabId={activeTabId}
@@ -307,42 +331,45 @@ export function MyDocumentsPage() {
       }
     >
       <div className="flex min-h-0 flex-1 flex-col gap-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="relative w-full sm:max-w-xs">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              id="folder-search-input"
-              placeholder="Filter folders..."
-              className="pl-9"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+        {!activeFolder && (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="folder-search-input"
+                placeholder="Filter folders..."
+                className="pl-9"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            <div className={`flex items-center transition-all duration-300 gap-4 ${copilotOpen ? 'mr-80 sm:mr-96' : ''}`}>
+              {view !== 'evaluated' && (
+                <Button id="upload-document-button" className="gap-2" onClick={() => setUploadOpen(true)}>
+                  <Plus className="h-4 w-4" />
+                  Upload
+                </Button>
+              )}
+              {activeTabId && (
+                <div
+                  id="copilot-toggle-button"
+                  onClick={() => setCopilotOpen(!copilotOpen)}
+                  className="cursor-pointer flex items-center justify-center h-10 w-10 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                >
+                  <Sparkles className="h-5 w-5" />
+                </div>
+              )}
+            </div>
           </div>
-          <div className={`flex items-center transition-all duration-300 gap-4 ${copilotOpen ? 'mr-80 sm:mr-96' : ''}`}>
-            {view !== 'evaluated' && (
-              <Button id="upload-document-button" className="gap-2" onClick={() => setUploadOpen(true)}>
-                <Plus className="h-4 w-4" />
-                Upload
-              </Button>
-            )}
-            {(activeTabId || activeFolder) && (
-              <div
-                id="copilot-toggle-button"
-                onClick={() => setCopilotOpen(!copilotOpen)}
-                className="cursor-pointer flex items-center justify-center h-10 w-10 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-              >
-                <Sparkles className="h-5 w-5" />
-              </div>
-            )}
-          </div>
-        </div>
+        )}
 
         {activeFolder ? (
           <div className={`transition-all duration-300 ${copilotOpen ? 'mr-80 sm:mr-96' : ''}`}>
             <FolderDetail
               folder={activeFolder}
               showStatus={showStatus}
-              onBack={() => setActiveFolder(null)}
+              onFileClick={handleFileClick}
+              activeFileId={activeFileId}
             />
           </div>
         ) : (

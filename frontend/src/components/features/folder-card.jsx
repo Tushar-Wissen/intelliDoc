@@ -57,9 +57,8 @@ export function FolderCard({ folder, index = 0, selected = false, showStatus = t
         </span>
       </div>
 
-      <div className="flex items-center justify-between border-t border-border pt-3 text-xs text-muted-foreground">
+      <div className="flex items-center border-t border-border pt-3 text-xs text-muted-foreground">
         <span>Created {formatDate(folder.createdAt)}</span>
-        <span>Updated {formatDate(folder.updatedAt)}</span>
       </div>
     </button>
   );
