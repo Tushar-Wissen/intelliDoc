@@ -15,16 +15,18 @@ public class DocumentResponseDto {
 
     private String id;
     private String title;
-    private String content;
-    private String contentType;
+//    private String content;
+//    private String contentType;
     private String status;
-    private OffsetDateTime createdAt;
-    private OffsetDateTime updatedAt;
+//    private OffsetDateTime createdAt;
+//    private OffsetDateTime updatedAt;
+//
+//    // Associated Analysis details
+//    private String summary;
+//    private String sentiment;
+//    private Double confidenceScore;
+//    private List<String> entities;
+//    private List<String> keyTopics;
 
-    // Associated Analysis details
-    private String summary;
-    private String sentiment;
-    private Double confidenceScore;
-    private List<String> entities;
-    private List<String> keyTopics;
+    private List<DocumentModuleDto> modules;
 }
