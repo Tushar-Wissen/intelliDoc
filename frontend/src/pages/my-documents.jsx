@@ -46,6 +46,7 @@ export function MyDocumentsPage() {
 
   const [openTabs, setOpenTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState(null);
+  const [chatHistories, setChatHistories] = useState({});
 
   const [uploadedFolders, setUploadedFolders] = useState([]);
   const [folders, setFolders] = useState([]);
@@ -206,6 +207,18 @@ export function MyDocumentsPage() {
 
       return next;
     });
+    // Clear chat history so re-opening this tab starts a fresh session
+    setChatHistories((prev) => {
+      const next = { ...prev };
+      delete next[tabId];
+      return next;
+    });
+  }, []);
+
+  const activeTabName = openTabs.find((t) => t.id === activeTabId)?.name;
+
+  const handleUpdateChatHistory = useCallback((key, messages) => {
+    setChatHistories((prev) => ({ ...prev, [key]: messages }));
   }, []);
 
   const filteredFolders = useMemo(() => {
@@ -289,13 +302,15 @@ export function MyDocumentsPage() {
                 Upload
               </Button>
             )}
-            <div
-              id="copilot-toggle-button"
-              onClick={() => setCopilotOpen(!copilotOpen)}
-              className="cursor-pointer flex items-center justify-center h-10 w-10 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-            >
-              <Sparkles className="h-5 w-5" />
-            </div>
+            {activeTabId && (
+              <div
+                id="copilot-toggle-button"
+                onClick={() => setCopilotOpen(!copilotOpen)}
+                className="cursor-pointer flex items-center justify-center h-10 w-10 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+              >
+                <Sparkles className="h-5 w-5" />
+              </div>
+            )}
           </div>
         </div>
 
@@ -377,7 +392,14 @@ export function MyDocumentsPage() {
         onShowToast={handleShowToast}
       />
 
-      <CopilotSidebar open={copilotOpen} onOpenChange={setCopilotOpen} />
+      <CopilotSidebar
+        open={copilotOpen}
+        onOpenChange={setCopilotOpen}
+        activeTabId={activeTabId}
+        activeTabName={activeTabName}
+        chatHistories={chatHistories}
+        onUpdateHistory={handleUpdateChatHistory}
+      />
 
       <ToastNotification
         open={toastOpen}
