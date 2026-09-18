@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Bot, X, Send } from 'lucide-react';
+import { Sparkles, X, Send } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,7 +41,7 @@ export function CopilotSidebar({ open, onOpenChange }) {
       <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
         <div className="flex items-center gap-2.5">
           <div className="flex h-7 w-7 items-center justify-center rounded bg-primary/10 text-primary">
-            <Bot className="h-4 w-4" />
+            <Sparkles className="h-4 w-4" />
           </div>
           <span className="font-semibold tracking-tight text-sm">IntelliDoc AI Assistant</span>
         </div>

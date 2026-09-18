@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import axios from 'axios';
-import { Search, Plus, FolderOpen, BadgeCheck, Loader2 } from 'lucide-react';
+import { Search, Plus, FolderOpen, BadgeCheck, Loader2, Sparkles } from 'lucide-react';
 
 import { AppShell } from '@/components/layout/app-shell';
 import { FolderPanel } from '@/components/layout/folder-panel';
+import { TabsBar } from '@/components/layout/tabs-bar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -13,7 +14,6 @@ import { UploadDialog } from '@/components/features/upload-dialog';
 import { ToastNotification } from '@/components/ui/toast-notification';
 import { CopilotSidebar } from '@/components/features/copilot-sidebar';
 
-import copilotIcon from '@/assets/copilot-icon.png';
 import { fetchMockFolders } from '@/lib/mock-folders';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { useHealthStatus } from '@/hooks/use-health-status';
@@ -43,6 +43,9 @@ export function MyDocumentsPage() {
   const [panelSearch, setPanelSearch] = useState('');
 
   const [activeFolder, setActiveFolder] = useState(null);
+
+  const [openTabs, setOpenTabs] = useState([]);
+  const [activeTabId, setActiveTabId] = useState(null);
 
   const [uploadedFolders, setUploadedFolders] = useState([]);
   const [folders, setFolders] = useState([]);
@@ -166,6 +169,45 @@ export function MyDocumentsPage() {
     setActiveFolder((prev) => (prev?.id === folder.id ? null : folder));
   };
 
+  /* ─── Tab management ─── */
+  const handleFileClick = useCallback((fileData) => {
+    const tabId = fileData.id;
+    setOpenTabs((prev) => {
+      if (prev.some((t) => t.id === tabId)) return prev;
+      return [
+        ...prev,
+        {
+          id: tabId,
+          name: fileData.name,
+          tag: fileData.tag,
+          hasUpdates: fileData.hasUpdates,
+          folderId: fileData.folderId,
+          folderName: fileData.folderName,
+        },
+      ];
+    });
+    setActiveTabId(tabId);
+  }, []);
+
+  const handleSelectTab = useCallback((tabId) => {
+    setActiveTabId(tabId);
+  }, []);
+
+  const handleCloseTab = useCallback((tabId) => {
+    setOpenTabs((prev) => {
+      const idx = prev.findIndex((t) => t.id === tabId);
+      const next = prev.filter((t) => t.id !== tabId);
+
+      setActiveTabId((currentActive) => {
+        if (currentActive !== tabId) return currentActive;
+        if (next.length === 0) return null;
+        return next[Math.min(idx, next.length - 1)].id;
+      });
+
+      return next;
+    });
+  }, []);
+
   const filteredFolders = useMemo(() => {
     const query = search.trim().toLowerCase();
     if (!query) return folders;
@@ -210,6 +252,20 @@ export function MyDocumentsPage() {
             hasMore={foldersHasMore}
             sentinelRef={panelSentinelRef}
             emptyMessage={panelEmptyMessage}
+            onFileClick={handleFileClick}
+          />
+        )
+      }
+      tabsBar={
+        openTabs.length > 0 && (
+          <TabsBar
+            tabs={openTabs}
+            activeTabId={activeTabId}
+            onSelectTab={handleSelectTab}
+            onCloseTab={handleCloseTab}
+            onUploadClick={() => setUploadOpen(true)}
+            onCopilotClick={() => setCopilotOpen((prev) => !prev)}
+            copilotOpen={copilotOpen}
           />
         )
       }
@@ -236,9 +292,9 @@ export function MyDocumentsPage() {
             <div
               id="copilot-toggle-button"
               onClick={() => setCopilotOpen(!copilotOpen)}
-              className="cursor-pointer flex items-center justify-center h-10 w-10 rounded-full bg-primary/10 hover:bg-primary/20 transition-colors"
+              className="cursor-pointer flex items-center justify-center h-10 w-10 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
             >
-              <img src={copilotIcon} alt="copilot" className="h-6 w-6" />
+              <Sparkles className="h-5 w-5" />
             </div>
           </div>
         </div>
