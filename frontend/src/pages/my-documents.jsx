@@ -167,7 +167,17 @@ export function MyDocumentsPage() {
   };
 
   const handleSelectFolder = (folder) => {
-    setActiveFolder((prev) => (prev?.id === folder.id ? null : folder));
+    const prev = activeFolder;
+    const next = prev?.id === folder.id ? null : folder;
+    // Clear folder chat history when deselecting
+    if (next === null && prev) {
+      setChatHistories((h) => {
+        const copy = { ...h };
+        delete copy[`folder-${prev.id}`];
+        return copy;
+      });
+    }
+    setActiveFolder(next);
   };
 
   /* ─── Tab management ─── */
@@ -216,6 +226,14 @@ export function MyDocumentsPage() {
   }, []);
 
   const activeTabName = openTabs.find((t) => t.id === activeTabId)?.name;
+
+  // Unified copilot context: active tab takes priority; falls back to active folder
+  const activeCopilotId = activeTabId
+    ? `tab-${activeTabId}`
+    : activeFolder
+    ? `folder-${activeFolder.id}`
+    : null;
+  const activeCopilotName = activeTabId ? activeTabName : activeFolder?.name ?? null;
 
   const handleUpdateChatHistory = useCallback((key, messages) => {
     setChatHistories((prev) => ({ ...prev, [key]: messages }));
@@ -302,7 +320,7 @@ export function MyDocumentsPage() {
                 Upload
               </Button>
             )}
-            {activeTabId && (
+            {(activeTabId || activeFolder) && (
               <div
                 id="copilot-toggle-button"
                 onClick={() => setCopilotOpen(!copilotOpen)}
@@ -395,8 +413,8 @@ export function MyDocumentsPage() {
       <CopilotSidebar
         open={copilotOpen}
         onOpenChange={setCopilotOpen}
-        activeTabId={activeTabId}
-        activeTabName={activeTabName}
+        activeTabId={activeCopilotId}
+        activeTabName={activeCopilotName}
         chatHistories={chatHistories}
         onUpdateHistory={handleUpdateChatHistory}
       />
