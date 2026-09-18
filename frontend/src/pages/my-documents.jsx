@@ -167,17 +167,22 @@ export function MyDocumentsPage() {
   };
 
   const handleSelectFolder = (folder) => {
-    const prev = activeFolder;
-    const next = prev?.id === folder.id ? null : folder;
-    // Clear folder chat history when deselecting
-    if (next === null && prev) {
-      setChatHistories((h) => {
-        const copy = { ...h };
-        delete copy[`folder-${prev.id}`];
-        return copy;
-      });
-    }
-    setActiveFolder(next);
+    setActiveFolder(folder);
+
+    const tabId = `folder:${folder.id}`;
+    setOpenTabs((prev) => {
+      if (prev.some((tab) => tab.id === tabId)) return prev;
+      return [
+        ...prev,
+        {
+          id: tabId,
+          name: folder.name,
+          type: 'folder',
+          pinned: true,
+        },
+      ];
+    });
+    setActiveTabId(tabId);
   };
 
   /* ─── Tab management ─── */
@@ -231,8 +236,8 @@ export function MyDocumentsPage() {
   const activeCopilotId = activeTabId
     ? `tab-${activeTabId}`
     : activeFolder
-    ? `folder-${activeFolder.id}`
-    : null;
+      ? `folder-${activeFolder.id}`
+      : null;
   const activeCopilotName = activeTabId ? activeTabName : activeFolder?.name ?? null;
 
   const handleUpdateChatHistory = useCallback((key, messages) => {
