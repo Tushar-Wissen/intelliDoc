@@ -1,9 +1,8 @@
 import React, { useRef, useEffect } from 'react';
-import { X, FileText, Plus } from 'lucide-react';
+import { X, FileText, Plus, Sparkles } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import copilotIcon from '@/assets/copilot-icon.png';
 
 const TAG_ICON_COLORS = {
   finance: 'text-blue-500',
@@ -110,16 +109,6 @@ export function TabsBar({
       {/* Actions at the end of the tabs row */}
       {(onUploadClick || onCopilotClick) && (
         <div className="flex shrink-0 items-center gap-2 border-l border-border/40 px-2.5 py-1">
-          {onUploadClick && (
-            <Button
-              size="sm"
-              onClick={onUploadClick}
-              className="h-7 gap-1.5 px-2.5 text-xs font-medium shadow-none"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              <span>Upload</span>
-            </Button>
-          )}
 
           {onCopilotClick && (
             <button
@@ -127,14 +116,14 @@ export function TabsBar({
               onClick={onCopilotClick}
               title={copilotOpen ? 'Close AI Assistant' : 'Open AI Assistant'}
               className={cn(
-                'flex h-7 w-7 items-center justify-center rounded-full transition-all cursor-pointer',
+                'flex h-7 w-7 items-center justify-center rounded-full text-primary transition-all cursor-pointer',
                 copilotOpen
                   ? 'bg-primary/20 ring-1 ring-primary/40 shadow-sm'
                   : 'bg-primary/10 hover:bg-primary/20'
               )}
               aria-label="Toggle AI Assistant"
             >
-              <img src={copilotIcon} alt="AI Assistant" className="h-4.5 w-4.5 object-contain" />
+              <Sparkles className="h-4 w-4" />
             </button>
           )}
         </div>
