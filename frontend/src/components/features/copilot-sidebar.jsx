@@ -1,35 +1,61 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, X, Send } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ShimmerLoader } from '@/components/ui/shimmer-loader';
 
-export function CopilotSidebar({ open, onOpenChange }) {
-  const [messages, setMessages] = useState([
-    { text: "Hello! I'm your AI assistant. How can I help you today?", isUser: false }
-  ]);
-  const [inputText, setInputText] = useState("");
+const DEFAULT_GREETING = (tabName) =>
+  `Hello! I'm your AI assistant${tabName ? ` for **${tabName}**` : ''}. How can I help you today?`;
+
+export function CopilotSidebar({
+  open,
+  onOpenChange,
+  activeTabId,
+  activeTabName,
+  chatHistories,
+  onUpdateHistory,
+}) {
+  const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  const currentKey = activeTabId || 'general';
+
+  // Messages for the current tab, or the greeting if none yet
+  const messages = chatHistories[currentKey] ?? [
+    { text: DEFAULT_GREETING(activeTabName), isUser: false },
+  ];
+
+  // Clear input whenever we switch tabs
+  useEffect(() => {
+    setInputText('');
+  }, [activeTabId]);
+
+  // Auto-scroll to the latest message
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isLoading]);
 
   const handleSend = async () => {
     if (!inputText.trim() || isLoading) return;
 
     const newMsg = inputText.trim();
-    setMessages(prev => [...prev, { text: newMsg, isUser: true }]);
-    setInputText("");
+    const updated = [...messages, { text: newMsg, isUser: true }];
+    onUpdateHistory(currentKey, updated);
+    setInputText('');
     setIsLoading(true);
 
     try {
       await fetch('/api/chat', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ message: newMsg })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: newMsg, tabId: activeTabId }),
       });
+      // TODO: append AI response from the API here
     } catch (error) {
-      console.error("Failed to send message", error);
+      console.error('Failed to send message', error);
+    } finally {
       setIsLoading(false);
     }
   };
@@ -43,7 +69,14 @@ export function CopilotSidebar({ open, onOpenChange }) {
           <div className="flex h-7 w-7 items-center justify-center rounded bg-primary/10 text-primary">
             <Sparkles className="h-4 w-4" />
           </div>
-          <span className="font-semibold tracking-tight text-sm">IntelliDoc AI Assistant</span>
+          <div className="flex flex-col">
+            <span className="font-semibold tracking-tight text-sm">IntelliDoc AI</span>
+            {activeTabName && (
+              <span className="text-[11px] text-muted-foreground truncate max-w-[160px]">
+                {activeTabName}
+              </span>
+            )}
+          </div>
         </div>
         <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => onOpenChange(false)}>
           <X className="h-4 w-4" />
@@ -55,14 +88,15 @@ export function CopilotSidebar({ open, onOpenChange }) {
           <div
             key={idx}
             className={`p-3 rounded-xl max-w-[85%] text-sm shadow-sm ${msg.isUser
-              ? "bg-primary text-primary-foreground rounded-tr-sm self-end"
-              : "bg-muted/50 border border-border/50 rounded-tl-sm self-start text-foreground"
+                ? 'bg-primary text-primary-foreground rounded-tr-sm self-end'
+                : 'bg-muted/50 border border-border/50 rounded-tl-sm self-start text-foreground'
               }`}
           >
             {msg.text}
           </div>
         ))}
         {isLoading && <ShimmerLoader />}
+        <div ref={messagesEndRef} />
       </div>
 
       <div className="p-4 border-t border-border bg-muted/10">
