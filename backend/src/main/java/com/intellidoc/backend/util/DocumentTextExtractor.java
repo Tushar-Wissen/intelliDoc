@@ -27,20 +27,53 @@ public class DocumentTextExtractor {
     private final Tesseract tesseract;
 
     public DocumentTextExtractor() {
-
         this.tesseract = new Tesseract();
 
         String tessDataPath =
-                new File("src/main/resources/tessdata").getAbsolutePath();
+                new File("backend/src/main/resources/tessdata")
+                        .getAbsolutePath();
 
         System.out.println(
                 "DocumentTextExtractor Tesseract tessdata path: "
                         + tessDataPath
         );
 
-        this.tesseract.setDatapath(tessDataPath);
+        File trainedData =
+                new File(tessDataPath, "eng.traineddata");
 
+        System.out.println("======================================");
+        System.out.println(
+                "DocumentTextExtractor tessdata path: "
+                        + tessDataPath
+        );
+        System.out.println(
+                "eng.traineddata path: "
+                        + trainedData.getAbsolutePath()
+        );
+        System.out.println(
+                "eng.traineddata exists: "
+                        + trainedData.exists()
+        );
+        System.out.println(
+                "eng.traineddata readable: "
+                        + trainedData.canRead()
+        );
+        System.out.println(
+                "eng.traineddata size: "
+                        + trainedData.length()
+        );
+        System.out.println("======================================");
+
+        if (!trainedData.exists() || !trainedData.canRead()) {
+            throw new IllegalStateException(
+                    "Tesseract language file not found or not readable: "
+                            + trainedData.getAbsolutePath()
+            );
+        }
+
+        this.tesseract.setDatapath(tessDataPath);
         this.tesseract.setLanguage("eng");
+        this.tesseract.setPageSegMode(6);
     }
 
     public String extractText(MultipartFile file)
@@ -254,29 +287,82 @@ public class DocumentTextExtractor {
     // IMAGE OCR
     // =========================================================
 
-    private String extractImageText(
-            MultipartFile file)
+    private String extractImageText(MultipartFile file)
             throws IOException {
+
+        byte[] imageBytes = file.getBytes();
+
+        System.out.println("======================================");
+        System.out.println(
+                "Starting OCR for image: "
+                        + file.getOriginalFilename()
+        );
+        System.out.println(
+                "Image content type: "
+                        + file.getContentType()
+        );
+        System.out.println(
+                "Image size: "
+                        + imageBytes.length
+                        + " bytes"
+        );
 
         BufferedImage image =
                 ImageIO.read(
-                        new ByteArrayInputStream(
-                                file.getBytes()
-                        )
+                        new ByteArrayInputStream(imageBytes)
                 );
 
         if (image == null) {
-
             throw new IllegalArgumentException(
-                    "Could not read image file"
+                    "Could not read image file: "
+                            + file.getOriginalFilename()
             );
         }
 
+        System.out.println(
+                "Image width: "
+                        + image.getWidth()
+        );
+
+        System.out.println(
+                "Image height: "
+                        + image.getHeight()
+        );
+
+        System.out.println(
+                "Starting Tesseract OCR..."
+        );
+
         try {
 
-            return tesseract.doOCR(image);
+            String result =
+                    tesseract.doOCR(image);
+
+            System.out.println(
+                    "OCR completed successfully."
+            );
+
+            System.out.println(
+                    "OCR result length: "
+                            + (result == null
+                            ? 0
+                            : result.length())
+            );
+
+            System.out.println("======================================");
+
+            return result == null
+                    ? ""
+                    : result;
 
         } catch (TesseractException e) {
+
+            System.out.println(
+                    "OCR failed for image: "
+                            + file.getOriginalFilename()
+            );
+
+            e.printStackTrace();
 
             throw new RuntimeException(
                     "OCR failed for image",
@@ -284,7 +370,6 @@ public class DocumentTextExtractor {
             );
         }
     }
-
 
     // =========================================================
     // FILE EXTENSION
