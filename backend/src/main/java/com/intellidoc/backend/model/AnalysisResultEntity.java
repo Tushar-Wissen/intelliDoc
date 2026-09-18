@@ -37,6 +37,12 @@ public class AnalysisResultEntity {
     @Column(name = "key_topics_json", columnDefinition = "TEXT")
     private String keyTopicsJson;
 
+    @Column(
+            name = "modules_json",
+            columnDefinition = "TEXT"
+    )
+    private String modulesJson;
+
     @Column(name = "processed_at")
     private OffsetDateTime processedAt;
 

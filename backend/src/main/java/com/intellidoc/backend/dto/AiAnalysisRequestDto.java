@@ -6,6 +6,9 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -16,8 +19,16 @@ public class AiAnalysisRequestDto {
     private String documentId;
 
     private String title;
+
     private String content;
 
     @JsonProperty("max_summary_length")
     private Integer maxSummaryLength;
+
+    /**
+     * Structured text blocks extracted from PDF/PPTX.
+     */
+    @Builder.Default
+    private List<DocumentTextBlockDto> blocks =
+            new ArrayList<>();
 }
