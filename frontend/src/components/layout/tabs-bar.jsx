@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { X, FileText, Plus, Sparkles } from 'lucide-react';
+import { X, FileText, Pin, Plus, Sparkles } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -42,7 +42,7 @@ export function TabsBar({
       <div
         className="scrollbar-none flex flex-1 items-stretch overflow-x-auto min-w-0"
       >
-        {tabs.map((tab) => {
+        {[...tabs].sort((first, second) => Number(Boolean(second.pinned)) - Number(Boolean(first.pinned))).map((tab) => {
           const isActive = tab.id === activeTabId;
           const iconColor = TAG_ICON_COLORS[tab.tag] || 'text-muted-foreground';
 
@@ -74,7 +74,11 @@ export function TabsBar({
                 <span className="absolute inset-x-0 bottom-[-1px] h-px bg-background" />
               )}
 
-              <FileText className={cn('h-3.5 w-3.5 shrink-0', iconColor)} />
+              {tab.pinned ? (
+                <Pin className="h-3.5 w-3.5 shrink-0 text-primary" />
+              ) : (
+                <FileText className={cn('h-3.5 w-3.5 shrink-0', iconColor)} />
+              )}
 
               <span className="max-w-[140px] truncate">{tab.name}</span>
 
