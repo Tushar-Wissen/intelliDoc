@@ -22,11 +22,29 @@ public interface DocumentRepository
 
 
     // ============================================================
-    // GET ONE DOCUMENT ONLY IF IT BELONGS TO THE WORKSPACE
+    // GET ONE DOCUMENT ONLY IF IT BELONGS TO WORKSPACE
     // ============================================================
 
     Optional<DocumentEntity> findByIdAndWorkspaceId(
             String id,
             String workspaceId
+    );
+
+
+    // ============================================================
+    // GET ALL FILES INSIDE A FOLDER
+    // ============================================================
+
+    List<DocumentEntity> findByFolderIdOrderByCreatedAtAsc(
+            String folderId
+    );
+
+
+    // ============================================================
+    // COUNT FILES INSIDE A FOLDER
+    // ============================================================
+
+    long countByFolderId(
+            String folderId
     );
 }
