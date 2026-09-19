@@ -12,15 +12,22 @@ import com.intellidoc.backend.dto.AiQARequestDto;
 import com.intellidoc.backend.dto.AiQAResponseDto;
 import com.intellidoc.backend.dto.DocumentModuleDto;
 import com.intellidoc.backend.dto.DocumentResponseDto;
+import com.intellidoc.backend.dto.FolderDocumentResponseDto;
+import com.intellidoc.backend.dto.FolderFileResponseDto;
+import com.intellidoc.backend.dto.FolderSectionResponseDto;
+import com.intellidoc.backend.dto.FolderUploadResponseDto;
+import com.intellidoc.backend.dto.GetAllDocumentsResponseDto;
 import com.intellidoc.backend.dto.StructuredDocumentDto;
 
 import com.intellidoc.backend.model.AnalysisResultEntity;
 import com.intellidoc.backend.model.AuditLogEntity;
 import com.intellidoc.backend.model.DocumentEntity;
+import com.intellidoc.backend.model.FolderEntity;
 
 import com.intellidoc.backend.repository.AnalysisResultRepository;
 import com.intellidoc.backend.repository.AuditLogRepository;
 import com.intellidoc.backend.repository.DocumentRepository;
+import com.intellidoc.backend.repository.FolderRepository;
 
 import com.intellidoc.backend.util.DocumentStructureExtractor;
 import com.intellidoc.backend.util.DocumentTextExtractor;
@@ -32,10 +39,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 
 @Service
@@ -49,6 +56,8 @@ public class DocumentService {
 
     private final AuditLogRepository auditLogRepository;
 
+    private final FolderRepository folderRepository;
+
     private final AiServiceClient aiServiceClient;
 
     private final DocumentTextExtractor documentTextExtractor;
@@ -60,11 +69,11 @@ public class DocumentService {
 
 
     // ============================================================
-    // UPLOAD + EXTRACT + AI ANALYSIS + SAVE
+    // UPLOAD + FOLDER + EXTRACTION + AI ANALYSIS + SAVE
     // ============================================================
 
     @Transactional
-    public DocumentResponseDto processAndSaveDocument(
+    public FolderUploadResponseDto processAndSaveDocument(
             String workspaceId,
             MultipartFile file,
             String title
@@ -80,10 +89,13 @@ public class DocumentService {
         try {
 
             // ----------------------------------------------------
-            // 1. Validate workspace ID
+            // 1. Validate workspace
             // ----------------------------------------------------
 
-            if (workspaceId == null || workspaceId.isBlank()) {
+            if (
+                    workspaceId == null
+                            || workspaceId.isBlank()
+            ) {
 
                 throw new IllegalArgumentException(
                         "Workspace ID cannot be empty"
@@ -107,33 +119,107 @@ public class DocumentService {
 
 
             // ----------------------------------------------------
-            // 3. Determine title
+            // 3. Determine folder name
             // ----------------------------------------------------
 
-            String documentTitle =
+            String folderName =
                     title;
 
             if (
-                    documentTitle == null
-                            || documentTitle.isBlank()
+                    folderName == null
+                            || folderName.isBlank()
             ) {
 
-                documentTitle =
+                folderName =
                         file.getOriginalFilename();
 
                 if (
-                        documentTitle == null
-                                || documentTitle.isBlank()
+                        folderName == null
+                                || folderName.isBlank()
                 ) {
 
-                    documentTitle =
+                    folderName =
                             "Untitled Document";
                 }
             }
 
+            folderName =
+                    folderName.trim();
+
 
             // ----------------------------------------------------
-            // 4. Extract document text
+            // 4. Find existing folder or create new folder
+            // ----------------------------------------------------
+
+            FolderEntity folder =
+                    folderRepository
+                            .findByWorkspaceIdAndName(
+                                    workspaceId,
+                                    folderName
+                            )
+                            .orElse(null);
+
+            boolean newFolder =
+                    false;
+
+
+            if (folder == null) {
+
+                String folderId =
+                        "folder_" +
+                                UUID.randomUUID()
+                                        .toString()
+                                        .replace("-", "")
+                                        .substring(0, 12);
+
+                folder =
+                        FolderEntity.builder()
+
+                                .id(folderId)
+
+                                .workspaceId(
+                                        workspaceId
+                                )
+
+                                .name(
+                                        folderName
+                                )
+
+                                .status(
+                                        "PROCESSING"
+                                )
+
+                                .build();
+
+                folder =
+                        folderRepository.save(
+                                folder
+                        );
+
+                newFolder = true;
+
+                log.info(
+                        "Created new folder '{}' with ID {} "
+                                + "in workspace {}",
+                        folderName,
+                        folder.getId(),
+                        workspaceId
+                );
+
+            } else {
+
+                log.info(
+                        "Using existing folder '{}' with ID {} "
+                                + "in workspace {}",
+                        folderName,
+                        folder.getId(),
+                        workspaceId
+                );
+            }
+
+
+            // ----------------------------------------------------
+            // 5. Extract document text
             // ----------------------------------------------------
 
             log.info(
@@ -143,11 +229,6 @@ public class DocumentService {
 
 
             String extractedText;
-
-
-            // ----------------------------------------------------
-            // PDF / PPTX use structured extraction
-            // ----------------------------------------------------
 
             String fileName =
                     file.getOriginalFilename();
@@ -176,20 +257,14 @@ public class DocumentService {
                         fileName
                 );
 
-
                 structuredDocument =
                         documentStructureExtractor.extract(
                                 file
                         );
 
-
                 extractedText =
                         structuredDocument.getContent();
 
-
-                // ------------------------------------------------
-                // Fallback if structured extraction has no text
-                // ------------------------------------------------
 
                 if (
                         extractedText == null
@@ -202,21 +277,15 @@ public class DocumentService {
                                     + "DocumentTextExtractor."
                     );
 
-
                     extractedText =
                             documentTextExtractor
                                     .extractText(file);
-
 
                     structuredDocument =
                             null;
                 }
 
             } else {
-
-                // ------------------------------------------------
-                // DOCX / PNG / JPG / JPEG
-                // ------------------------------------------------
 
                 extractedText =
                         documentTextExtractor
@@ -225,7 +294,7 @@ public class DocumentService {
 
 
             // ----------------------------------------------------
-            // 5. Validate extracted text
+            // 6. Validate extracted text
             // ----------------------------------------------------
 
             if (
@@ -248,7 +317,7 @@ public class DocumentService {
 
 
             // ----------------------------------------------------
-            // 6. Create document entity
+            // 7. Create document entity
             // ----------------------------------------------------
 
             DocumentEntity document =
@@ -256,13 +325,33 @@ public class DocumentService {
 
                             .id(docId)
 
-                            // IMPORTANT:
-                            // Associate document with workspace
-                            .workspaceId(workspaceId)
+                            .workspaceId(
+                                    workspaceId
+                            )
 
-                            .title(documentTitle)
+                            .folderId(
+                                    folder.getId()
+                            )
 
-                            .content(extractedText)
+                            /*
+                             * Existing POST behavior:
+                             * title remains the folder name.
+                             */
+                            .title(
+                                    folderName
+                            )
+
+                            /*
+                             * NEW:
+                             * Store actual uploaded file name.
+                             */
+                            .fileName(
+                                    file.getOriginalFilename()
+                            )
+
+                            .content(
+                                    extractedText
+                            )
 
                             .contentType(
                                     file.getContentType()
@@ -271,7 +360,9 @@ public class DocumentService {
                                             : "application/octet-stream"
                             )
 
-                            .status("PROCESSING")
+                            .status(
+                                    "PROCESSING"
+                            )
 
                             .build();
 
@@ -285,32 +376,35 @@ public class DocumentService {
                     "DOCUMENT_CREATED",
                     "Created document record: "
                             + docId
+                            + " in folder: "
+                            + folder.getId()
                             + " in workspace: "
                             + workspaceId
             );
 
 
             // ----------------------------------------------------
-            // 7. Create AI request
+            // 8. Create AI request
             // ----------------------------------------------------
-
-            log.info(
-                    "Sending document {} to AI Service "
-                            + "for analysis",
-                    docId
-            );
-
 
             AiAnalysisRequestDto aiRequest =
                     AiAnalysisRequestDto.builder()
 
-                            .documentId(docId)
+                            .documentId(
+                                    docId
+                            )
 
-                            .title(documentTitle)
+                            .title(
+                                    folderName
+                            )
 
-                            .content(extractedText)
+                            .content(
+                                    extractedText
+                            )
 
-                            .maxSummaryLength(200)
+                            .maxSummaryLength(
+                                    200
+                            )
 
                             .blocks(
                                     structuredDocument != null
@@ -329,7 +423,7 @@ public class DocumentService {
 
 
             // ----------------------------------------------------
-            // 8. Call Python AI service
+            // 9. Call AI service
             // ----------------------------------------------------
 
             AiAnalysisResponseDto aiResponse =
@@ -353,7 +447,7 @@ public class DocumentService {
 
 
             // ----------------------------------------------------
-            // 9. Get modules
+            // 10. Get modules
             // ----------------------------------------------------
 
             List<DocumentModuleDto> modules =
@@ -376,7 +470,7 @@ public class DocumentService {
 
 
             // ----------------------------------------------------
-            // 10. Save analysis result
+            // 11. Save analysis result
             // ----------------------------------------------------
 
             AnalysisResultEntity analysisResult =
@@ -390,7 +484,9 @@ public class DocumentService {
                                                     .substring(0, 12)
                             )
 
-                            .documentId(docId)
+                            .documentId(
+                                    docId
+                            )
 
                             .modulesJson(
                                     serializeJson(
@@ -406,23 +502,29 @@ public class DocumentService {
             );
 
 
-            log.info(
-                    "Analysis result saved for document {}",
-                    docId
-            );
-
-
             // ----------------------------------------------------
-            // 11. Mark completed
+            // 12. Mark document completed
             // ----------------------------------------------------
 
             document.setStatus(
                     "COMPLETED"
             );
 
-
             documentRepository.save(
                     document
+            );
+
+
+            // ----------------------------------------------------
+            // 13. Mark folder completed
+            // ----------------------------------------------------
+
+            folder.setStatus(
+                    "COMPLETED"
+            );
+
+            folderRepository.save(
+                    folder
             );
 
 
@@ -430,19 +532,89 @@ public class DocumentService {
                     "DOCUMENT_ANALYZED",
                     "Document processing completed: "
                             + docId
-                            + " in workspace: "
+                            + ", folder: "
+                            + folder.getId()
+                            + ", workspace: "
                             + workspaceId
             );
 
 
             // ----------------------------------------------------
-            // 12. Return response
+            // 14. Get file count
             // ----------------------------------------------------
 
-            return mapToResponseDto(
-                    document,
-                    analysisResult
-            );
+            long fileCount =
+                    documentRepository
+                            .countByFolderId(
+                                    folder.getId()
+                            );
+
+
+            // ----------------------------------------------------
+            // 15. Build POST response
+            // ----------------------------------------------------
+
+            String message;
+
+            if (newFolder) {
+
+                message =
+                        "Folder "
+                                + folder.getName()
+                                + " created and document uploaded successfully";
+
+            } else {
+
+                message =
+                        "Document uploaded into existing folder "
+                                + folder.getName()
+                                + " successfully";
+            }
+
+
+            FolderUploadResponseDto.FolderData data =
+                    FolderUploadResponseDto.FolderData.builder()
+
+                            .id(
+                                    folder.getId()
+                            )
+
+                            .title(
+                                    folder.getName()
+                            )
+
+                            .status(
+                                    folder.getStatus()
+                            )
+
+                            .createdAt(
+                                    folder.getCreatedAt()
+                            )
+
+                            .filesCount(
+                                    String.valueOf(
+                                            fileCount
+                                    )
+                            )
+
+                            .build();
+
+
+            return FolderUploadResponseDto.builder()
+
+                    .message(
+                            message
+                    )
+
+                    .data(
+                            data
+                    )
+
+                    .isError(
+                            false
+                    )
+
+                    .build();
 
 
         } catch (Exception e) {
@@ -454,10 +626,6 @@ public class DocumentService {
                     e
             );
 
-
-            // ----------------------------------------------------
-            // Mark FAILED
-            // ----------------------------------------------------
 
             DocumentEntity failedDocument =
                     documentRepository
@@ -498,14 +666,17 @@ public class DocumentService {
 
 
     // ============================================================
-    // GET ALL DOCUMENTS FOR WORKSPACE
+    // GET ALL FOLDERS + FILES + MODULES
     // ============================================================
 
-    public List<DocumentResponseDto> getAllDocuments(
+    public GetAllDocumentsResponseDto getAllDocuments(
             String workspaceId
     ) {
 
-        if (workspaceId == null || workspaceId.isBlank()) {
+        if (
+                workspaceId == null
+                        || workspaceId.isBlank()
+        ) {
 
             throw new IllegalArgumentException(
                     "Workspace ID cannot be empty"
@@ -513,27 +684,243 @@ public class DocumentService {
         }
 
 
-        return documentRepository
-                .findByWorkspaceIdOrderByCreatedAtDesc(
-                        workspaceId
+        /*
+         * Get folders instead of documents.
+         *
+         * This is the main change from the previous GET API.
+         */
+        List<FolderEntity> folders =
+                folderRepository
+                        .findByWorkspaceIdOrderByCreatedAtDesc(
+                                workspaceId
+                        );
+
+
+        List<FolderDocumentResponseDto> folderResponses =
+                folders.stream()
+                        .map(this::mapFolderToResponse)
+                        .toList();
+
+
+        return GetAllDocumentsResponseDto.builder()
+
+                .message(
+                        "Document details retrieved successfully"
                 )
-                .stream()
-                .map(doc -> {
 
-                    AnalysisResultEntity result =
-                            analysisResultRepository
-                                    .findByDocumentId(
-                                            doc.getId()
+                .data(
+                        folderResponses
+                )
+
+                .isError(
+                        false
+                )
+
+                .build();
+    }
+
+
+    // ============================================================
+    // MAP FOLDER TO GET-ALL RESPONSE
+    // ============================================================
+
+    private FolderDocumentResponseDto mapFolderToResponse(
+            FolderEntity folder
+    ) {
+
+        /*
+         * Get all uploaded files/documents inside this folder.
+         */
+        List<DocumentEntity> documents =
+                documentRepository
+                        .findByFolderIdOrderByCreatedAtAsc(
+                                folder.getId()
+                        );
+
+
+        List<FolderFileResponseDto> files =
+                new ArrayList<>();
+
+
+        int fileNumber = 1;
+
+        int totalSections = 0;
+
+
+        for (DocumentEntity document :
+                documents) {
+
+            /*
+             * Get modules/sections for this file.
+             */
+            AnalysisResultEntity analysis =
+                    analysisResultRepository
+                            .findByDocumentId(
+                                    document.getId()
+                            )
+                            .orElse(null);
+
+
+            List<DocumentModuleDto> modules =
+                    Collections.emptyList();
+
+
+            if (analysis != null) {
+
+                modules =
+                        deserializeModules(
+                                analysis.getModulesJson()
+                        );
+            }
+
+
+            /*
+             * Only top-level modules are returned.
+             *
+             * Subsections/children are intentionally ignored.
+             */
+            List<FolderSectionResponseDto> sections =
+                    new ArrayList<>();
+
+
+            int sectionNumber = 1;
+
+
+            for (DocumentModuleDto module :
+                    modules) {
+
+                if (
+                        module == null
+                                || module.getModuleName() == null
+                                || module.getModuleName().isBlank()
+                ) {
+                    continue;
+                }
+
+
+                String sectionsNumber =
+                        fileNumber
+                                + "."
+                                + sectionNumber;
+
+
+                sections.add(
+                        FolderSectionResponseDto.builder()
+
+                                .sectionsNumber(
+                                        sectionsNumber
+                                )
+
+                                .sectionsName(
+                                        module.getModuleName()
+                                )
+
+                                .build()
+                );
+
+
+                sectionNumber++;
+                totalSections++;
+            }
+
+
+            /*
+             * Actual uploaded file name.
+             */
+            String actualFileName =
+                    document.getFileName();
+
+
+            /*
+             * Backward compatibility for old records
+             * that were created before file_name existed.
+             */
+            if (
+                    actualFileName == null
+                            || actualFileName.isBlank()
+            ) {
+
+                actualFileName =
+                        document.getTitle();
+            }
+
+
+            files.add(
+                    FolderFileResponseDto.builder()
+
+                            .filesNumber(
+                                    String.valueOf(
+                                            fileNumber
                                     )
-                                    .orElse(null);
+                            )
+
+                            .filesName(
+                                    actualFileName
+                            )
+
+                            .children(
+                                    sections
+                            )
+
+                            .build()
+            );
 
 
-                    return mapToResponseDto(
-                            doc,
-                            result
-                    );
-                })
-                .collect(Collectors.toList());
+            fileNumber++;
+        }
+
+
+        return FolderDocumentResponseDto.builder()
+
+                /*
+                 * Folder ID.
+                 */
+                .id(
+                        folder.getId()
+                )
+
+                /*
+                 * Folder name.
+                 */
+                .title(
+                        folder.getName()
+                )
+
+                .status(
+                        folder.getStatus()
+                )
+
+                /*
+                 * Folder creation date.
+                 */
+                .uploadedDate(
+                        folder.getCreatedAt()
+                )
+
+                /*
+                 * Number of documents/files in folder.
+                 */
+                .filesCount(
+                        String.valueOf(
+                                documents.size()
+                        )
+                )
+
+                /*
+                 * Total number of top-level modules
+                 * across all files in this folder.
+                 */
+                .sectionsCount(
+                        String.valueOf(
+                                totalSections
+                        )
+                )
+
+                .files(
+                        files
+                )
+
+                .build();
     }
 
 
@@ -546,7 +933,10 @@ public class DocumentService {
             String documentId
     ) {
 
-        if (workspaceId == null || workspaceId.isBlank()) {
+        if (
+                workspaceId == null
+                        || workspaceId.isBlank()
+        ) {
 
             throw new IllegalArgumentException(
                     "Workspace ID cannot be empty"
@@ -574,7 +964,9 @@ public class DocumentService {
 
         AnalysisResultEntity result =
                 analysisResultRepository
-                        .findByDocumentId(documentId)
+                        .findByDocumentId(
+                                documentId
+                        )
                         .orElse(null);
 
 
@@ -595,10 +987,6 @@ public class DocumentService {
             String question
     ) {
 
-        // --------------------------------------------------------
-        // Verify document belongs to workspace
-        // --------------------------------------------------------
-
         DocumentEntity doc =
                 documentRepository
                         .findByIdAndWorkspaceId(
@@ -617,10 +1005,6 @@ public class DocumentService {
                         );
 
 
-        // --------------------------------------------------------
-        // Create AI Q&A request
-        // --------------------------------------------------------
-
         AiQARequestDto request =
                 AiQARequestDto.builder()
 
@@ -638,10 +1022,6 @@ public class DocumentService {
 
                         .build();
 
-
-        // --------------------------------------------------------
-        // Call AI service
-        // --------------------------------------------------------
 
         AiQAResponseDto response =
                 aiServiceClient.askQuestion(
@@ -730,7 +1110,7 @@ public class DocumentService {
 
 
     // ============================================================
-    // MAP RESPONSE
+    // MAP DOCUMENT RESPONSE
     // ============================================================
 
     private DocumentResponseDto mapToResponseDto(
