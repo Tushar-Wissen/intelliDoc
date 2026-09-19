@@ -11,6 +11,9 @@ CREATE TABLE IF NOT EXISTS public.documents (
     content TEXT NOT NULL,
     content_type VARCHAR(50) DEFAULT 'text/plain',
     status VARCHAR(50) NOT NULL DEFAULT 'PENDING',
+    document_type VARCHAR(50),
+    classification_confidence DOUBLE PRECISION,
+    review_required BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -26,6 +29,23 @@ CREATE TABLE IF NOT EXISTS public.analysis_results (
     key_topics_json JSONB DEFAULT '[]'::jsonb,
     processed_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 3. Structured AI-extracted fields with source provenance and review status
+CREATE TABLE IF NOT EXISTS public.extracted_fields (
+    id VARCHAR(64) PRIMARY KEY DEFAULT uuid_generate_v4()::text,
+    document_id VARCHAR(64) NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE,
+    field_name VARCHAR(255) NOT NULL,
+    field_value TEXT NOT NULL,
+    source_page INTEGER NOT NULL,
+    source_chunk_id VARCHAR(64) NOT NULL,
+    confidence DOUBLE PRECISION NOT NULL,
+    status VARCHAR(30) NOT NULL DEFAULT 'AI_GENERATED',
+    corrected_by VARCHAR(64),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_extracted_fields_document ON public.extracted_fields(document_id);
 
 -- 3. System Audit Logs Table
 CREATE TABLE IF NOT EXISTS public.audit_logs (

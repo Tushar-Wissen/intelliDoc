@@ -4,6 +4,8 @@ from app.schemas import (
     HealthResponse,
     AnalyzeRequest,
     AnalyzeResponse,
+    ExtractionRequest,
+    ExtractionResponse,
     QARequest,
     QAResponse,
     ErrorResponse,
@@ -35,7 +37,8 @@ async def check_health():
         status="UP",
         service="intellidoc-ai-service",
         version="1.0.0",
-        model_loaded=True
+        model_loaded=True,
+        ai_configured=DocumentProcessor.LLM_CLASSIFIER.enabled,
     )
 
 
@@ -64,6 +67,34 @@ async def analyze_document(request: AnalyzeRequest):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Analysis processing error: {str(e)}"
+        )
+
+
+@app.post(
+    "/api/v1/extract",
+    response_model=ExtractionResponse,
+    responses={400: {"model": ErrorResponse}},
+    tags=["Extraction"],
+)
+async def extract_document(request: ExtractionRequest):
+    """Classify a fixture document and extract schema-validated fields with provenance."""
+    if not request.content.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Document content cannot be empty.",
+        )
+
+    try:
+        return DocumentProcessor.extract_document(
+            doc_id=request.document_id,
+            title=request.title,
+            content=request.content,
+            chunks=request.chunks,
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Extraction processing error: {str(e)}",
         )
 
 

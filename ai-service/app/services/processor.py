@@ -1,6 +1,23 @@
+import json
 import re
-from typing import List, Tuple
-from app.schemas import SentimentEnum, AnalyzeResponse, QAResponse
+from typing import Dict, List, Optional, Tuple
+from app.schemas import (
+    AnalyzeResponse,
+    DocumentChunk,
+    DocumentTypeEnum,
+    ExtractedField,
+    ExtractionResponse,
+    QAResponse,
+    SentimentEnum,
+)
+from app.services.llm_wrapper import OpenAIWrapper
+
+DEFAULT_DOCUMENT_TYPE_REGISTRY: Dict[str, Tuple[str, ...]] = {
+    DocumentTypeEnum.CONTRACT.value: ("agreement", "contract", "termination", "parties", "effective date"),
+    DocumentTypeEnum.PROPOSAL.value: ("proposal", "scope of work", "deliverables", "pricing", "solution"),
+    DocumentTypeEnum.FINANCIAL_REPORT.value: ("revenue", "ebitda", "balance sheet", "fiscal", "forecast"),
+    DocumentTypeEnum.POLICY.value: ("policy", "must comply", "prohibited", "procedure", "guideline"),
+}
 
 
 class DocumentProcessor:
@@ -14,6 +31,63 @@ class DocumentProcessor:
         "decline", "loss", "risk", "failure", "delay", "negative", "poor",
         "drop", "decrease", "threat", "vulnerability", "deficit", "issue"
     }
+
+    CLASSIFICATION_RULES = {
+        key: tuple(value)
+        for key, value in DEFAULT_DOCUMENT_TYPE_REGISTRY.items()
+    }
+    LLM_CLASSIFIER = OpenAIWrapper()
+
+    @classmethod
+    def register_document_type(cls, document_type: str, keywords: List[str]) -> None:
+        """Add a new document type at runtime without touching core classifier logic."""
+        normalized = document_type.strip().lower()
+        if not normalized:
+            raise ValueError("document_type cannot be empty")
+        cls.CLASSIFICATION_RULES[normalized] = tuple(keyword.lower() for keyword in keywords if keyword and keyword.strip())
+
+    @classmethod
+    def register_document_types(cls, document_types: dict) -> None:
+        """Bulk register multiple document types."""
+        for document_type, keywords in document_types.items():
+            cls.register_document_type(document_type, list(keywords))
+
+    @classmethod
+    def load_default_registry(cls) -> None:
+        """Reset the classifier to the default built-in registry."""
+        cls.CLASSIFICATION_RULES = {
+            key: tuple(value)
+            for key, value in DEFAULT_DOCUMENT_TYPE_REGISTRY.items()
+        }
+
+    @classmethod
+    def get_registered_document_types(cls) -> List[str]:
+        """Return the currently registered document types in a stable order."""
+        return list(cls.CLASSIFICATION_RULES.keys())
+
+    @classmethod
+    def _fallback_unknown_document(cls, searchable: str) -> Tuple[str, float]:
+        """Return a conservative review-required result for low-confidence or unknown docs."""
+        return DocumentTypeEnum.OTHER.value, 0.40
+
+    @classmethod
+    def _llm_fallback(cls, title: Optional[str], content: str) -> Optional[Tuple[str, float]]:
+        """Classify with AI and allow document types outside the local registry."""
+        if not cls.LLM_CLASSIFIER.enabled:
+            return None
+        try:
+            result = cls.LLM_CLASSIFIER.classify_document(
+                content=f"{title or ''}\n{content}",
+                document_types=cls.get_registered_document_types(),
+            )
+            if not result:
+                return None
+            document_type = str(result["document_type"]).strip().lower().replace(" ", "_")
+            if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", document_type):
+                return None
+            return document_type, result["confidence"]
+        except (ValueError, TypeError, KeyError, json.JSONDecodeError):
+            return None
 
     @classmethod
     def generate_summary(cls, content: str, max_length: int = 150) -> str:
@@ -92,6 +166,132 @@ class DocumentProcessor:
         if not found_topics:
             found_topics = ["General Information", "Document Processing"]
         return found_topics
+
+    @classmethod
+    def classify_document(cls, title: Optional[str], content: str) -> Tuple[str, float]:
+        searchable = f"{title or ''} {content}".lower()
+
+        llm_result = cls._llm_fallback(title, content)
+        if llm_result:
+            return llm_result
+
+        scores = {
+            str(document_type): sum(keyword in searchable for keyword in keywords)
+            for document_type, keywords in cls.CLASSIFICATION_RULES.items()
+        }
+        document_type, matched = max(scores.items(), key=lambda item: item[1])
+        if matched == 0:
+            return cls._fallback_unknown_document(searchable)
+
+        if (
+            document_type == DocumentTypeEnum.CONTRACT.value
+            and "agreement" in searchable
+            and ("effective date" in searchable or "termination" in searchable)
+        ):
+            return document_type, 0.93
+
+        confidence = {1: 0.58, 2: 0.72, 3: 0.84, 4: 0.90, 5: 0.93}.get(matched, 0.95)
+        if confidence < 0.5:
+            return cls._fallback_unknown_document(searchable)
+        return document_type, confidence
+
+    @staticmethod
+    def _chunks(content: str, chunks: List[DocumentChunk]) -> List[DocumentChunk]:
+        return chunks or [DocumentChunk(chunk_id="chunk-1", page=1, text=content)]
+
+    @classmethod
+    def _source_for_value(cls, value: str, chunks: List[DocumentChunk]) -> DocumentChunk:
+        value_lower = value.lower()
+        return next((chunk for chunk in chunks if value_lower in chunk.text.lower()), chunks[0])
+
+    @classmethod
+    def _field(
+        cls,
+        name: str,
+        value: str,
+        confidence: float,
+        chunks: List[DocumentChunk],
+    ) -> ExtractedField:
+        source = cls._source_for_value(value, chunks)
+        return ExtractedField(
+            field_name=name,
+            field_value=value,
+            source_page=source.page,
+            source_chunk_id=source.chunk_id,
+            confidence=confidence,
+        )
+
+    @classmethod
+    def extract_fields(
+        cls,
+        title: Optional[str],
+        content: str,
+        document_type: DocumentTypeEnum,
+        chunks: List[DocumentChunk],
+    ) -> List[ExtractedField]:
+        normalized_type = document_type.value if isinstance(document_type, DocumentTypeEnum) else str(document_type)
+        source_chunks = cls._chunks(content, chunks)
+        fields: List[ExtractedField] = []
+        if title:
+            fields.append(cls._field("Title", title, 0.99, source_chunks))
+
+        effective_date = re.search(
+            r"(?:effective date|effective as of|commencement date)\s*[:\-]?\s*(\d{4}-\d{2}-\d{2})",
+            content,
+            re.IGNORECASE,
+        )
+        if effective_date:
+            fields.append(cls._field("Effective Date", effective_date.group(1), 0.97, source_chunks))
+
+        parties = re.search(
+            r"between\s+(.+?)\s+and\s+(.+?)(?:\s*[,.;]|\s+(?:effective|dated|entered))",
+            content,
+            re.IGNORECASE,
+        )
+        if parties:
+            fields.append(cls._field("Parties", f"{parties.group(1).strip()}, {parties.group(2).strip()}", 0.93, source_chunks))
+
+        reference = re.search(r"(?:reference|ref(?:erence)?\s*(?:no|number)|document\s*id)\s*[:#-]?\s*([A-Z0-9][A-Z0-9./-]+)", content, re.IGNORECASE)
+        if reference:
+            fields.append(cls._field("Reference Number", reference.group(1), 0.90, source_chunks))
+
+        amount = re.search(r"(?:\$|€|£|INR\s*)[\d,]+(?:\.\d{2})?(?:\s*(?:million|billion|lakh|crore))?", content, re.IGNORECASE)
+        if amount:
+            fields.append(cls._field("Amount", amount.group(0), 0.91, source_chunks))
+
+        for topic in cls.extract_key_topics(content):
+            fields.append(cls._field("Topic", topic, 0.78, source_chunks))
+
+        if normalized_type == DocumentTypeEnum.CONTRACT.value:
+            termination = re.search(r"([^.!?]*(?:termination|terminate)[^.!?]*[.!?]?)", content, re.IGNORECASE)
+            if termination:
+                fields.append(cls._field("Termination Terms", termination.group(1).strip(), 0.88, source_chunks))
+            obligation = re.search(r"([^.!?]*(?:shall|must|required to)[^.!?]*[.!?]?)", content, re.IGNORECASE)
+            if obligation:
+                fields.append(cls._field("Obligations", obligation.group(1).strip(), 0.84, source_chunks))
+        elif normalized_type == DocumentTypeEnum.FINANCIAL_REPORT.value:
+            revenue = re.search(r"(?:revenue)\s*(?:was|of|:)?\s*([^,.;]+)", content, re.IGNORECASE)
+            if revenue:
+                fields.append(cls._field("Revenue", revenue.group(1).strip(), 0.92, source_chunks))
+            ebitda = re.search(r"(?:EBITDA)\s*(?:was|of|:)?\s*([^,.;]+)", content, re.IGNORECASE)
+            if ebitda:
+                fields.append(cls._field("EBITDA", ebitda.group(1).strip(), 0.90, source_chunks))
+            forecast = re.search(r"forecast(?: period)?\s*(?:for|:)?\s*([^,.;]+)", content, re.IGNORECASE)
+            if forecast:
+                fields.append(cls._field("Forecast Period", forecast.group(1).strip(), 0.87, source_chunks))
+
+        return fields
+
+    @classmethod
+    def extract_document(cls, doc_id: str, title: Optional[str], content: str, chunks: List[DocumentChunk]) -> ExtractionResponse:
+        document_type, classification_confidence = cls.classify_document(title, content)
+        return ExtractionResponse(
+            document_id=doc_id,
+            document_type=document_type,
+            classification_confidence=classification_confidence,
+            review_required=classification_confidence < 0.5,
+            fields=cls.extract_fields(title, content, document_type, chunks),
+        )
 
     @classmethod
     def process_document(cls, doc_id: str, title: str, content: str, max_summary_length: int = 150) -> AnalyzeResponse:

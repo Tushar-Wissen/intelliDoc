@@ -40,6 +40,30 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/v1/extract:
+    post:
+      summary: Classify a document and extract structured fields with provenance
+      operationId: extractDocument
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExtractionRequest'
+      responses:
+        '200':
+          description: Classification and extraction completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractionResponse'
+        '400':
+          description: Invalid input request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/v1/qa:
     post:
       summary: Answer question based on document context
@@ -130,6 +154,83 @@ components:
           type: number
           format: float
           example: 0.95
+
+    DocumentChunk:
+      type: object
+      required: [chunk_id, page, text]
+      properties:
+        chunk_id:
+          type: string
+          example: chunk-001
+        page:
+          type: integer
+          minimum: 1
+          example: 1
+        text:
+          type: string
+
+    ExtractedField:
+      type: object
+      required: [field_name, field_value, source_page, source_chunk_id, confidence, status]
+      properties:
+        field_name:
+          type: string
+          example: Effective Date
+        field_value:
+          type: string
+          example: 2026-01-01
+        source_page:
+          type: integer
+          minimum: 1
+          example: 1
+        source_chunk_id:
+          type: string
+          example: chunk-001
+        confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+          example: 0.97
+        status:
+          type: string
+          enum: [AI_GENERATED, CONFIRMED, CORRECTED, REMOVED]
+
+    ExtractionRequest:
+      type: object
+      required: [document_id, content]
+      properties:
+        document_id:
+          type: string
+        title:
+          type: string
+        content:
+          type: string
+        chunks:
+          type: array
+          items:
+            $ref: '#/components/schemas/DocumentChunk'
+
+    ExtractionResponse:
+      type: object
+      required: [document_id, document_type, classification_confidence, review_required, fields]
+      properties:
+        document_id:
+          type: string
+        document_type:
+          type: string
+          enum: [contract, proposal, financial_report, policy, other]
+        classification_confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+        review_required:
+          type: boolean
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtractedField'
 
     QARequest:
       type: object

@@ -27,4 +27,8 @@ public class DocumentResponseDto {
     private Double confidenceScore;
     private List<String> entities;
     private List<String> keyTopics;
+    private String documentType;
+    private Double classificationConfidence;
+    private Boolean reviewRequired;
+    private List<ExtractedFieldDto> fields;
 }

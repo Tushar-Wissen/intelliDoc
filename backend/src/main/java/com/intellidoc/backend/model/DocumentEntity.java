@@ -31,6 +31,15 @@ public class DocumentEntity {
     @Column(name = "status", nullable = false)
     private String status;
 
+    @Column(name = "document_type")
+    private String documentType;
+
+    @Column(name = "classification_confidence")
+    private Double classificationConfidence;
+
+    @Column(name = "review_required")
+    private Boolean reviewRequired;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 

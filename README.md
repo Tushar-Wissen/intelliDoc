@@ -70,6 +70,17 @@ cp .env.example .env
    VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
    ```
 
+### OpenAI document classification
+
+When an OpenAI key is configured, the AI service asks the model to classify documents first. The model may return new document types such as `invoice`, `bank_statement`, or `employment_contract` without code changes. Local rules remain available as an offline fallback:
+
+```ini
+OPENAI_API_KEY=YOUR_OPENAI_API_KEY
+OPENAI_MODEL=gpt-4o-mini
+```
+
+Without `OPENAI_API_KEY`, the service remains fully local and returns `other` for unrecognized documents.
+
 ---
 
 ## 🚀 How to Run the Application

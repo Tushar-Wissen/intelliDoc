@@ -9,11 +9,50 @@ class SentimentEnum(str, Enum):
     NEGATIVE = "NEGATIVE"
 
 
+class DocumentTypeEnum(str, Enum):
+    CONTRACT = "contract"
+    PROPOSAL = "proposal"
+    FINANCIAL_REPORT = "financial_report"
+    POLICY = "policy"
+    OTHER = "other"
+
+
+class DocumentChunk(BaseModel):
+    chunk_id: str = Field(..., min_length=1)
+    page: int = Field(..., ge=1)
+    text: str = Field(..., min_length=1)
+
+
+class ExtractedField(BaseModel):
+    field_name: str = Field(..., min_length=1)
+    field_value: str = Field(..., min_length=1)
+    source_page: int = Field(..., ge=1)
+    source_chunk_id: str = Field(..., min_length=1)
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    status: str = Field(default="AI_GENERATED", pattern="^(AI_GENERATED|CONFIRMED|CORRECTED|REMOVED)$")
+
+
+class ExtractionRequest(BaseModel):
+    document_id: str = Field(..., min_length=1)
+    title: Optional[str] = None
+    content: str = Field(..., min_length=1)
+    chunks: List[DocumentChunk] = Field(default_factory=list)
+
+
+class ExtractionResponse(BaseModel):
+    document_id: str
+    document_type: str
+    classification_confidence: float = Field(..., ge=0.0, le=1.0)
+    review_required: bool
+    fields: List[ExtractedField] = Field(default_factory=list)
+
+
 class HealthResponse(BaseModel):
     status: str = Field(default="UP", json_schema_extra={"example": "UP"})
     service: str = Field(default="intellidoc-ai-service", json_schema_extra={"example": "intellidoc-ai-service"})
     version: str = Field(default="1.0.0", json_schema_extra={"example": "1.0.0"})
     model_loaded: bool = Field(default=True, json_schema_extra={"example": True})
+    ai_configured: bool = Field(default=False, json_schema_extra={"example": True})
 
 
 class AnalyzeRequest(BaseModel):

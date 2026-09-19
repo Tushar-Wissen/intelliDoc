@@ -8,15 +8,18 @@ import com.intellidoc.backend.dto.*;
 import com.intellidoc.backend.model.AnalysisResultEntity;
 import com.intellidoc.backend.model.AuditLogEntity;
 import com.intellidoc.backend.model.DocumentEntity;
+import com.intellidoc.backend.model.ExtractedFieldEntity;
 import com.intellidoc.backend.repository.AnalysisResultRepository;
 import com.intellidoc.backend.repository.AuditLogRepository;
 import com.intellidoc.backend.repository.DocumentRepository;
+import com.intellidoc.backend.repository.ExtractedFieldRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -29,6 +32,7 @@ public class DocumentService {
     private final DocumentRepository documentRepository;
     private final AnalysisResultRepository analysisResultRepository;
     private final AuditLogRepository auditLogRepository;
+    private final ExtractedFieldRepository extractedFieldRepository;
     private final AiServiceClient aiServiceClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -68,6 +72,19 @@ public class DocumentService {
                     .build();
 
             analysisResultRepository.save(analysisResult);
+
+            AiExtractionResponseDto extraction = aiServiceClient.extractDocument(AiExtractionRequestDto.builder()
+                    .documentId(docId)
+                    .title(uploadDto.getTitle())
+                    .content(uploadDto.getContent())
+                    .chunks(Collections.emptyList())
+                    .build());
+            if (extraction != null) {
+                saveExtractedFields(docId, extraction.getFields());
+                document.setDocumentType(extraction.getDocumentType());
+                document.setClassificationConfidence(extraction.getClassificationConfidence());
+                document.setReviewRequired(extraction.getReviewRequired());
+            }
 
             document.setStatus("COMPLETED");
             documentRepository.save(document);
@@ -115,6 +132,58 @@ public class DocumentService {
         return response;
     }
 
+    @Transactional
+    public ExtractedFieldDto updateField(String fieldId, FieldUpdateRequestDto request, String actorId) {
+        ExtractedFieldEntity field = extractedFieldRepository.findById(fieldId)
+                .orElseThrow(() -> new RuntimeException("Field not found with ID: " + fieldId));
+        field.setFieldValue(request.getFieldValue());
+        field.setStatus("CORRECTED");
+        field.setCorrectedBy(actorId);
+        field.setUpdatedAt(java.time.OffsetDateTime.now());
+        logAudit("FIELD_CORRECTED", "Corrected extracted field: " + fieldId);
+        return mapField(extractedFieldRepository.save(field));
+    }
+
+    @Transactional
+    public void deleteField(String fieldId, String actorId) {
+        ExtractedFieldEntity field = extractedFieldRepository.findById(fieldId)
+                .orElseThrow(() -> new RuntimeException("Field not found with ID: " + fieldId));
+        field.setStatus("REMOVED");
+        field.setCorrectedBy(actorId);
+        field.setUpdatedAt(java.time.OffsetDateTime.now());
+        extractedFieldRepository.save(field);
+        logAudit("FIELD_REMOVED", "Removed extracted field: " + fieldId);
+    }
+
+    public List<ExtractedFieldDto> getFields(String documentId) {
+        return extractedFieldRepository.findByDocumentIdAndStatusNotOrderByCreatedAtAsc(documentId, "REMOVED")
+                .stream().map(this::mapField).collect(Collectors.toList());
+    }
+
+    public byte[] exportFields(String documentId, String format) {
+        List<ExtractedFieldDto> fields = getFields(documentId);
+        if ("json".equalsIgnoreCase(format)) {
+            try {
+                return objectMapper.writeValueAsBytes(fields);
+            } catch (JsonProcessingException e) {
+                throw new RuntimeException("Could not serialize fields", e);
+            }
+        }
+        if (!"csv".equalsIgnoreCase(format)) {
+            throw new IllegalArgumentException("format must be csv or json");
+        }
+        StringBuilder csv = new StringBuilder("fieldName,fieldValue,confidence,sourcePage,sourceChunkId,status\n");
+        for (ExtractedFieldDto field : fields) {
+            csv.append(csvValue(field.getFieldName())).append(',')
+                    .append(csvValue(field.getFieldValue())).append(',')
+                    .append(field.getConfidence()).append(',')
+                    .append(field.getSourcePage()).append(',')
+                    .append(csvValue(field.getSourceChunkId())).append(',')
+                    .append(csvValue(field.getStatus())).append('\n');
+        }
+        return csv.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
     private String serializeJson(Object obj) {
         try {
             return objectMapper.writeValueAsString(obj != null ? obj : Collections.emptyList());
@@ -141,6 +210,10 @@ public class DocumentService {
                 .status(doc.getStatus())
                 .createdAt(doc.getCreatedAt())
                 .updatedAt(doc.getUpdatedAt());
+            builder.documentType(doc.getDocumentType())
+                .classificationConfidence(doc.getClassificationConfidence())
+                .reviewRequired(doc.getReviewRequired())
+                .fields(getFields(doc.getId()));
 
         if (analysis != null) {
             builder.summary(analysis.getSummary())
@@ -151,6 +224,34 @@ public class DocumentService {
         }
 
         return builder.build();
+    }
+
+    private void saveExtractedFields(String documentId, List<ExtractedFieldDto> fields) {
+        if (fields == null) return;
+        for (ExtractedFieldDto field : fields) {
+            extractedFieldRepository.save(ExtractedFieldEntity.builder()
+                    .id("field_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12))
+                    .documentId(documentId)
+                    .fieldName(field.getFieldName())
+                    .fieldValue(field.getFieldValue())
+                    .sourcePage(field.getSourcePage())
+                    .sourceChunkId(field.getSourceChunkId())
+                    .confidence(field.getConfidence())
+                    .status(field.getStatus() != null ? field.getStatus() : "AI_GENERATED")
+                    .build());
+        }
+    }
+
+    private ExtractedFieldDto mapField(ExtractedFieldEntity field) {
+        return ExtractedFieldDto.builder()
+                .id(field.getId()).fieldName(field.getFieldName()).fieldValue(field.getFieldValue())
+                .sourcePage(field.getSourcePage()).sourceChunkId(field.getSourceChunkId())
+                .confidence(field.getConfidence()).status(field.getStatus()).build();
+    }
+
+    private String csvValue(String value) {
+        if (value == null) return "";
+        return "\"" + value.replace("\"", "\"\"") + "\"";
     }
 
     private void logAudit(String eventType, String details) {
