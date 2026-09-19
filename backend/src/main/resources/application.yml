@@ -31,6 +31,8 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
     baseline-version: 1
+    # Local docker volume can keep old checksums after SQL files are edited.
+    repair-on-migrate: ${FLYWAY_REPAIR_ON_MIGRATE:true}
 
 # Custom Application Config
 intellidoc:
@@ -39,6 +41,9 @@ intellidoc:
   supabase:
     url: ${SUPABASE_URL:https://demo-project.supabase.co}
     anon-key: ${SUPABASE_ANON_KEY:demo-anon-key}
+  jwt:
+    secret: ${JWT_SECRET:change-me-poc-only-must-be-at-least-256-bits-long}
+    expiry-seconds: ${JWT_EXPIRY_SECONDS:86400}
 
 logging:
   level:

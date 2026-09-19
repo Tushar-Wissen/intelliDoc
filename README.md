@@ -1,187 +1,146 @@
-# IntelliDoc - Multi-Tier Document Intelligence Platform
+# IntelliDoc — Pod 3 Document Extractor + Chatbot (POC)
 
-IntelliDoc is a centralized, microservices-based enterprise platform for document summarization, entity extraction, sentiment analysis, and interactive document Q&A built with **React**, **Spring Boot**, **Python FastAPI**, and **Supabase**.
+Three-service stack: React web client, Java/Spring Boot Core API, and Python/FastAPI AI Service, plus Postgres+pgvector, Neo4j, Redis, and MinIO.
 
----
+## Run locally in under 10 minutes
 
-## 🏗️ Architecture Overview
+### Prerequisites
 
-```
-                          ┌──────────────────────────┐
-                          │   React 18 SPA (Vite)    │
-                          │     (Port: 3000 / 80)    │
-                          └────────────┬─────────────┘
-                                       │ REST API Calls
-                                       ▼
-                          ┌──────────────────────────┐
-                          │  Spring Boot Backend API │
-                          │       (Port: 8080)       │
-                          └─────┬──────────────┬─────┘
-                                │              │
-           Supabase JPA SQL     │              │ REST Client (OpenAPI Contract)
-                                ▼              ▼
-       ┌──────────────────────────┐          ┌──────────────────────────┐
-       │ Supabase / Postgres DB   │          │ Python AI Microservice   │
-       │       (Port: 5432)       │          │       (Port: 8000)       │
-       └──────────────────────────┘          └──────────────────────────┘
-```
+- Docker Desktop (or Docker Engine + Compose v2)
+- Ports free: `3000`, `8080`, `8000`, `5432`, `7474`, `7687`, `6379`, `9000`, `9001`
 
----
+### Start the stack
 
-## 📋 System Requirements & Prerequisites
-
-### Option A: Running via Docker (Recommended)
-- **Docker**: Docker Desktop (Windows / macOS) or Docker Engine v20.10+ & Docker Compose v2.0+ (Linux).
-- **RAM**: Minimum 4 GB free RAM (8 GB total system RAM recommended).
-- **Disk Space**: ~3 GB free disk space.
-- **Ports**: Ensure ports `3000`, `8080`, `8000`, and `5432` are available.
-
-### Option B: Running Manually Without Docker
-- **Java**: JDK 17+ & Apache Maven 3.8+
-- **Python**: Python 3.11+ & pip
-- **Node.js**: Node.js 18+ & npm
-- **Database**: PostgreSQL 15+ installed locally OR a free [Supabase Cloud](https://supabase.com) account.
-
----
-
-## ⚙️ Environment & Supabase Database Setup
-
-### Step 1: Configure Environment Variables
-Copy `.env.example` to `.env`:
 ```bash
 cp .env.example .env
-```
-
-### Step 2: Set Up Supabase Database
-1. Go to your [Supabase Dashboard](https://supabase.com) (or open local PostgreSQL).
-2. Open the **SQL Editor** (`>_` icon).
-3. Copy and execute the contents of [`supabase/migrations/20260911000000_init_schema.sql`](file:///c:/Users/Wissen/Desktop/intelliDoc/codebase/supabase/migrations/20260911000000_init_schema.sql).
-4. Update the database host, user, password, and keys in your `.env` file:
-   ```ini
-   POSTGRES_HOST=db.YOUR_SUPABASE_PROJECT_ID.supabase.co
-   POSTGRES_PORT=5432
-   POSTGRES_DB=postgres
-   POSTGRES_USER=postgres
-   POSTGRES_PASSWORD=YOUR_DB_PASSWORD
-
-   SUPABASE_URL=https://YOUR_SUPABASE_PROJECT_ID.supabase.co
-   SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
-   VITE_SUPABASE_URL=https://YOUR_SUPABASE_PROJECT_ID.supabase.co
-   VITE_SUPABASE_ANON_KEY=YOUR_SUPABASE_ANON_KEY
-   ```
-
----
-
-## 🚀 How to Run the Application
-
-### Method 1: One-Command Docker Startup (Recommended)
-
-Run the full multi-tier system with healthchecks:
-
-```bash
 docker compose up --build
 ```
 
-Access the application in your browser once started:
-- 🌐 **React Frontend App**: [http://localhost:3000](http://localhost:3000)
-- ⚙️ **Spring Boot API**: [http://localhost:8080/api/v1/documents](http://localhost:8080/api/v1/documents)
-- ❤️ **Spring Boot Health**: [http://localhost:8080/api/v1/health](http://localhost:8080/api/v1/health)
-- 🤖 **Python AI Service Docs**: [http://localhost:8000/docs](http://localhost:8000/docs)
+Wait until these six services are healthy (usually well under 2 minutes after images are built): `postgres`, `neo4j`, `redis`, `minio`, `ai-service`, `core-api`.
 
----
+### Check health
 
-### Method 2: Running Services Individually (Development Mode)
+```bash
+curl http://localhost:8080/health
+curl http://localhost:8000/health
+```
 
-If you prefer to run services manually on your host machine:
+Both return `200` with `"status":"UP"`.
 
-#### 1. Python AI Service Microservice
+Infra health is Compose `healthcheck` blocks (`pg_isready`, Neo4j HTTP, Redis `PING`, MinIO `/minio/health/live`).
+
+### Seed a POC login (Story 0.4)
+
+There is no signup API. After Core API has applied Flyway migrations:
+
+```bash
+docker compose exec -T postgres psql -U postgres -d intellidoc -f - < scripts/seed_users.sql
+```
+
+On Windows PowerShell:
+
+```powershell
+Get-Content scripts/seed_users.sql | docker compose exec -T postgres psql -U postgres -d intellidoc
+```
+
+Then:
+
+```bash
+curl -X POST http://localhost:8080/auth/login ^
+  -H "Content-Type: application/json" ^
+  -d "{\"email\":\"jane.doe@company.com\",\"password\":\"password\"}"
+```
+
+Use the returned bearer token:
+
+```bash
+curl http://localhost:8080/auth/me -H "Authorization: Bearer <token>"
+```
+
+### URLs
+
+| Service | URL |
+|---|---|
+| Core API health | http://localhost:8080/health |
+| Core API (legacy nested health) | http://localhost:8080/api/v1/health |
+| AI Service health | http://localhost:8000/health |
+| AI Service docs | http://localhost:8000/docs |
+| Frontend | http://localhost:3000 |
+| MinIO console | http://localhost:9001 |
+| Neo4j browser | http://localhost:7474 |
+
+The frontend still uses its existing mock login until a later epic wires it to `/auth/login`.
+
+## Database migrations
+
+Flyway runs automatically when `core-api` starts. A failed migration aborts startup (non-zero exit).
+
+If you previously ran an older Compose Postgres image **without** pgvector, recreate the volume before Story 0.2 schema can apply:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+If you see `Migration checksum mismatch` after editing an already-applied SQL file, Compose starts Flyway with `repair-on-migrate` so history checksums are updated. That does **not** re-run the old scripts; real schema changes still need a new `Vxx__*.sql` file. To rebuild the database from scratch instead:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+## Running services without Docker
+
+### AI Service
+
 ```bash
 cd ai-service
 python -m venv venv
-# On Windows:
-.\venv\Scripts\activate
-# On Linux/macOS:
-source venv/bin/activate
-
+# Windows: .\venv\Scripts\activate
+# Linux/macOS: source venv/bin/activate
 pip install -r requirements.txt
-pytest                                  # Run unit tests
+pytest
 uvicorn app.main:app --port 8000 --reload
 ```
 
-#### 2. Spring Boot Backend API
+### Core API
+
+Requires PostgreSQL 16 with the `vector` extension (or the `pgvector/pgvector:pg16` image).
+
 ```bash
 cd backend
-mvn clean test                          # Run unit & integration tests
-mvn spring-boot:run                     # Starts API at http://localhost:8080
+mvn clean test
+mvn spring-boot:run
 ```
 
-#### 3. React Frontend Web Application
+### Frontend
+
 ```bash
 cd frontend
 npm install
-npm run dev                             # Launches Vite dev server at http://localhost:3000
+npm run dev
 ```
 
----
+## Tests
 
-## 🧪 Testing & Verification Commands
+| Service | Command |
+|---|---|
+| AI Service | `pytest` in `ai-service/` |
+| Core API | `mvn test` in `backend/` |
+| Frontend | `npm run build` in `frontend/` |
 
-| Service | Test Command | Directory |
-| :--- | :--- | :--- |
-| **Python AI Service** | `pytest` | `ai-service/` |
-| **Spring Boot Backend** | `mvn test` | `backend/` |
-| **React Frontend** | `npm run build` | `frontend/` |
+Schema tests use Testcontainers (`pgvector/pgvector:pg16`) and are skipped if Docker is not available.
 
----
+## CI
 
-## 📂 Repository Structure
+GitHub Actions runs build + tests on every push. On success, images are tagged with the git commit SHA (`intellidoc-core-api:<sha>`, `intellidoc-ai-service:<sha>`).
+
+## Repository layout
 
 ```
-.
-├── contracts/                  # OpenAPI 3.0 Contract Specifications
-│   └── ai-service-api.yaml
-├── supabase/                   # Centralised Database Schema & Migrations
-│   └── migrations/
-│       └── 20260911000000_init_schema.sql
-├── ai-service/                 # Python 3.11 FastAPI Microservice
-│   ├── app/
-│   │   ├── main.py             # FastAPI entry point & routers
-│   │   ├── schemas.py          # Pydantic V2 contract models
-│   │   └── services/           # Document NLP processor engine
-│   ├── tests/                  # Pytest suite
-│   ├── Dockerfile
-│   └── requirements.txt
-├── backend/                    # Spring Boot 3 Java Backend API
-│   ├── src/main/java/com/intellidoc/backend/
-│   │   ├── client/             # RestClient calling Python AI Service
-│   │   ├── controller/         # REST Controllers (/api/v1/documents)
-│   │   ├── dto/                # Data Transfer Objects
-│   │   ├── model/              # JPA Entities (documents, analysis, audit)
-│   │   └── service/            # Business & orchestration logic
-│   ├── src/test/               # JUnit 5 & Mockito test suite
-│   ├── pom.xml
-│   └── Dockerfile
-├── frontend/                   # React 18 SPA (Vite + Glassmorphism UI)
-│   ├── src/
-│   │   ├── App.jsx             # Main Dashboard & AI Insights view
-│   │   └── index.css           # Custom Glassmorphism design system
-│   ├── Dockerfile
-│   └── nginx.conf
-├── .github/
-│   └── workflows/
-│       └── ci.yml              # GitHub Actions CI/CD Pipeline
-├── docker-compose.yml          # Multi-container local orchestration
-├── .env.example                # Environment variables template
-├── .gitignore                  # Git exclusions (protects secrets)
-└── README.md
+backend/          # Core API (Spring Boot 3 / Java 17)
+ai-service/       # FastAPI AI Service
+frontend/         # React UI
+scripts/          # POC seed data (not a product provisioning API)
+docs/             # BRD, architecture, ERD, implementation plans
 ```
-
----
-
-## 🧪 CI/CD Pipeline
-
-The included GitHub Actions workflow ([`.github/workflows/ci.yml`](file:///.github/workflows/ci.yml)) automatically performs:
-1. Automated unit test execution for Python AI Service (`pytest`).
-2. Automated compilation and unit testing for Spring Boot Backend (`mvn test`).
-3. Automated compilation for React Frontend (`npm run build`).
-4. Container image build validation for all 3 microservices.

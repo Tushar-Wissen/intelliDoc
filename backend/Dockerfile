@@ -14,6 +14,6 @@ COPY --from=build /app/target/backend-1.0.0.jar app.jar
 EXPOSE 8080
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget --quiet --tries=1 --spider http://localhost:8080/api/v1/health || exit 1
+  CMD wget --quiet --tries=1 --spider http://localhost:8080/health || exit 1
 
 ENTRYPOINT ["java", "-jar", "app.jar"]
