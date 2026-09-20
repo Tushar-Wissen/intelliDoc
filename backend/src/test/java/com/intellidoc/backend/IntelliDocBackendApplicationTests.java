@@ -4,14 +4,21 @@ import com.intellidoc.backend.client.AiServiceClient;
 import com.intellidoc.backend.dto.AiAnalysisRequestDto;
 import com.intellidoc.backend.dto.AiAnalysisResponseDto;
 import com.intellidoc.backend.dto.DocumentModuleDto;
-import com.intellidoc.backend.dto.DocumentResponseDto;
+import com.intellidoc.backend.dto.FolderDocumentResponseDto;
+import com.intellidoc.backend.dto.FolderFileResponseDto;
+import com.intellidoc.backend.dto.FolderSectionResponseDto;
+import com.intellidoc.backend.dto.FolderUploadResponseDto;
+import com.intellidoc.backend.dto.GetAllDocumentsResponseDto;
 import com.intellidoc.backend.dto.StructuredDocumentDto;
 import com.intellidoc.backend.service.DocumentService;
 import com.intellidoc.backend.util.DocumentStructureExtractor;
 import com.intellidoc.backend.util.DocumentTextExtractor;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
 import org.mockito.Mockito;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -23,14 +30,23 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
+
 
 @SpringBootTest
 @ActiveProfiles("test")
 class IntelliDocBackendApplicationTests {
 
+    // ============================================================
+    // SERVICE
+    // ============================================================
+
     @Autowired
     private DocumentService documentService;
+
+
+    // ============================================================
+    // MOCK SERVICES
+    // ============================================================
 
     @MockBean
     private AiServiceClient aiServiceClient;
@@ -41,82 +57,109 @@ class IntelliDocBackendApplicationTests {
     @MockBean
     private DocumentTextExtractor documentTextExtractor;
 
-    private MockMultipartFile testFile;
 
-    private static final String WORKSPACE_ID = "ws_test_001";
+    // ============================================================
+    // TEST FILES
+    // ============================================================
+
+    private MockMultipartFile testFile1;
+
+    private MockMultipartFile testFile2;
+
+    private MockMultipartFile testFile3;
+
+
+    // ============================================================
+    // WORKSPACE
+    // ============================================================
+
+    private static final String WORKSPACE_ID =
+            "ws_test_001";
+
+
+    // ============================================================
+    // SETUP
+    // ============================================================
 
     @BeforeEach
     void setUp() throws Exception {
 
-        /*
-         * Create a simple mock uploaded document.
-         *
-         * We are not using a real PDF here because these tests
-         * should test DocumentService behavior, not PDFBox/OCR.
-         */
-        testFile = new MockMultipartFile(
-                "file",
-                "Test Document.txt",
-                "text/plain",
-                "IntelliDoc Spring Boot backend test document content."
-                        .getBytes(StandardCharsets.UTF_8)
+        // --------------------------------------------------------
+        // File 1
+        // --------------------------------------------------------
+
+        testFile1 =
+                new MockMultipartFile(
+                        "file",
+                        "EmployeePolicy.docx",
+                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        "Employee policy introduction and employee details."
+                                .getBytes(StandardCharsets.UTF_8)
+                );
+
+
+        // --------------------------------------------------------
+        // File 2
+        // --------------------------------------------------------
+
+        testFile2 =
+                new MockMultipartFile(
+                        "file",
+                        "EmployeePolicy.pdf",
+                        "application/pdf",
+                        "Employee policy benefits and employee information."
+                                .getBytes(StandardCharsets.UTF_8)
+                );
+
+
+        // --------------------------------------------------------
+        // File 3
+        // --------------------------------------------------------
+
+        testFile3 =
+                new MockMultipartFile(
+                        "file",
+                        "EmployeeBenefits.pdf",
+                        "application/pdf",
+                        "Employee benefits information."
+                                .getBytes(StandardCharsets.UTF_8)
+                );
+
+
+        // ========================================================
+        // MOCK TEXT EXTRACTION
+        // ========================================================
+
+        Mockito.when(
+                documentTextExtractor.extractText(any())
+        ).thenReturn(
+                "Employee policy introduction and employee details."
         );
 
-        /*
-         * Mock structured document extraction.
-         */
+
+        // ========================================================
+        // MOCK STRUCTURED EXTRACTION
+        // ========================================================
+
         StructuredDocumentDto structuredDocument =
                 StructuredDocumentDto.builder()
                         .content(
-                                "IntelliDoc Spring Boot backend test document content."
+                                "Employee policy introduction and employee details."
                         )
                         .blocks(List.of())
                         .build();
 
-        Mockito.when(documentStructureExtractor.extract(any()))
-                .thenReturn(structuredDocument);
 
-        /*
-         * Mock normal text extraction as well.
-         *
-         * This prevents the test from depending on the actual
-         * file extraction implementation.
-         */
-        Mockito.when(documentTextExtractor.extractText(any()))
-                .thenReturn(
-                        "IntelliDoc Spring Boot backend test document content."
-                );
+        Mockito.when(
+                documentStructureExtractor.extract(any())
+        ).thenReturn(
+                structuredDocument
+        );
 
-        /*
-         * Mock AI analysis response.
-         */
-        AiAnalysisResponseDto mockResponse =
-                AiAnalysisResponseDto.builder()
-                        .documentId("doc_test")
-                        .summary("Test document summary")
-                        .sentiment("POSITIVE")
-                        .confidenceScore(0.95)
-                        .entities(List.of(
-                                "IntelliDoc",
-                                "Spring Boot"
-                        ))
-                        .keyTopics(List.of(
-                                "Java",
-                                "Backend"
-                        ))
-                        .modules(List.of(
-                                DocumentModuleDto.builder()
-                                        .moduleNumber("1")
-                                        .moduleName("Introduction")
-                                        .children(List.of())
-                                        .build(),
-                                DocumentModuleDto.builder()
-                                        .moduleNumber("2")
-                                        .moduleName("Backend")
-                                        .children(List.of())
-                                        .build()
-                        ))
-                        .build();
+
+        // ========================================================
+        // MOCK AI ANALYSIS
+        // ========================================================
 
         Mockito.when(
                 aiServiceClient.analyzeDocument(
@@ -127,105 +170,184 @@ class IntelliDocBackendApplicationTests {
             AiAnalysisRequestDto request =
                     invocation.getArgument(0);
 
+
             /*
-             * Return the same document ID that the service sends.
-             * This makes the mock more realistic.
+             * Every uploaded file will receive
+             * three sections/modules.
              */
             return AiAnalysisResponseDto.builder()
-                    .documentId(request.getDocumentId())
-                    .summary("Test document summary")
-                    .sentiment("POSITIVE")
-                    .confidenceScore(0.95)
-                    .entities(List.of(
-                            "IntelliDoc",
-                            "Spring Boot"
-                    ))
-                    .keyTopics(List.of(
-                            "Java",
-                            "Backend"
-                    ))
-                    .modules(List.of(
-                            DocumentModuleDto.builder()
-                                    .moduleNumber("1")
-                                    .moduleName("Introduction")
-                                    .children(List.of())
-                                    .build(),
-                            DocumentModuleDto.builder()
-                                    .moduleNumber("2")
-                                    .moduleName("Backend")
-                                    .children(List.of())
-                                    .build()
-                    ))
+
+                    .documentId(
+                            request.getDocumentId()
+                    )
+
+                    .summary(
+                            "Employee policy document summary"
+                    )
+
+                    .sentiment(
+                            "POSITIVE"
+                    )
+
+                    .confidenceScore(
+                            0.95
+                    )
+
+                    .entities(
+                            List.of(
+                                    "Employee",
+                                    "Policy"
+                            )
+                    )
+
+                    .keyTopics(
+                            List.of(
+                                    "Employee",
+                                    "Benefits",
+                                    "Policy"
+                            )
+                    )
+
+                    .modules(
+                            List.of(
+
+                                    DocumentModuleDto.builder()
+                                            .moduleNumber("1")
+                                            .moduleName("Introduction")
+                                            .children(List.of())
+                                            .build(),
+
+                                    DocumentModuleDto.builder()
+                                            .moduleNumber("2")
+                                            .moduleName("Employee Details")
+                                            .children(List.of())
+                                            .build(),
+
+                                    DocumentModuleDto.builder()
+                                            .moduleNumber("3")
+                                            .moduleName("Benefits")
+                                            .children(List.of())
+                                            .build()
+                            )
+                    )
+
                     .build();
         });
     }
 
+
+    // ============================================================
+    // TEST 1
+    // ============================================================
+
     /**
-     * Test 1:
-     * Verify that the Spring Boot application context loads
-     * and DocumentService is available.
+     * Verify that Spring Boot application context loads.
      */
     @Test
     void contextLoads() {
 
-        assertNotNull(documentService);
+        assertNotNull(
+                documentService
+        );
     }
 
+
+    // ============================================================
+    // TEST 2
+    // ============================================================
+
     /**
-     * Test 2:
-     * Verify that a document can be uploaded and processed
-     * for a specific workspace.
+     * Verify POST document upload.
+     *
+     * Expected:
+     *
+     * - Folder is created
+     * - Document is uploaded
+     * - Folder ID is returned
+     * - Folder title is returned
+     * - Status is COMPLETED
+     * - File count is 1
      */
     @Test
-    void testProcessAndSaveDocumentSuccess() throws Exception {
+    void testProcessAndSaveDocumentCreatesFolder()
+            throws Exception {
 
-        String workspaceId = WORKSPACE_ID;
+        String workspaceId =
+                "ws_post_folder_test";
 
-        DocumentResponseDto result =
+
+        FolderUploadResponseDto response =
                 documentService.processAndSaveDocument(
+
                         workspaceId,
-                        testFile,
-                        "Test Document.txt"
+
+                        testFile1,
+
+                        "Employee Policy Folder"
                 );
 
-        assertNotNull(result);
 
-        assertNotNull(result.getId());
+        assertNotNull(
+                response
+        );
+
+
+        assertFalse(
+                response.isError()
+        );
+
+
+        assertNotNull(
+                response.getMessage()
+        );
+
+
+        assertTrue(
+                response.getMessage()
+                        .contains(
+                                "Employee Policy Folder"
+                        )
+        );
+
+
+        assertNotNull(
+                response.getData()
+        );
+
+
+        assertNotNull(
+                response.getData()
+                        .getId()
+        );
+
 
         assertEquals(
-                "Test Document.txt",
-                result.getTitle()
+                "Employee Policy Folder",
+                response.getData()
+                        .getTitle()
         );
+
 
         assertEquals(
                 "COMPLETED",
-                result.getStatus()
+                response.getData()
+                        .getStatus()
         );
 
-        /*
-         * Verify that modules returned by the AI service
-         * are present in the document response.
-         */
-        assertNotNull(result.getModules());
+
+        assertNotNull(
+                response.getData()
+                        .getCreatedAt()
+        );
+
 
         assertEquals(
-                2,
-                result.getModules().size()
+                "1",
+                response.getData()
+                        .getFilesCount()
         );
 
-        assertEquals(
-                "Introduction",
-                result.getModules().get(0).getModuleName()
-        );
 
-        assertEquals(
-                "Backend",
-                result.getModules().get(1).getModuleName()
-        );
-
-        /*
-         * Verify that the AI service was called.
-         */
         Mockito.verify(
                 aiServiceClient,
                 Mockito.atLeastOnce()
@@ -234,336 +356,1146 @@ class IntelliDocBackendApplicationTests {
         );
     }
 
+
+    // ============================================================
+    // TEST 3
+    // ============================================================
+
     /**
-     * Test 3:
-     * Verify that documents can be retrieved using workspace ID.
+     * Verify that when the same folder title is used again,
+     * the document is uploaded into the existing folder.
      */
     @Test
-    void testGetAllDocumentsByWorkspace() throws Exception {
+    void testUploadIntoExistingFolder()
+            throws Exception {
 
-        String workspaceId = "ws_get_all_test";
+        String workspaceId =
+                "ws_existing_folder_test";
 
-        /*
-         * First create a document inside this workspace.
-         */
-        DocumentResponseDto savedDocument =
+
+        String folderName =
+                "Employee Policy Folder";
+
+
+        // --------------------------------------------------------
+        // First upload
+        // --------------------------------------------------------
+
+        FolderUploadResponseDto firstResponse =
                 documentService.processAndSaveDocument(
+
                         workspaceId,
-                        testFile,
-                        "Workspace Test Document.txt"
+
+                        testFile1,
+
+                        folderName
                 );
 
-        assertNotNull(savedDocument);
-        assertNotNull(savedDocument.getId());
 
-        /*
-         * Retrieve documents belonging to this workspace.
-         */
-        List<DocumentResponseDto> documents =
+        assertNotNull(
+                firstResponse
+        );
+
+
+        String firstFolderId =
+                firstResponse
+                        .getData()
+                        .getId();
+
+
+        assertNotNull(
+                firstFolderId
+        );
+
+
+        assertEquals(
+                "1",
+                firstResponse
+                        .getData()
+                        .getFilesCount()
+        );
+
+
+        // --------------------------------------------------------
+        // Second upload
+        // --------------------------------------------------------
+
+        FolderUploadResponseDto secondResponse =
+                documentService.processAndSaveDocument(
+
+                        workspaceId,
+
+                        testFile2,
+
+                        folderName
+                );
+
+
+        assertNotNull(
+                secondResponse
+        );
+
+
+        String secondFolderId =
+                secondResponse
+                        .getData()
+                        .getId();
+
+
+        // --------------------------------------------------------
+        // Both uploads should use same folder
+        // --------------------------------------------------------
+
+        assertEquals(
+                firstFolderId,
+                secondFolderId,
+                "Second document should use the existing folder"
+        );
+
+
+        // --------------------------------------------------------
+        // File count should now be 2
+        // --------------------------------------------------------
+
+        assertEquals(
+                "2",
+                secondResponse
+                        .getData()
+                        .getFilesCount()
+        );
+
+
+        assertTrue(
+                secondResponse
+                        .getMessage()
+                        .contains(
+                                "existing folder"
+                        )
+        );
+    }
+
+
+    // ============================================================
+    // TEST 4
+    // ============================================================
+
+    /**
+     * Verify the complete GET All Documents response.
+     *
+     * Folder:
+     *
+     * id
+     * title
+     * status
+     * uploaded_date
+     * files_count
+     * sections_count
+     * files
+     */
+    @Test
+    void testGetAllDocumentsReturnsFolderResponse()
+            throws Exception {
+
+        String workspaceId =
+                "ws_get_all_folder_test";
+
+
+        String folderName =
+                "Employee Policy Folder";
+
+
+        // --------------------------------------------------------
+        // Upload first file
+        // --------------------------------------------------------
+
+        documentService.processAndSaveDocument(
+
+                workspaceId,
+
+                testFile1,
+
+                folderName
+        );
+
+
+        // --------------------------------------------------------
+        // Upload second file into same folder
+        // --------------------------------------------------------
+
+        documentService.processAndSaveDocument(
+
+                workspaceId,
+
+                testFile2,
+
+                folderName
+        );
+
+
+        // --------------------------------------------------------
+        // GET ALL
+        // --------------------------------------------------------
+
+        GetAllDocumentsResponseDto response =
                 documentService.getAllDocuments(
                         workspaceId
                 );
 
-        assertNotNull(documents);
+
+        assertNotNull(
+                response
+        );
+
+
+        // --------------------------------------------------------
+        // Verify wrapper
+        // --------------------------------------------------------
+
+        assertEquals(
+                "Document details retrieved successfully",
+                response.getMessage()
+        );
+
 
         assertFalse(
-                documents.isEmpty(),
-                "Workspace should contain at least one document"
+                response.isError()
         );
 
-        /*
-         * Verify that our uploaded document exists.
-         */
-        boolean documentFound =
-                documents.stream()
-                        .anyMatch(document ->
-                                savedDocument.getId()
-                                        .equals(document.getId())
+
+        assertNotNull(
+                response.getData()
+        );
+
+
+        assertFalse(
+                response.getData()
+                        .isEmpty()
+        );
+
+
+        // --------------------------------------------------------
+        // Find expected folder
+        // --------------------------------------------------------
+
+        FolderDocumentResponseDto folder =
+                response.getData()
+                        .stream()
+                        .filter(item ->
+                                folderName.equals(
+                                        item.getTitle()
+                                )
+                        )
+                        .findFirst()
+                        .orElseThrow(
+                                () -> new AssertionError(
+                                        "Expected folder was not found"
+                                )
                         );
 
-        assertTrue(
-                documentFound,
-                "Uploaded document should be returned for the workspace"
+
+        // ========================================================
+        // VERIFY FOLDER FIELDS
+        // ========================================================
+
+        assertNotNull(
+                folder.getId()
         );
-    }
 
-    /**
-     * Test 4:
-     * Verify that a specific document can be retrieved
-     * using both workspace ID and document ID.
-     */
-    @Test
-    void testGetDocumentByIdAndWorkspace() throws Exception {
-
-        String workspaceId = "ws_get_by_id_test";
-
-        DocumentResponseDto savedDocument =
-                documentService.processAndSaveDocument(
-                        workspaceId,
-                        testFile,
-                        "Get By ID Test.txt"
-                );
-
-        assertNotNull(savedDocument);
-        assertNotNull(savedDocument.getId());
-
-        DocumentResponseDto result =
-                documentService.getDocumentById(
-                        workspaceId,
-                        savedDocument.getId()
-                );
-
-        assertNotNull(result);
 
         assertEquals(
-                savedDocument.getId(),
-                result.getId()
+                folderName,
+                folder.getTitle()
         );
 
-        assertEquals(
-                "Get By ID Test.txt",
-                result.getTitle()
-        );
 
         assertEquals(
                 "COMPLETED",
-                result.getStatus()
+                folder.getStatus()
         );
 
-        assertNotNull(result.getModules());
+
+        /*
+         * uploaded_date should be available directly
+         * below status in the response DTO.
+         */
+        assertNotNull(
+                folder.getUploadedDate()
+        );
+
+
+        /*
+         * Two files were uploaded into the same folder.
+         */
+        assertEquals(
+                "2",
+                folder.getFilesCount()
+        );
+
+
+        /*
+         * Each file has three sections.
+         *
+         * 2 files × 3 sections = 6 sections.
+         */
+        assertEquals(
+                "6",
+                folder.getSectionsCount()
+        );
+
+
+        // ========================================================
+        // VERIFY FILE LIST
+        // ========================================================
+
+        assertNotNull(
+                folder.getFiles()
+        );
+
 
         assertEquals(
                 2,
-                result.getModules().size()
+                folder.getFiles()
+                        .size()
         );
     }
 
+
+    // ============================================================
+    // TEST 5
+    // ============================================================
+
     /**
-     * Test 5:
-     * Verify workspace isolation.
-     *
-     * A document created in Workspace A should not be
-     * accessible through Workspace B.
+     * Verify actual file names inside the folder.
      */
     @Test
-    void testDocumentCannotBeAccessedFromDifferentWorkspace()
+    void testGetAllDocumentsReturnsActualFileNames()
             throws Exception {
 
-        String workspaceA = "ws_a_test";
-        String workspaceB = "ws_b_test";
+        String workspaceId =
+                "ws_file_names_test";
 
-        DocumentResponseDto savedDocument =
-                documentService.processAndSaveDocument(
-                        workspaceA,
-                        testFile,
-                        "Workspace A Document.txt"
+
+        String folderName =
+                "Employee Policy Folder";
+
+
+        documentService.processAndSaveDocument(
+
+                workspaceId,
+
+                testFile1,
+
+                folderName
+        );
+
+
+        documentService.processAndSaveDocument(
+
+                workspaceId,
+
+                testFile2,
+
+                folderName
+        );
+
+
+        GetAllDocumentsResponseDto response =
+                documentService.getAllDocuments(
+                        workspaceId
                 );
 
-        assertNotNull(savedDocument);
-        assertNotNull(savedDocument.getId());
 
-        /*
-         * Try to retrieve the document using another workspace.
-         */
-        assertThrows(
-                RuntimeException.class,
-                () -> documentService.getDocumentById(
-                        workspaceB,
-                        savedDocument.getId()
-                )
+        FolderDocumentResponseDto folder =
+                response.getData()
+                        .stream()
+                        .filter(item ->
+                                folderName.equals(
+                                        item.getTitle()
+                                )
+                        )
+                        .findFirst()
+                        .orElseThrow();
+
+
+        assertEquals(
+                2,
+                folder.getFiles()
+                        .size()
+        );
+
+
+        boolean firstFileFound =
+                folder.getFiles()
+                        .stream()
+                        .anyMatch(file ->
+                                "EmployeePolicy.docx"
+                                        .equals(
+                                                file.getFilesName()
+                                        )
+                        );
+
+
+        boolean secondFileFound =
+                folder.getFiles()
+                        .stream()
+                        .anyMatch(file ->
+                                "EmployeePolicy.pdf"
+                                        .equals(
+                                                file.getFilesName()
+                                        )
+                        );
+
+
+        assertTrue(
+                firstFileFound,
+                "EmployeePolicy.docx should be returned"
+        );
+
+
+        assertTrue(
+                secondFileFound,
+                "EmployeePolicy.pdf should be returned"
         );
     }
 
+
+    // ============================================================
+    // TEST 6
+    // ============================================================
+
     /**
-     * Test 6:
-     * Verify that getAllDocuments() only returns documents
-     * belonging to the requested workspace.
+     * Verify files_number.
+     *
+     * First file -> 1
+     * Second file -> 2
+     */
+    @Test
+    void testFilesAreNumberedInsideFolder()
+            throws Exception {
+
+        String workspaceId =
+                "ws_file_number_test";
+
+
+        String folderName =
+                "Employee Policy Folder";
+
+
+        documentService.processAndSaveDocument(
+
+                workspaceId,
+
+                testFile1,
+
+                folderName
+        );
+
+
+        documentService.processAndSaveDocument(
+
+                workspaceId,
+
+                testFile2,
+
+                folderName
+        );
+
+
+        GetAllDocumentsResponseDto response =
+                documentService.getAllDocuments(
+                        workspaceId
+                );
+
+
+        FolderDocumentResponseDto folder =
+                response.getData()
+                        .stream()
+                        .filter(item ->
+                                folderName.equals(
+                                        item.getTitle()
+                                )
+                        )
+                        .findFirst()
+                        .orElseThrow();
+
+
+        assertEquals(
+                2,
+                folder.getFiles()
+                        .size()
+        );
+
+
+        FolderFileResponseDto firstFile =
+                folder.getFiles()
+                        .get(0);
+
+
+        FolderFileResponseDto secondFile =
+                folder.getFiles()
+                        .get(1);
+
+
+        assertEquals(
+                "1",
+                firstFile.getFilesNumber()
+        );
+
+
+        assertEquals(
+                "2",
+                secondFile.getFilesNumber()
+        );
+    }
+
+
+    // ============================================================
+    // TEST 7
+    // ============================================================
+
+    /**
+     * Verify that files_number and files_name appear
+     * before children logically through the DTO structure.
+     *
+     * The DTO should contain:
+     *
+     * files_number
+     * files_name
+     * children
+     */
+    @Test
+    void testFileResponseContainsFileInformationAndChildren()
+            throws Exception {
+
+        String workspaceId =
+                "ws_file_structure_test";
+
+
+        String folderName =
+                "Employee Policy Folder";
+
+
+        documentService.processAndSaveDocument(
+
+                workspaceId,
+
+                testFile1,
+
+                folderName
+        );
+
+
+        GetAllDocumentsResponseDto response =
+                documentService.getAllDocuments(
+                        workspaceId
+                );
+
+
+        FolderDocumentResponseDto folder =
+                response.getData()
+                        .stream()
+                        .filter(item ->
+                                folderName.equals(
+                                        item.getTitle()
+                                )
+                        )
+                        .findFirst()
+                        .orElseThrow();
+
+
+        assertEquals(
+                1,
+                folder.getFiles()
+                        .size()
+        );
+
+
+        FolderFileResponseDto file =
+                folder.getFiles()
+                        .get(0);
+
+
+        // --------------------------------------------------------
+        // File information
+        // --------------------------------------------------------
+
+        assertEquals(
+                "1",
+                file.getFilesNumber()
+        );
+
+
+        assertEquals(
+                "EmployeePolicy.docx",
+                file.getFilesName()
+        );
+
+
+        // --------------------------------------------------------
+        // Children / Sections
+        // --------------------------------------------------------
+
+        assertNotNull(
+                file.getChildren()
+        );
+
+
+        assertEquals(
+                3,
+                file.getChildren()
+                        .size()
+        );
+    }
+
+
+    // ============================================================
+    // TEST 8
+    // ============================================================
+
+    /**
+     * Verify sections inside children.
+     */
+    @Test
+    void testSectionsAreReturnedInsideChildren()
+            throws Exception {
+
+        String workspaceId =
+                "ws_sections_test";
+
+
+        String folderName =
+                "Employee Policy Folder";
+
+
+        documentService.processAndSaveDocument(
+
+                workspaceId,
+
+                testFile1,
+
+                folderName
+        );
+
+
+        GetAllDocumentsResponseDto response =
+                documentService.getAllDocuments(
+                        workspaceId
+                );
+
+
+        FolderDocumentResponseDto folder =
+                response.getData()
+                        .stream()
+                        .filter(item ->
+                                folderName.equals(
+                                        item.getTitle()
+                                )
+                        )
+                        .findFirst()
+                        .orElseThrow();
+
+
+        FolderFileResponseDto file =
+                folder.getFiles()
+                        .get(0);
+
+
+        assertNotNull(
+                file.getChildren()
+        );
+
+
+        assertEquals(
+                3,
+                file.getChildren()
+                        .size()
+        );
+
+
+        // --------------------------------------------------------
+        // Section 1
+        // --------------------------------------------------------
+
+        FolderSectionResponseDto section1 =
+                file.getChildren()
+                        .get(0);
+
+
+        assertEquals(
+                "1.1",
+                section1.getSectionsNumber()
+        );
+
+
+        assertEquals(
+                "Introduction",
+                section1.getSectionsName()
+        );
+
+
+        // --------------------------------------------------------
+        // Section 2
+        // --------------------------------------------------------
+
+        FolderSectionResponseDto section2 =
+                file.getChildren()
+                        .get(1);
+
+
+        assertEquals(
+                "1.2",
+                section2.getSectionsNumber()
+        );
+
+
+        assertEquals(
+                "Employee Details",
+                section2.getSectionsName()
+        );
+
+
+        // --------------------------------------------------------
+        // Section 3
+        // --------------------------------------------------------
+
+        FolderSectionResponseDto section3 =
+                file.getChildren()
+                        .get(2);
+
+
+        assertEquals(
+                "1.3",
+                section3.getSectionsNumber()
+        );
+
+
+        assertEquals(
+                "Benefits",
+                section3.getSectionsName()
+        );
+    }
+
+
+    // ============================================================
+    // TEST 9
+    // ============================================================
+
+    /**
+     * Verify sections_count when multiple files are
+     * present in one folder.
+     */
+    @Test
+    void testSectionsCountForMultipleFiles()
+            throws Exception {
+
+        String workspaceId =
+                "ws_sections_count_test";
+
+
+        String folderName =
+                "Employee Policy Folder";
+
+
+        // File 1 -> 3 sections
+        documentService.processAndSaveDocument(
+
+                workspaceId,
+
+                testFile1,
+
+                folderName
+        );
+
+
+        // File 2 -> 3 sections
+        documentService.processAndSaveDocument(
+
+                workspaceId,
+
+                testFile2,
+
+                folderName
+        );
+
+
+        // File 3 -> 3 sections
+        documentService.processAndSaveDocument(
+
+                workspaceId,
+
+                testFile3,
+
+                folderName
+        );
+
+
+        GetAllDocumentsResponseDto response =
+                documentService.getAllDocuments(
+                        workspaceId
+                );
+
+
+        FolderDocumentResponseDto folder =
+                response.getData()
+                        .stream()
+                        .filter(item ->
+                                folderName.equals(
+                                        item.getTitle()
+                                )
+                        )
+                        .findFirst()
+                        .orElseThrow();
+
+
+        // --------------------------------------------------------
+        // 3 files
+        // --------------------------------------------------------
+
+        assertEquals(
+                "3",
+                folder.getFilesCount()
+        );
+
+
+        // --------------------------------------------------------
+        // 3 files × 3 sections = 9
+        // --------------------------------------------------------
+
+        assertEquals(
+                "9",
+                folder.getSectionsCount()
+        );
+
+
+        assertEquals(
+                3,
+                folder.getFiles()
+                        .size()
+        );
+    }
+
+
+    // ============================================================
+    // TEST 10
+    // ============================================================
+
+    /**
+     * Verify that different folder names create different folders.
+     */
+    @Test
+    void testDifferentFolderNamesCreateDifferentFolders()
+            throws Exception {
+
+        String workspaceId =
+                "ws_multiple_folders_test";
+
+
+        documentService.processAndSaveDocument(
+
+                workspaceId,
+
+                testFile1,
+
+                "Employee Policy Folder"
+        );
+
+
+        documentService.processAndSaveDocument(
+
+                workspaceId,
+
+                testFile2,
+
+                "Employee Benefits Folder"
+        );
+
+
+        GetAllDocumentsResponseDto response =
+                documentService.getAllDocuments(
+                        workspaceId
+                );
+
+
+        assertNotNull(
+                response
+        );
+
+
+        assertTrue(
+                response.getData()
+                        .stream()
+                        .anyMatch(folder ->
+                                "Employee Policy Folder"
+                                        .equals(
+                                                folder.getTitle()
+                                        )
+                        )
+        );
+
+
+        assertTrue(
+                response.getData()
+                        .stream()
+                        .anyMatch(folder ->
+                                "Employee Benefits Folder"
+                                        .equals(
+                                                folder.getTitle()
+                                        )
+                        )
+        );
+    }
+
+
+    // ============================================================
+    // TEST 11
+    // ============================================================
+
+    /**
+     * Verify workspace isolation.
+     *
+     * Workspace A should not receive folders
+     * belonging to Workspace B.
      */
     @Test
     void testGetAllDocumentsWorkspaceIsolation()
             throws Exception {
 
-        String workspaceA = "ws_isolation_a";
-        String workspaceB = "ws_isolation_b";
+        String workspaceA =
+                "ws_isolation_a";
 
-        /*
-         * Create one document in Workspace A.
-         */
-        DocumentResponseDto documentA =
-                documentService.processAndSaveDocument(
-                        workspaceA,
-                        testFile,
-                        "Document A.txt"
-                );
 
-        /*
-         * Create one document in Workspace B.
-         */
-        DocumentResponseDto documentB =
-                documentService.processAndSaveDocument(
-                        workspaceB,
-                        testFile,
-                        "Document B.txt"
-                );
+        String workspaceB =
+                "ws_isolation_b";
 
-        assertNotNull(documentA);
-        assertNotNull(documentB);
 
-        /*
-         * Get Workspace A documents.
-         */
-        List<DocumentResponseDto> workspaceADocuments =
+        // --------------------------------------------------------
+        // Workspace A
+        // --------------------------------------------------------
+
+        documentService.processAndSaveDocument(
+
+                workspaceA,
+
+                testFile1,
+
+                "Workspace A Folder"
+        );
+
+
+        // --------------------------------------------------------
+        // Workspace B
+        // --------------------------------------------------------
+
+        documentService.processAndSaveDocument(
+
+                workspaceB,
+
+                testFile2,
+
+                "Workspace B Folder"
+        );
+
+
+        // --------------------------------------------------------
+        // GET Workspace A
+        // --------------------------------------------------------
+
+        GetAllDocumentsResponseDto workspaceAResponse =
                 documentService.getAllDocuments(
                         workspaceA
                 );
 
-        /*
-         * Get Workspace B documents.
-         */
-        List<DocumentResponseDto> workspaceBDocuments =
+
+        // --------------------------------------------------------
+        // GET Workspace B
+        // --------------------------------------------------------
+
+        GetAllDocumentsResponseDto workspaceBResponse =
                 documentService.getAllDocuments(
                         workspaceB
                 );
 
-        assertNotNull(workspaceADocuments);
-        assertNotNull(workspaceBDocuments);
-
-        /*
-         * Workspace A should contain its document.
-         */
-        assertTrue(
-                workspaceADocuments.stream()
-                        .anyMatch(document ->
-                                documentA.getId()
-                                        .equals(document.getId())
-                        )
-        );
-
-        /*
-         * Workspace A should NOT contain Workspace B document.
-         */
-        assertFalse(
-                workspaceADocuments.stream()
-                        .anyMatch(document ->
-                                documentB.getId()
-                                        .equals(document.getId())
-                        )
-        );
-
-        /*
-         * Workspace B should contain its document.
-         */
-        assertTrue(
-                workspaceBDocuments.stream()
-                        .anyMatch(document ->
-                                documentB.getId()
-                                        .equals(document.getId())
-                        )
-        );
-
-        /*
-         * Workspace B should NOT contain Workspace A document.
-         */
-        assertFalse(
-                workspaceBDocuments.stream()
-                        .anyMatch(document ->
-                                documentA.getId()
-                                        .equals(document.getId())
-                        )
-        );
-    }
-
-    /**
-     * Test 7:
-     * Verify that modules returned by AI analysis
-     * are persisted and returned with the document.
-     */
-    @Test
-    void testDocumentModulesAreReturned() throws Exception {
-
-        String workspaceId = "ws_modules_test";
-
-        DocumentResponseDto result =
-                documentService.processAndSaveDocument(
-                        workspaceId,
-                        testFile,
-                        "Modules Test.txt"
-                );
-
-        assertNotNull(result);
-
-        assertNotNull(result.getModules());
-
-        assertEquals(
-                2,
-                result.getModules().size()
-        );
-
-        DocumentModuleDto firstModule =
-                result.getModules().get(0);
-
-        assertEquals(
-                "1",
-                firstModule.getModuleNumber()
-        );
-
-        assertEquals(
-                "Introduction",
-                firstModule.getModuleName()
-        );
 
         assertNotNull(
-                firstModule.getChildren()
+                workspaceAResponse
         );
 
-        DocumentModuleDto secondModule =
-                result.getModules().get(1);
 
-        assertEquals(
-                "2",
-                secondModule.getModuleNumber()
+        assertNotNull(
+                workspaceBResponse
         );
 
-        assertEquals(
-                "Backend",
-                secondModule.getModuleName()
+
+        // --------------------------------------------------------
+        // Workspace A contains A
+        // --------------------------------------------------------
+
+        assertTrue(
+                workspaceAResponse
+                        .getData()
+                        .stream()
+                        .anyMatch(folder ->
+                                "Workspace A Folder"
+                                        .equals(
+                                                folder.getTitle()
+                                        )
+                        )
+        );
+
+
+        // --------------------------------------------------------
+        // Workspace A does not contain B
+        // --------------------------------------------------------
+
+        assertFalse(
+                workspaceAResponse
+                        .getData()
+                        .stream()
+                        .anyMatch(folder ->
+                                "Workspace B Folder"
+                                        .equals(
+                                                folder.getTitle()
+                                        )
+                        )
+        );
+
+
+        // --------------------------------------------------------
+        // Workspace B contains B
+        // --------------------------------------------------------
+
+        assertTrue(
+                workspaceBResponse
+                        .getData()
+                        .stream()
+                        .anyMatch(folder ->
+                                "Workspace B Folder"
+                                        .equals(
+                                                folder.getTitle()
+                                        )
+                        )
+        );
+
+
+        // --------------------------------------------------------
+        // Workspace B does not contain A
+        // --------------------------------------------------------
+
+        assertFalse(
+                workspaceBResponse
+                        .getData()
+                        .stream()
+                        .anyMatch(folder ->
+                                "Workspace A Folder"
+                                        .equals(
+                                                folder.getTitle()
+                                        )
+                        )
         );
     }
 
+
+    // ============================================================
+    // TEST 12
+    // ============================================================
+
     /**
-     * Test 8:
-     * Verify that AI analysis receives the generated document ID,
+     * Verify GET All response for an empty workspace.
+     */
+    @Test
+    void testGetAllDocumentsForEmptyWorkspace()
+            throws Exception {
+
+        String workspaceId =
+                "ws_empty_workspace_test";
+
+
+        GetAllDocumentsResponseDto response =
+                documentService.getAllDocuments(
+                        workspaceId
+                );
+
+
+        assertNotNull(
+                response
+        );
+
+
+        assertEquals(
+                "Document details retrieved successfully",
+                response.getMessage()
+        );
+
+
+        assertFalse(
+                response.isError()
+        );
+
+
+        assertNotNull(
+                response.getData()
+        );
+
+
+        assertTrue(
+                response.getData()
+                        .isEmpty(),
+                "Empty workspace should not contain folders"
+        );
+    }
+
+
+    // ============================================================
+    // TEST 13
+    // ============================================================
+
+    /**
+     * Verify that AI service receives the generated document ID,
      * title and extracted content.
      */
     @Test
     void testAiServiceReceivesCorrectDocumentInformation()
             throws Exception {
 
-        String workspaceId = "ws_ai_request_test";
+        String workspaceId =
+                "ws_ai_request_test";
+
 
         documentService.processAndSaveDocument(
+
                 workspaceId,
-                testFile,
-                "AI Request Test.txt"
+
+                testFile1,
+
+                "Employee Policy Folder"
         );
+
 
         Mockito.verify(
                 aiServiceClient,
                 Mockito.atLeastOnce()
         ).analyzeDocument(
-                Mockito.argThat(request ->
 
-                        request != null
+                Mockito.argThat(
+                        request ->
 
-                                && request.getDocumentId() != null
+                                request != null
 
-                                && "AI Request Test.txt"
-                                .equals(request.getTitle())
+                                        && request
+                                        .getDocumentId()
+                                        != null
 
-                                && request.getContent() != null
+                                        && request
+                                        .getTitle()
+                                        != null
 
-                                && !request.getContent()
-                                .isBlank()
+                                        && request
+                                        .getContent()
+                                        != null
+
+                                        && !request
+                                        .getContent()
+                                        .isBlank()
                 )
         );
     }
