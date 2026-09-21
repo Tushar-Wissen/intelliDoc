@@ -26,3 +26,11 @@ intellidoc:
   jwt:
     secret: test-secret-must-be-at-least-256-bits-long-hs256
     expiry-seconds: 86400
+  upload:
+    max-file-size-bytes: 1024
+    allowed-extensions: pdf,docx
+  minio:
+    endpoint: http://localhost:9000
+    access-key: minioadmin
+    secret-key: minioadmin
+    bucket: intellidoc

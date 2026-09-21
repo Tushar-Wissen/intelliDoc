@@ -10,6 +10,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.UUID;
 
@@ -44,6 +45,16 @@ public class ApiExceptionHandler {
                 HttpStatus.FORBIDDEN.value(),
                 "WORKSPACE_ACCESS_DENIED",
                 "Not a member of this workspace.",
+                request
+        );
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiErrorBody> handleTooLarge(MaxUploadSizeExceededException ex, HttpServletRequest request) {
+        return respond(
+                HttpStatus.PAYLOAD_TOO_LARGE.value(),
+                "FILE_TOO_LARGE",
+                "File exceeds the configured maximum size.",
                 request
         );
     }

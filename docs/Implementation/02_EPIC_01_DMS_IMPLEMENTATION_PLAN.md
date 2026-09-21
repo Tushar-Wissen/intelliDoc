@@ -11,7 +11,7 @@
 **Epic Name:** Workspace & Document Management (DMS)
 **Business Objective:** Let a user create a workspace, upload documents (individually, in bulk, or as a whole folder), organize them into modules, and track processing status — the entry point to everything else in the product.
 **Business Problem:** Without this, no document exists anywhere in the system for any other epic to classify, extract, graph, or chat about.
-**Scope:** Workspace CRUD, module (folder) CRUD, document upload (single/multi/folder), storage, status tracking, retry/delete.
+**Scope:** Workspace CRUD, module (folder) CRUD, document upload (single/multi/folder), storage, original-file retrieval for the UI viewer, status tracking, retry/delete.
 **Out of Scope:** Parsing/OCR content (Epic 2), classification/extraction content (Epic 3), anything graph- or chat-related.
 **Actors:** Business User (primary), Core API's auth layer (gatekeeper).
 **Dependencies:** Epic 0 (DB schema must exist; auth mechanism must exist).
@@ -83,7 +83,7 @@ No AC is left untraced. Story 1.4 (retry/delete/archive) is P1 and traces to `06
 **Acceptance Criteria** (verbatim):
 - AC1. User can upload multiple PDF/DOCX files in one request.
 - AC2. Files are validated for type and a configurable max size before accepting.
-- AC3. Original files are stored in MinIO, organized by `workspace/{workspaceId}/document/{documentId}/original.{ext}` (module, if any, is metadata on the document record, not part of the storage path).
+- AC3. Original files are stored in MinIO, organized by `workspace/{workspaceId}/document/{documentId}/original.{ext}` (module, if any, is metadata on the document record, not part of the storage path). The original is retrievable as-is via `GET /documents/{documentId}/file` for the application UI (independent of overview/summary).
 - AC4. Each uploaded document is created with `processingStatus: UPLOADED` and queued for processing.
 - AC5. Invalid file type or oversized file returns `415`/`413` with a clear error message, and no partial record is created.
 - AC6. Documents can be filtered/grouped by `documentType` once classified (folder-like view via API query, not physical folders).
@@ -91,7 +91,7 @@ No AC is left untraced. Story 1.4 (retry/delete/archive) is P1 and traces to `06
 **Technical Interpretation:**
 - AC1 → `multipart/form-data` with a `files[]` array field, processed per-file so one bad file (AC5) doesn't reject the whole batch.
 - AC2 → type check against an allow-list (`.pdf`, `.docx` — BRD §5.2 explicitly excludes all other formats); size check against a configurable max (**OPEN QUESTION §26** — no specific byte limit is given anywhere in source docs; must be a config value, not a hardcoded one, per AC2's own wording "configurable").
-- AC3 → `documentId` (server-generated UUID) is created *before* the MinIO write so the storage path can reference it; this is a create-then-store ordering, not store-then-create.
+- AC3 → `documentId` (server-generated UUID) is created *before* the MinIO write so the storage path can reference it; this is a create-then-store ordering, not store-then-create. The original bytes are never rewritten; `GET /documents/{documentId}/file` streams that same MinIO object. `GET /documents/{documentId}` remains metadata-only (overview/summary stay null until Epic 3). **DESIGN GAP (§28):** `05_api_specs.md` originally listed detail/pages but not an original-file stream; resolved by adding `GET /documents/{documentId}/file` so the UI can show the document as uploaded.
 - AC4 → after the `DOCUMENT` row is committed, Core API calls the internal AI Service contract `POST /internal/ai/documents/process` (`05_...md` §10) to hand off processing — this is a **fire-and-forget HTTP call**, not a shared message queue (see the architectural note at the top of this document; **ASSUMPTION**, since the internal contract doc doesn't state the call's synchronicity explicitly).
 - AC5 → validation must happen **before** any DB write or MinIO write for that file, so a rejected file leaves zero trace (no orphaned `DOCUMENT` row, no orphaned MinIO object).
 - AC6 → requires a `documentType` query parameter on the existing `GET /workspaces/{workspaceId}/documents` endpoint — **this parameter is not listed in `05_api_specs.md` §5** (only `moduleId` is documented). This is a **DESIGN GAP** (§28): the AC requires it, the API spec doesn't define it. Resolved here by extending the existing endpoint consistently with its `moduleId` filter pattern, not by inventing a new endpoint.
@@ -102,7 +102,7 @@ No AC is left untraced. Story 1.4 (retry/delete/archive) is P1 and traces to `06
 
 **Database:** `DOCUMENT` (create, one row per accepted file); `PROCESSING_JOB` (create, one row per accepted file, initial `stage`/`status` — **ASSUMPTION §27**: values not enumerated in `04_...md`, assumed to mirror `document.processing_status` vocabulary, initial `status: PENDING`).
 
-**APIs:** `POST /workspaces/{workspaceId}/documents` (per `05_...md` §5, full request/response example already specified there).
+**APIs:** `POST /workspaces/{workspaceId}/documents` (per `05_...md` §5, full request/response example already specified there); `GET /documents/{documentId}/file` (original bytes, added to close the download/viewer half of AC3).
 
 **Events:** None (HTTP call, not an event).
 
@@ -128,8 +128,9 @@ No AC is left untraced. Story 1.4 (retry/delete/archive) is P1 and traces to `06
 - AC1. `GET /workspaces/{id}/documents` lists all documents with current status.
 - AC2. Status transitions correctly through `UPLOADED → PARSING → EXTRACTING → INDEXING → READY` (or `FAILED`).
 - AC3. `GET /documents/{id}` returns overview/summary once `READY`.
+- AC4. `GET /documents/{id}/file` returns the original uploaded file as-is (available from `UPLOADED` onward; does not depend on overview/summary).
 
-**Technical Interpretation:** AC1/AC3 are read endpoints already specified in `05_...md` §5. **AC2 is not this epic's transition logic** — Epic 1 only sets the *initial* state (`UPLOADED`, in Story 1.2) and *displays* every subsequent state; the actual `PARSING→EXTRACTING→INDEXING→READY` transitions are written by Epic 2 (parsing), Epic 3 (extraction), Epic 4 (indexing) respectively, each updating `DOCUMENT.processing_status` as it completes its stage. This story's job is to make sure the **read path** correctly reflects whatever state those other epics have written — not to own the writes.
+**Technical Interpretation:** AC1/AC3 are read endpoints already specified in `05_...md` §5. **AC2 is not this epic's transition logic** — Epic 1 only sets the *initial* state (`UPLOADED`, in Story 1.2) and *displays* every subsequent state; the actual `PARSING→EXTRACTING→INDEXING→READY` transitions are written by Epic 2 (parsing), Epic 3 (extraction), Epic 4 (indexing) respectively, each updating `DOCUMENT.processing_status` as it completes its stage. This story's job is to make sure the **read path** correctly reflects whatever state those other epics have written — not to own the writes. **AC4** is the original-file stream: metadata (`GET /documents/{id}`) and bytes (`GET /documents/{id}/file`) stay separate — overview/summary are computed later (Epic 3); the file shown in the UI is the MinIO original.
 
 **Implementation:** `DocumentController` read endpoints; `DocumentService.getById()`/`.listByWorkspace()`.
 
@@ -137,7 +138,7 @@ No AC is left untraced. Story 1.4 (retry/delete/archive) is P1 and traces to `06
 
 **Database:** `DOCUMENT` (read only — no writes in this story beyond what Story 1.2 already does).
 
-**APIs:** `GET /workspaces/{workspaceId}/documents`, `GET /documents/{documentId}` (`05_...md` §5).
+**APIs:** `GET /workspaces/{workspaceId}/documents`, `GET /documents/{documentId}`, `GET /documents/{documentId}/file` (`05_...md` §5).
 
 **Events:** None.
 
@@ -295,8 +296,8 @@ Response 202 {documents: [...]}
 |---|---|---|---|---|---|---|---|
 | `WorkspaceController`/`Service` | Workspace CRUD + membership | HTTP request | Workspace object | `WorkspaceRepository`, `WorkspaceMemberRepository` | BR-101 | `WORKSPACE`, `WORKSPACE_MEMBER` | None |
 | `ModuleController`/`Service` | Module CRUD, workspace-scoped uniqueness | HTTP request | Module object | `DocumentGroupRepository` | BR-105 | `DOCUMENT_GROUP` | None |
-| `DocumentController`/`Service` | Upload, list, status, retry, delete | HTTP request (multipart or JSON) | Document object(s) | `DocumentRepository`, `MinioStorageService`, `ModuleService`, internal AI Service client | BR-102, BR-103, BR-104 | `DOCUMENT`, `PROCESSING_JOB` | MinIO (write), AI Service (`POST /internal/ai/documents/process`) |
-| `MinioStorageService` | Original file persistence | file bytes + path | stored object | MinIO SDK | None | None directly | MinIO |
+| `DocumentController`/`Service` | Upload, list, status, original-file stream, retry, delete | HTTP request (multipart, JSON, or file stream) | Document object(s) or original bytes | `DocumentRepository`, `MinioStorageService`, `ModuleService`, internal AI Service client | BR-102, BR-103, BR-104 | `DOCUMENT`, `PROCESSING_JOB` | MinIO (write + read), AI Service (`POST /internal/ai/documents/process`) |
+| `MinioStorageService` | Original file persistence and retrieval | file bytes + path | stored object / original bytes | MinIO SDK | None | None directly | MinIO |
 
 Maps to `03_architecture.md` §2's `WS["Workspaces, Modules & Documents"]` box inside Core API, and §3.2's ingestion diagram nodes A/A2/B/C (upload → module resolution → validate → store) — this epic implements exactly those four nodes and hands off to node D (parse), which is Epic 2.
 
@@ -320,7 +321,7 @@ Maps to `03_architecture.md` §2's `WS["Workspaces, Modules & Documents"]` box i
 - `DOCUMENT` insert (per accepted file) — precondition: passed type/size validation; transaction: insert only after successful MinIO write (see §15); failure: rolled back, no row persisted.
 - `PROCESSING_JOB` insert — paired with each `DOCUMENT` insert, same transaction.
 
-**READ operations:** `GET` endpoints per §3 stories 1.1, 1.3, 1.5 — standard filtered/paginated reads, scoped by `workspace_id` and membership.
+**READ operations:** `GET` endpoints per §3 stories 1.1, 1.3, 1.5 — standard filtered/paginated reads, scoped by `workspace_id` and membership. Original file bytes are read from MinIO via `document.storage_path`, not from PostgreSQL.
 
 **UPDATE operations:** `WORKSPACE` (rename, archive-status); `DOCUMENT_GROUP` (rename); `DOCUMENT` (module reassignment, `processing_status` on retry).
 
@@ -342,7 +343,10 @@ Caller: authenticated workspace member. Auth: required. Authz: membership check 
 Query params: `moduleId` (documented, `05_...md` §5), `documentType` (**not documented — DESIGN GAP §28**, added here consistently with the existing filter pattern). Response: paginated document list with status.
 
 ### `GET /documents/{documentId}`
-Returns full detail including `overview`/`summary` (populated by Epic 3, null until then).
+Returns full detail including `overview`/`summary` (populated by Epic 3, null until then). Metadata only — does not include file bytes.
+
+### `GET /documents/{documentId}/file`
+Caller: authenticated workspace member. Authz: membership on the document's workspace (`403` otherwise). Processing: load `DOCUMENT` (active only), stream MinIO object at `storage_path` unchanged. Response: `200` binary, `Content-Type` from stored MIME (fallback `application/pdf` / DOCX from `file_type`), `Content-Disposition: inline; filename="<fileName>"` so the UI can display the original. Available from `UPLOADED` (does not wait for `READY`). Errors: `404 DOCUMENT_NOT_FOUND`, `403 WORKSPACE_ACCESS_DENIED`, `500 STORAGE_READ_FAILED`. Idempotency: yes (pure read).
 
 ### `POST /documents/{documentId}/retry`
 Precondition: current `processing_status` is `FAILED` (else `409`). Processing: reset to `PARSING`, re-call the internal AI Service endpoint.
@@ -481,6 +485,17 @@ Business logic, per file:
 8. Append to result list.
 Exceptions: none propagate past step 1/5 per-file — batch always returns `202` with a mixed result list.
 
+### `DocumentService.getOriginal(documentId) → DocumentOriginalFileDto`
+Purpose: return the uploaded file as-is for the application UI.
+Inputs: `documentId: UUID`.
+Outputs: original bytes, MIME type, original `fileName`.
+Preconditions: document exists and is not archived; caller is a member of its workspace (BR-101).
+Business logic:
+1. Load active `DOCUMENT` row.
+2. `minioStorageService.load(document.storagePath)` — bytes are not transformed.
+3. Resolve `Content-Type` from MinIO metadata, falling back to `file_type` (`pdf` → `application/pdf`, `docx` → DOCX MIME).
+Exceptions: missing row → `404 DOCUMENT_NOT_FOUND`; MinIO read failure → `500 STORAGE_READ_FAILED`.
+
 ### `ModuleService.findOrCreate(workspaceId, name) → UUID`
 Purpose: idempotent module resolution for folder uploads (Story 1.6).
 Business logic: 1. `documentGroupRepository.findByWorkspaceIdAndName(workspaceId, name)`. 2. If present, return its ID. 3. If absent, insert a new `DOCUMENT_GROUP` row and return its new ID.
@@ -508,6 +523,7 @@ Concurrency note: a race condition exists if two files from the same folder uplo
 | Unsupported file type | Validation | 415 | `UNSUPPORTED_FILE_TYPE` | Client uploads a supported type |
 | File too large | Validation | 413 | `FILE_TOO_LARGE` | Client uploads within the configured limit |
 | MinIO write failure | External failure | 500 | `STORAGE_WRITE_FAILED` | Client retries the upload for that file |
+| MinIO read failure | External failure | 500 | `STORAGE_READ_FAILED` | Client retries the file fetch |
 | Module name taken (same workspace) | Conflict | 409 | `MODULE_NAME_TAKEN` | Client picks a different name |
 | Cross-workspace module assignment | Validation | 400 | `INVALID_MODULE_SCOPE` | Client corrects the request |
 | Retry on non-`FAILED` document | State conflict | 409 | `INVALID_STATE_TRANSITION` | N/A — retry only valid on failed docs |
@@ -537,6 +553,7 @@ Default framework logging at this epic's scope (full structured logging is Epic 
 | 1.2 | AC1 | Upload 2 files, 1 request | API | Both accepted, `202` |
 | 1.2 | AC2/AC5 | Upload oversized + wrong-type file | API (Negative) | 413/415, no DB row, no MinIO object |
 | 1.2 | AC3 | Upload, inspect MinIO | Integration | Object at exact documented path |
+| 1.2 / 1.3 | AC3/AC4 | GET original file | API | `200` with original bytes, `Content-Disposition: inline`; non-member `403` |
 | 1.2 | AC4 | Upload, inspect DB + mock AI Service call | Integration | Status `UPLOADED`, internal call fired |
 | 1.2 | AC6 | Filter by `documentType` (seeded) | API | Only matching documents returned |
 | 1.3 | AC1/AC3 | Seed documents at each state | Integration | List/detail reflect seeded state correctly |
@@ -596,7 +613,7 @@ No new infrastructure beyond what Epic 0 already brought up. This epic is purely
 **TASK-105** Title: `Document`/`ProcessingJob` entities + `AiServiceClient` stub (calls a not-yet-real internal endpoint — acceptable per the fixture-based non-blocking strategy). Depends on: TASK-102, TASK-103.
 **TASK-106** Title: `DocumentService.upload()` + `DocumentController` upload endpoint. Depends on: TASK-103, TASK-104, TASK-105. Implementation: per §3 Story 1.2, §14. Acceptance: Story 1.2 AC1–AC6. Tests: per §19.
 **TASK-107** Title: Folder-upload resolution logic in `DocumentService`. Depends on: TASK-104, TASK-106. Implementation: per §3 Story 1.6. Acceptance: Story 1.6 AC1–AC3. Tests: per §19.
-**TASK-108** Title: `DocumentController` list/detail endpoints. Depends on: TASK-106. Acceptance: Story 1.3 AC1–AC3. Tests: per §19 (fixture-seeded states).
+**TASK-108** Title: `DocumentController` list/detail/original-file endpoints. Depends on: TASK-106. Acceptance: Story 1.3 AC1–AC4. Tests: per §19 (fixture-seeded states; original-file stream).
 **TASK-109** Title: Retry/delete endpoints (P1). Depends on: TASK-108. Acceptance: Story 1.4 AC1–AC2. Tests: per §19.
 **TASK-110** Title: Full Epic 1 test suite + Definition of Done review. Depends on: all above.
 
@@ -645,6 +662,7 @@ No new infrastructure beyond what Epic 0 already brought up. This epic is purely
 ## 28. Design Gaps
 
 - **DESIGN GAP:** `GET /workspaces/{workspaceId}/documents?documentType=` is required by Story 1.2 AC6 but not documented in `05_api_specs.md` §5 — resolved here by extension, but the spec doc itself should be updated to match.
+- **DESIGN GAP:** Architecture (`03_architecture.md`) keeps the original file for audit and download, but `05_api_specs.md` originally had no original-file endpoint — resolved by adding `GET /documents/{documentId}/file` (metadata stays on `GET /documents/{id}`; overview/summary remain Epic 3 computed fields).
 - **DESIGN GAP:** No `deleted_at`/soft-delete column exists in the published `DOCUMENT` schema, yet Story 1.4 AC2 requires soft-delete/archive behavior — a schema addition is needed that wasn't specified in `04_...md`.
 - **DESIGN GAP:** "Archives... derived data" (Story 1.4 AC2) doesn't specify what happens to a deleted document's Neo4j graph nodes, extracted fields, or citations — needs cross-epic resolution with Epic 3/5/8, not decided unilaterally here.
 - **DESIGN GAP:** No endpoint exists to add workspace members beyond the creator (see §26) — `WORKSPACE_MEMBER` as a table implies a multi-member model that the API surface doesn't fully support yet.

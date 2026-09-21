@@ -106,6 +106,7 @@ A request to create a module with a name that already exists **in that same work
 | POST | `/workspaces/{workspaceId}/documents` | Upload one or more documents, optionally into a module |
 | GET | `/workspaces/{workspaceId}/documents?moduleId=` | List documents in a workspace, optionally filtered to one module |
 | GET | `/documents/{documentId}` | Get document detail (overview, summary, status) |
+| GET | `/documents/{documentId}/file` | Stream the original uploaded file as-is (PDF/DOCX) for the UI viewer |
 | GET | `/documents/{documentId}/pages/{pageNumber}` | Get raw page text (for source viewer) |
 | PATCH | `/documents/{documentId}/module` | Reassign a document to a different module (or unassign) |
 | POST | `/documents/{documentId}/retry` | Retry a failed processing job |
@@ -146,6 +147,12 @@ If the user selects a whole folder in the browser (`webkitdirectory`), each file
   "createdAt": "2026-09-14T10:05:00Z"
 }
 ```
+
+**GET `/documents/{documentId}/file`**
+
+Streams the original bytes stored in MinIO (`workspace/{workspaceId}/document/{documentId}/original.{ext}`). Available as soon as upload succeeds (`UPLOADED`); does not wait for overview/summary. Authz: workspace member.
+
+Response: `200` with `Content-Type` of the original file (`application/pdf` or DOCX MIME type), `Content-Disposition: inline; filename="<originalFileName>"`, body = original file bytes. Errors: `404 DOCUMENT_NOT_FOUND`, `403 WORKSPACE_ACCESS_DENIED`, `500 STORAGE_READ_FAILED`.
 
 ---
 

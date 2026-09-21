@@ -6,6 +6,7 @@ import com.intellidoc.backend.dto.AiAnalysisRequestDto;
 import com.intellidoc.backend.dto.AiAnalysisResponseDto;
 import com.intellidoc.backend.dto.AiQARequestDto;
 import com.intellidoc.backend.dto.AiQAResponseDto;
+import com.intellidoc.backend.dto.DocumentProcessRequestDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -207,6 +208,30 @@ public class AiServiceClient {
             throw new RuntimeException(
                     "AI Service Q&A processing error: "
                             + e.getMessage(),
+                    e
+            );
+        }
+    }
+
+    public void triggerProcessing(java.util.UUID documentId) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<DocumentProcessRequestDto> entity = new HttpEntity<>(
+                    DocumentProcessRequestDto.builder().documentId(documentId).build(),
+                    headers
+            );
+            restTemplate.exchange(
+                    baseUrl + "/internal/ai/documents/process",
+                    HttpMethod.POST,
+                    entity,
+                    Void.class
+            );
+            log.info("Triggered AI processing for document {}", documentId);
+        } catch (Exception e) {
+            log.warn(
+                    "Fire-and-forget processing trigger failed for document {} — document remains UPLOADED",
+                    documentId,
                     e
             );
         }
