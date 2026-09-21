@@ -63,22 +63,27 @@ export function Header({ title, subtitle, healthStatus, onMenuClick }) {
 
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:px-6">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="md:hidden"
-        aria-label="Open menu"
-        onClick={onMenuClick}
-      >
-        <Menu className="h-5 w-5" />
-      </Button>
-
-      <div className="min-w-0 flex-1">
-        <h1 className="truncate text-base font-semibold tracking-tight">{title}</h1>
-        {subtitle && <p className="hidden truncate text-xs text-muted-foreground sm:block">{subtitle}</p>}
-      </div>
-
       <TooltipProvider delayDuration={200}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden"
+          aria-label="Open menu"
+          onClick={onMenuClick}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+
+        <div className="min-w-0 flex-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <h1 className="truncate text-base font-semibold tracking-tight">{title}</h1>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{title}</TooltipContent>
+          </Tooltip>
+          {subtitle && <p className="hidden truncate text-xs text-muted-foreground sm:block">{subtitle}</p>}
+        </div>
+
         <DropdownMenu>
           <DropdownMenuContent align="end" className="w-64">
             <DropdownMenuLabel>Service health</DropdownMenuLabel>

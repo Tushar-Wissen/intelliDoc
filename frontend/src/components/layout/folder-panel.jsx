@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { StatusBadge } from '@/components/features/status-badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const FOLDER_COLORS = [
   { bg: 'bg-violet-500/10', fg: 'text-violet-600 dark:text-violet-400' },
@@ -86,7 +87,12 @@ function FileRow({ file, expanded, onToggle, onFileClick }) {
           <span className="w-3 shrink-0" />
         )}
         <FileText className="h-3.5 w-3.5 shrink-0 text-sidebar-foreground/45" />
-        <span className="min-w-0 flex-1 truncate text-[13px] text-sidebar-foreground/90">{file.name}</span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-sidebar-foreground/90">{file.name}</span>
+          </TooltipTrigger>
+          <TooltipContent side="right">{file.name}</TooltipContent>
+        </Tooltip>
         {file.hasUpdates && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-success" />}
         <span
           className={cn(
@@ -121,9 +127,14 @@ function FolderNode({ folder, index, active, treeOpen, showStatus, expandedFileI
         <Folder className={cn('h-4 w-4', color.fg)} />
       </div>
       <div className="min-w-0 flex-1">
-        <p className={cn('truncate text-sm leading-tight', active ? 'font-semibold' : 'font-medium')}>
-          {folder.name}
-        </p>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <p className={cn('truncate text-sm leading-tight', active ? 'font-semibold' : 'font-medium')}>
+              {folder.name}
+            </p>
+          </TooltipTrigger>
+          <TooltipContent side="right">{folder.name}</TooltipContent>
+        </Tooltip>
         <p className="truncate text-xs text-sidebar-foreground/50">
           {folder.filesCount} {folder.filesCount === 1 ? 'file' : 'files'} &middot; {folder.sectionsCount}{' '}
           sections
@@ -235,7 +246,8 @@ export function FolderPanel({
   };
 
   return (
-    <aside className="hidden w-80 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
+    <TooltipProvider delayDuration={200}>
+      <aside className="hidden w-80 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
       <div className="flex flex-col gap-3 border-b border-sidebar-border p-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -280,6 +292,7 @@ export function FolderPanel({
           )}
         </div>
       </ScrollArea>
-    </aside>
+      </aside>
+    </TooltipProvider>
   );
 }
