@@ -14,7 +14,7 @@ import { UploadDialog } from '@/components/features/upload-dialog';
 import { ToastNotification } from '@/components/ui/toast-notification';
 import { CopilotSidebar } from '@/components/features/copilot-sidebar';
 
-import { fetchMockDocumentFolders as fetchMockFolders } from '@/lib/mock-document-details';
+import { fetchDocumentFolders, invalidateDocumentFoldersCache } from '@/lib/documents-api';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { useHealthStatus } from '@/hooks/use-health-status';
 
@@ -49,7 +49,6 @@ export function MyDocumentsPage() {
   const [activeTabId, setActiveTabId] = useState(null);
   const [chatHistories, setChatHistories] = useState({});
 
-  const [uploadedFolders, setUploadedFolders] = useState([]);
   const [folders, setFolders] = useState([]);
   const [foldersPage, setFoldersPage] = useState(1);
   const [foldersHasMore, setFoldersHasMore] = useState(true);
@@ -73,38 +72,74 @@ export function MyDocumentsPage() {
     setFoldersHasMore(true);
     setFoldersLoading(true);
 
-    fetchMockFolders({ page: 1, pageSize: FOLDERS_PAGE_SIZE, evaluatedOnly: view === 'evaluated' }).then(
-      ({ items, hasMore }) => {
+    fetchDocumentFolders({
+      apiBaseUrl: API_BASE_URL,
+      page: 1,
+      pageSize: FOLDERS_PAGE_SIZE,
+      evaluatedOnly: view === 'evaluated',
+    })
+      .then(({ items, hasMore }) => {
         if (cancelled) return;
-        const matchingUploaded = uploadedFolders.filter((f) =>
-          view === 'evaluated' ? f.status === 'COMPLETED' : true
-        );
-        setFolders([...matchingUploaded, ...items]);
+        setFolders(items);
         setFoldersHasMore(hasMore);
-        setFoldersLoading(false);
-      }
-    );
+      })
+      .catch((err) => {
+        console.error('Failed to fetch document folders', err);
+        if (!cancelled) setFoldersHasMore(false);
+      })
+      .finally(() => {
+        if (!cancelled) setFoldersLoading(false);
+      });
 
     return () => {
       cancelled = true;
     };
-  }, [view, uploadedFolders]);
+  }, [view]);
 
   const loadMoreFolders = useCallback(async () => {
     const requestView = view;
     setFoldersLoading(true);
     const nextPage = foldersPage + 1;
-    const { items, hasMore } = await fetchMockFolders({
-      page: nextPage,
-      pageSize: FOLDERS_PAGE_SIZE,
-      evaluatedOnly: requestView === 'evaluated',
-    });
-    if (foldersViewRef.current !== requestView) return;
-    setFolders((prev) => [...prev, ...items]);
-    setFoldersPage(nextPage);
-    setFoldersHasMore(hasMore);
-    setFoldersLoading(false);
+    try {
+      const { items, hasMore } = await fetchDocumentFolders({
+        apiBaseUrl: API_BASE_URL,
+        page: nextPage,
+        pageSize: FOLDERS_PAGE_SIZE,
+        evaluatedOnly: requestView === 'evaluated',
+      });
+      if (foldersViewRef.current !== requestView) return;
+      setFolders((prev) => [...prev, ...items]);
+      setFoldersPage(nextPage);
+      setFoldersHasMore(hasMore);
+    } catch (err) {
+      console.error('Failed to fetch document folders', err);
+      if (foldersViewRef.current === requestView) setFoldersHasMore(false);
+    } finally {
+      if (foldersViewRef.current === requestView) setFoldersLoading(false);
+    }
   }, [foldersPage, view]);
+
+  const refreshFolders = useCallback(async () => {
+    const requestView = view;
+    invalidateDocumentFoldersCache();
+    setFoldersLoading(true);
+    try {
+      const { items, hasMore } = await fetchDocumentFolders({
+        apiBaseUrl: API_BASE_URL,
+        page: 1,
+        pageSize: FOLDERS_PAGE_SIZE,
+        evaluatedOnly: requestView === 'evaluated',
+      });
+      if (foldersViewRef.current !== requestView) return;
+      setFolders(items);
+      setFoldersPage(1);
+      setFoldersHasMore(hasMore);
+    } catch (err) {
+      console.error('Failed to refresh document folders', err);
+    } finally {
+      if (foldersViewRef.current === requestView) setFoldersLoading(false);
+    }
+  }, [view]);
 
   const foldersSentinelRef = useInfiniteScroll({
     hasMore: foldersHasMore,
@@ -134,32 +169,7 @@ export function MyDocumentsPage() {
   const handleCreated = (newItems) => {
     const items = Array.isArray(newItems) ? newItems : [newItems];
     setDocuments((prev) => [...items, ...prev]);
-
-    // If an uploaded item is a folder, prepend it to the folders state so it shows at the top of the folder cards menu
-    const newFolderCards = [];
-    items.forEach((item) => {
-      if (item.type === 'folder') {
-        const folderCardItem = {
-          id: item.id,
-          name: item.title || item.name || 'Uploaded Folder',
-          filesCount: item.files?.length || 0,
-          sectionsCount: (item.files || []).reduce(
-            (acc, f) => acc + (f.keyTopics?.length || 1),
-            item.files?.length || 1
-          ),
-          status: item.status || 'ACTIVE',
-          createdAt: item.createdAt || new Date().toISOString(),
-          updatedAt: item.updatedAt || new Date().toISOString(),
-          files: item.files || [],
-        };
-        newFolderCards.push(folderCardItem);
-      }
-    });
-
-    if (newFolderCards.length > 0) {
-      setUploadedFolders((prev) => [...newFolderCards, ...prev]);
-      setFolders((prev) => [...newFolderCards, ...prev]);
-    }
+    refreshFolders();
   };
 
   const handleNavigate = (nextView) => {
@@ -364,14 +374,16 @@ export function MyDocumentsPage() {
         )}
 
         {activeFolder ? (
-          <div className={`transition-all duration-300 ${copilotOpen ? 'mr-80 sm:mr-96' : ''}`}>
-            <FolderDetail
-              folder={activeFolder}
-              showStatus={showStatus}
-              onFileClick={handleFileClick}
-              activeFileId={activeFileId}
-            />
-          </div>
+          <ScrollArea className="-mx-1 min-h-0 flex-1">
+            <div className={`px-1 pb-1 transition-all duration-300 ${copilotOpen ? 'mr-80 sm:mr-96' : ''}`}>
+              <FolderDetail
+                folder={activeFolder}
+                showStatus={showStatus}
+                onFileClick={handleFileClick}
+                activeFileId={activeFileId}
+              />
+            </div>
+          </ScrollArea>
         ) : (
           <ScrollArea className="-mx-1 min-h-0 flex-1">
             <div className={`px-1 pb-1 transition-all duration-300 ${copilotOpen ? 'mr-80 sm:mr-96' : ''}`}>

@@ -26,12 +26,13 @@ const TAG_COLORS = {
 };
 const DEFAULT_TAG_COLOR = { bg: 'bg-muted', fg: 'text-muted-foreground' };
 
+// Order/colors mirror folder-panel.jsx's SECTION_ICONS so a section shows the same icon in the sidebar tree and here.
 const SECTION_STYLES = [
-  { Icon: Diamond, bg: 'bg-violet-500/10', fg: 'text-violet-600 dark:text-violet-400' },
-  { Icon: Hexagon, bg: 'bg-amber-500/10', fg: 'text-amber-600 dark:text-amber-400' },
+  { Icon: Diamond, bg: 'bg-rose-500/10', fg: 'text-rose-600 dark:text-rose-400' },
   { Icon: CircleDot, bg: 'bg-emerald-500/10', fg: 'text-emerald-600 dark:text-emerald-400' },
   { Icon: Square, bg: 'bg-blue-500/10', fg: 'text-blue-600 dark:text-blue-400' },
-  { Icon: Circle, bg: 'bg-rose-500/10', fg: 'text-rose-600 dark:text-rose-400' },
+  { Icon: Circle, bg: 'bg-amber-500/10', fg: 'text-amber-600 dark:text-amber-400' },
+  { Icon: Hexagon, bg: 'bg-violet-500/10', fg: 'text-violet-600 dark:text-violet-400' },
   { Icon: Triangle, bg: 'bg-sky-500/10', fg: 'text-sky-600 dark:text-sky-400' },
 ];
 
@@ -48,13 +49,12 @@ function colorForFolder(folder) {
   return FOLDER_COLORS[hashKey(key) % FOLDER_COLORS.length];
 }
 
-function styleForSection(section) {
-  const key = section?.name ?? '';
-  return SECTION_STYLES[hashKey(key) % SECTION_STYLES.length];
+function styleForSection(index) {
+  return SECTION_STYLES[index % SECTION_STYLES.length];
 }
 
-function SectionCard({ section }) {
-  const { Icon, bg, fg } = styleForSection(section);
+function SectionCard({ section, index }) {
+  const { Icon, bg, fg } = styleForSection(index);
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
       <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', bg)}>
@@ -104,8 +104,8 @@ function FileGroup({ file, onFileClick }) {
 
       {file.sections?.length > 0 && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {file.sections.map((section) => (
-            <SectionCard key={section.id} section={section} />
+          {file.sections.map((section, idx) => (
+            <SectionCard key={section.id} section={section} index={idx} />
           ))}
         </div>
       )}
