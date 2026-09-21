@@ -5,6 +5,11 @@ from pathlib import Path
 import fitz
 from pypdf import PdfReader
 
+# Allow the script to be run directly from the ai-service directory.
+SERVICE_ROOT = Path(__file__).resolve().parents[1]
+if str(SERVICE_ROOT) not in sys.path:
+    sys.path.insert(0, str(SERVICE_ROOT))
+
 from app.services.ocr_adapter import create_ocr_adapter
 from app.services.extractor import SelectiveExtractor
 

@@ -1,20 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
-import { 
-  FileText, 
-  Upload, 
-  Sparkles, 
-  MessageSquare, 
-  Database, 
-  Activity, 
-  CheckCircle2, 
-  AlertCircle, 
-  Search, 
-  Send, 
-  BrainCircuit,
-  Cpu
-} from 'lucide-react';
+import React from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
 
+<<<<<<< HEAD
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 const AI_SERVICE_URL = import.meta.env.VITE_AI_SERVICE_URL || 'http://localhost:8000';
 
@@ -364,5 +351,34 @@ export default function App() {
         </div>
       </div>
     </div>
+=======
+import { ProtectedRoute } from '@/components/auth/protected-route';
+import { LoginPage } from '@/pages/login';
+import { ProfilePage } from '@/pages/profile';
+import { MyDocumentsPage } from '@/pages/my-documents';
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <ProfilePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <MyDocumentsPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+>>>>>>> origin/main
   );
 }
