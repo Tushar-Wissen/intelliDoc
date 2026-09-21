@@ -3,6 +3,7 @@ import { X, FileText, Pin, Plus, Sparkles } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 const TAG_ICON_COLORS = {
   finance: 'text-blue-500',
@@ -38,7 +39,8 @@ export function TabsBar({
   if (!tabs || tabs.length === 0) return null;
 
   return (
-    <div className="relative flex items-stretch justify-between border-b border-border bg-muted/30">
+    <TooltipProvider delayDuration={200}>
+      <div className="relative flex items-stretch justify-between border-b border-border bg-muted/30">
       <div
         className="scrollbar-none flex flex-1 items-stretch overflow-x-auto min-w-0"
       >
@@ -80,7 +82,12 @@ export function TabsBar({
                 <FileText className={cn('h-3.5 w-3.5 shrink-0', iconColor)} />
               )}
 
-              <span className="max-w-[140px] truncate">{tab.name}</span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="max-w-[140px] truncate">{tab.name}</span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">{tab.name}</TooltipContent>
+              </Tooltip>
 
               {/* Unsaved/update dot */}
               {tab.hasUpdates && (
@@ -132,6 +139,7 @@ export function TabsBar({
           )}
         </div>
       )}
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }
