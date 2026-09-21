@@ -8,8 +8,10 @@ import com.intellidoc.backend.client.AiServiceClient;
 
 import com.intellidoc.backend.dto.AiAnalysisRequestDto;
 import com.intellidoc.backend.dto.AiAnalysisResponseDto;
+import com.intellidoc.backend.dto.AiExtractionResponseDto;
 import com.intellidoc.backend.dto.AiQARequestDto;
 import com.intellidoc.backend.dto.AiQAResponseDto;
+import com.intellidoc.backend.dto.DocumentUploadDto;
 import com.intellidoc.backend.dto.DocumentModuleDto;
 import com.intellidoc.backend.dto.DocumentResponseDto;
 import com.intellidoc.backend.dto.FolderDocumentResponseDto;
@@ -22,7 +24,6 @@ import com.intellidoc.backend.dto.StructuredDocumentDto;
 import com.intellidoc.backend.model.AnalysisResultEntity;
 import com.intellidoc.backend.model.AuditLogEntity;
 import com.intellidoc.backend.model.DocumentEntity;
-<<<<<<< HEAD
 import com.intellidoc.backend.model.DocumentPageEntity;
 import com.intellidoc.backend.model.DocumentSectionEntity;
 import com.intellidoc.backend.model.DocumentChunkEntity;
@@ -34,18 +35,13 @@ import com.intellidoc.backend.repository.DocumentPageRepository;
 import com.intellidoc.backend.repository.DocumentSectionRepository;
 import com.intellidoc.backend.repository.DocumentChunkRepository;
 import com.intellidoc.backend.repository.ProcessingJobRepository;
-=======
 import com.intellidoc.backend.model.FolderEntity;
 
-import com.intellidoc.backend.repository.AnalysisResultRepository;
-import com.intellidoc.backend.repository.AuditLogRepository;
-import com.intellidoc.backend.repository.DocumentRepository;
 import com.intellidoc.backend.repository.FolderRepository;
 
 import com.intellidoc.backend.util.DocumentStructureExtractor;
 import com.intellidoc.backend.util.DocumentTextExtractor;
 
->>>>>>> origin/main
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -65,14 +61,11 @@ import java.util.UUID;
 public class DocumentService {
 
     private final DocumentRepository documentRepository;
-<<<<<<< HEAD
     private final DocumentPageRepository documentPageRepository;
     private final DocumentSectionRepository documentSectionRepository;
     private final DocumentChunkRepository documentChunkRepository;
     private final ProcessingJobRepository processingJobRepository;
-=======
 
->>>>>>> origin/main
     private final AnalysisResultRepository analysisResultRepository;
 
     private final AuditLogRepository auditLogRepository;
@@ -99,14 +92,7 @@ public class DocumentService {
             MultipartFile file,
             String title
     ) {
-
-<<<<<<< HEAD
-        return processAndAnalyze(
-                docId,
-                uploadDto.getTitle(),
-                uploadDto.getContent(),
-                uploadDto.getContentType() != null ? uploadDto.getContentType() : "text/plain",
-                toExtractionResponse(uploadDto));
+        return processAndSaveFolderInternal(workspaceId, file, title);
     }
 
     @Transactional
@@ -251,7 +237,7 @@ public class DocumentService {
         }
     }
 
-    public List<DocumentResponseDto> getAllDocuments() {
+        public List<DocumentResponseDto> getAllDocuments() {
         return documentRepository.findAllByOrderByCreatedAtDesc().stream()
                 .map(doc -> {
                     AnalysisResultEntity result = analysisResultRepository.findByDocumentId(doc.getId()).orElse(null);
@@ -259,7 +245,12 @@ public class DocumentService {
                 })
                 .collect(Collectors.toList());
     }
-=======
+
+        private FolderUploadResponseDto processAndSaveFolderInternal(
+                        String workspaceId,
+                        MultipartFile file,
+                        String title
+        ) {
         String docId =
                 "doc_" +
                         UUID.randomUUID()
@@ -845,7 +836,6 @@ public class DocumentService {
         }
     }
 
->>>>>>> origin/main
 
     // ============================================================
     // GET ALL FOLDERS + FILES + MODULES

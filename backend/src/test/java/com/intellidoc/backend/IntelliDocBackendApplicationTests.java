@@ -3,13 +3,11 @@ package com.intellidoc.backend;
 import com.intellidoc.backend.client.AiServiceClient;
 import com.intellidoc.backend.dto.AiAnalysisRequestDto;
 import com.intellidoc.backend.dto.AiAnalysisResponseDto;
-<<<<<<< HEAD
 import com.intellidoc.backend.dto.AiExtractionResponseDto;
 import com.intellidoc.backend.dto.DocumentUploadDto;
 import com.intellidoc.backend.dto.DocumentResponseDto;
 import com.intellidoc.backend.service.DocumentService;
 import com.intellidoc.backend.repository.ProcessingJobRepository;
-=======
 import com.intellidoc.backend.dto.DocumentModuleDto;
 import com.intellidoc.backend.dto.FolderDocumentResponseDto;
 import com.intellidoc.backend.dto.FolderFileResponseDto;
@@ -22,7 +20,6 @@ import com.intellidoc.backend.util.DocumentStructureExtractor;
 import com.intellidoc.backend.util.DocumentTextExtractor;
 
 import org.junit.jupiter.api.BeforeEach;
->>>>>>> origin/main
 import org.junit.jupiter.api.Test;
 
 import org.mockito.Mockito;
@@ -32,7 +29,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.mock.web.MockMultipartFile;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -52,15 +48,11 @@ class IntelliDocBackendApplicationTests {
     @Autowired
     private DocumentService documentService;
 
-<<<<<<< HEAD
     @Autowired
     private ProcessingJobRepository processingJobRepository;
-=======
-
     // ============================================================
     // MOCK SERVICES
     // ============================================================
->>>>>>> origin/main
 
     @MockBean
     private AiServiceClient aiServiceClient;
@@ -292,17 +284,6 @@ class IntelliDocBackendApplicationTests {
 
         FolderUploadResponseDto response =
                 documentService.processAndSaveDocument(
-
-<<<<<<< HEAD
-        assertNotNull(result);
-        assertNotNull(result.getId());
-        assertEquals("Test Document.txt", result.getTitle());
-        assertEquals("READY", result.getStatus());
-        assertEquals("Test Summary", result.getSummary());
-        assertEquals("POSITIVE", result.getSentiment());
-        assertEquals(0.95, result.getConfidenceScore());
-        assertEquals(3, processingJobRepository.findAllByDocumentIdOrderByStartedAtAsc(result.getId()).size());
-=======
                         workspaceId,
 
                         testFile1,
@@ -378,7 +359,6 @@ class IntelliDocBackendApplicationTests {
         ).analyzeDocument(
                 any(AiAnalysisRequestDto.class)
         );
->>>>>>> origin/main
     }
 
 
@@ -499,7 +479,6 @@ class IntelliDocBackendApplicationTests {
         );
     }
 
-<<<<<<< HEAD
         @Test
         void testProcessAndSaveUploadedDocumentUsesExtractedText() {
         AiExtractionResponseDto extraction = new AiExtractionResponseDto();
@@ -528,7 +507,6 @@ class IntelliDocBackendApplicationTests {
         Mockito.verify(aiServiceClient).extractDocument(any(), any());
         }
 }
-=======
 
     // ============================================================
     // TEST 4
@@ -1555,4 +1533,3 @@ class IntelliDocBackendApplicationTests {
         );
     }
 }
->>>>>>> origin/main

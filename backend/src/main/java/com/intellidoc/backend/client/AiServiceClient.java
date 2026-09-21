@@ -13,13 +13,10 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
-<<<<<<< HEAD
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.client.MultipartBodyBuilder;
 import org.springframework.web.multipart.MultipartFile;
-=======
 import org.springframework.http.ResponseEntity;
->>>>>>> origin/main
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
@@ -165,7 +162,6 @@ public class AiServiceClient {
         }
     }
 
-<<<<<<< HEAD
     public AiExtractionResponseDto extractDocument(String documentId, MultipartFile file) {
         log.info("Dispatching document ID {} to AI Service for extraction", documentId);
         try {
@@ -196,7 +192,6 @@ public class AiServiceClient {
 
     public AiQAResponseDto askQuestion(AiQARequestDto request) {
         log.info("Dispatching Q&A request for document ID {}", request.getDocumentId());
-=======
     public AiQAResponseDto askQuestion(
             AiQARequestDto request) {
 
@@ -205,7 +200,6 @@ public class AiServiceClient {
                 request.getDocumentId()
         );
 
->>>>>>> origin/main
         try {
 
             HttpHeaders headers =

@@ -1,153 +1,57 @@
 package com.intellidoc.backend.controller;
 
-import com.intellidoc.backend.dto.AiQAResponseDto;
-import com.intellidoc.backend.dto.DocumentResponseDto;
-import com.intellidoc.backend.dto.FolderUploadResponseDto;
-import com.intellidoc.backend.dto.GetAllDocumentsResponseDto;
+import com.intellidoc.backend.dto.*;
 import com.intellidoc.backend.service.DocumentService;
-
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-<<<<<<< HEAD
 import org.springframework.http.MediaType;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.*;
-=======
->>>>>>> origin/main
 
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
-
+import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping(
-        "/api/v1/workspaces/{workspaceId}/documents"
-)
+@RequestMapping("/api/v1/documents")
 @CrossOrigin(origins = "*")
 @RequiredArgsConstructor
 public class DocumentController {
 
     private final DocumentService documentService;
 
-
-    // ============================================================
-    // UPLOAD DOCUMENT
-    // ============================================================
-
-    @PostMapping(
-            consumes = "multipart/form-data"
-    )
-    public ResponseEntity<FolderUploadResponseDto>
-    uploadAndAnalyzeDocument(
-
-            @PathVariable String workspaceId,
-
-            @RequestParam("file")
-            MultipartFile file,
-
-            @RequestParam(
-                    value = "title",
-                    required = false
-            )
-            String title) {
-
-        FolderUploadResponseDto response =
-                documentService.processAndSaveDocument(
-                        workspaceId,
-                        file,
-                        title
-                );
-
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(response);
+    @PostMapping
+    public ResponseEntity<DocumentResponseDto> uploadAndAnalyzeDocument(@Valid @RequestBody DocumentUploadDto uploadDto) {
+        DocumentResponseDto response = documentService.processAndSaveDocument(uploadDto);
+        return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
-<<<<<<< HEAD
     @PostMapping(value = "/file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<DocumentResponseDto> uploadFile(@RequestParam("file") MultipartFile file) {
         DocumentResponseDto response = documentService.processAndSaveUploadedDocument(file);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
-=======
-
-    // ============================================================
-    // GET ALL DOCUMENTS/FOLDERS IN WORKSPACE
-    // ============================================================
->>>>>>> origin/main
 
     @GetMapping
-    public ResponseEntity<GetAllDocumentsResponseDto>
-    getAllDocuments(
-            @PathVariable String workspaceId) {
-
-        return ResponseEntity.ok(
-                documentService.getAllDocuments(
-                        workspaceId
-                )
-        );
+    public ResponseEntity<List<DocumentResponseDto>> getAllDocuments() {
+        return ResponseEntity.ok(documentService.getAllDocuments());
     }
 
-
-    // ============================================================
-    // GET DOCUMENT BY ID
-    // ============================================================
-
-    @GetMapping("/{documentId}")
-    public ResponseEntity<DocumentResponseDto>
-    getDocumentById(
-
-            @PathVariable String workspaceId,
-
-            @PathVariable String documentId) {
-
-        return ResponseEntity.ok(
-                documentService.getDocumentById(
-                        workspaceId,
-                        documentId
-                )
-        );
+    @GetMapping("/{id}")
+    public ResponseEntity<DocumentResponseDto> getDocumentById(@PathVariable String id) {
+        return ResponseEntity.ok(documentService.getDocumentById(id));
     }
 
-
-    // ============================================================
-    // ASK QUESTION
-    // ============================================================
-
-    @PostMapping("/{documentId}/qa")
-    public ResponseEntity<AiQAResponseDto>
-    askQuestion(
-
-            @PathVariable String workspaceId,
-
-            @PathVariable String documentId,
-
-            @RequestBody Map<String, String>
-                    requestPayload) {
-
-        String question =
-                requestPayload.get("question");
-
-        if (
-                question == null
-                        || question.isBlank()
-        ) {
-
-            return ResponseEntity
-                    .badRequest()
-                    .build();
+    @PostMapping("/{id}/qa")
+    public ResponseEntity<AiQAResponseDto> askQuestion(
+            @PathVariable String id,
+            @RequestBody Map<String, String> requestPayload) {
+        String question = requestPayload.get("question");
+        if (question == null || question.isBlank()) {
+            return ResponseEntity.badRequest().build();
         }
-
-        AiQAResponseDto response =
-                documentService.askDocumentQuestion(
-                        workspaceId,
-                        documentId,
-                        question
-                );
-
+        AiQAResponseDto response = documentService.askDocumentQuestion(id, question);
         return ResponseEntity.ok(response);
     }
 }

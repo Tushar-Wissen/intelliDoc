@@ -243,7 +243,6 @@ class QARequest(BaseModel):
 # ============================================================
 
 class QAResponse(BaseModel):
-<<<<<<< HEAD
     document_id: str = Field(..., json_schema_extra={"example": "doc_12345"})
     question: str = Field(..., json_schema_extra={"example": "What was the net margin percentage?"})
     answer: str = Field(..., json_schema_extra={"example": "The net margin percentage increased to 22%."})
@@ -255,36 +254,6 @@ class QAResponse(BaseModel):
 class QACitation(BaseModel):
     page_number: Optional[int] = None
     source_excerpt: str
-=======
->>>>>>> origin/main
-
-    document_id: str = Field(
-        ...,
-        json_schema_extra={
-            "example": "doc_12345"
-        }
-    )
-
-    question: str = Field(
-        ...,
-        json_schema_extra={
-            "example": "What was the net margin percentage?"
-        }
-    )
-
-    answer: str = Field(
-        ...,
-        json_schema_extra={
-            "example": "The net margin percentage increased to 22%."
-        }
-    )
-
-    confidence: float = Field(
-        ...,
-        json_schema_extra={
-            "example": 0.92
-        }
-    )
 
 
 # ============================================================
