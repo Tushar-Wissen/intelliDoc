@@ -84,7 +84,7 @@ function toPublicUser(user) {
   return publicUser;
 }
 
-function readSession() {
+export function readSession() {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
     return raw ? JSON.parse(raw) : null;
@@ -93,7 +93,7 @@ function readSession() {
   }
 }
 
-function writeSession(user) {
+export function writeSession(user) {
   try {
     if (user) localStorage.setItem(SESSION_KEY, JSON.stringify(user));
     else localStorage.removeItem(SESSION_KEY);
