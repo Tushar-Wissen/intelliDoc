@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useMemo, useState } from 'react';
 
+import { authApi } from '@/lib/auth-api';
 import { mockAuth } from '@/lib/mock-auth';
 
 const AuthContext = createContext(undefined);
@@ -14,7 +15,7 @@ export function AuthProvider({ children }) {
       loading: false,
 
       signIn: async (credentials) => {
-        const { user: signedInUser, error } = await mockAuth.signIn(credentials);
+        const { user: signedInUser, error } = await authApi.login(credentials);
         if (signedInUser) setUser(signedInUser);
         return { error };
       },
@@ -36,6 +37,7 @@ export function AuthProvider({ children }) {
 
       signOut: async () => {
         await mockAuth.signOut();
+        authApi.signOut();
         setUser(null);
       },
 
