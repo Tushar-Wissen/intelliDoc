@@ -179,19 +179,22 @@ public class AiServiceClient {
                             ? MediaType.parseMediaType(file.getContentType())
                             : MediaType.APPLICATION_OCTET_STREAM);
 
-            return restClient.post()
-                    .uri("/api/v1/extract/file")
-                    .body(bodyBuilder.build())
-                    .retrieve()
-                    .body(AiExtractionResponseDto.class);
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+            HttpEntity<?> request = new HttpEntity<>(bodyBuilder.build(), headers);
+            ResponseEntity<AiExtractionResponseDto> response = restTemplate.exchange(
+                    baseUrl + "/api/v1/extract/file",
+                    HttpMethod.POST,
+                    request,
+                    AiExtractionResponseDto.class
+            );
+            return response.getBody();
         } catch (Exception e) {
             log.error("Error invoking AI Service /api/v1/extract/file", e);
             throw new RuntimeException("AI Service extraction error: " + e.getMessage(), e);
         }
     }
 
-    public AiQAResponseDto askQuestion(AiQARequestDto request) {
-        log.info("Dispatching Q&A request for document ID {}", request.getDocumentId());
     public AiQAResponseDto askQuestion(
             AiQARequestDto request) {
 

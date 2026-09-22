@@ -53,6 +53,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 
 @Service
@@ -117,6 +118,7 @@ public class DocumentService {
 
         DocumentEntity document = DocumentEntity.builder()
                 .id(docId)
+                .workspaceId("default")
                 .title(title)
                 .content(content)
                 .contentType(contentType)
@@ -168,6 +170,21 @@ public class DocumentService {
             return mapToResponseDto(document, null);
         }
     }
+
+        public DocumentResponseDto processAndSaveDocument(DocumentUploadDto uploadDto) {
+                if (uploadDto == null || uploadDto.getFile() == null || uploadDto.getFile().isEmpty()) {
+                        throw new IllegalArgumentException("Uploaded document cannot be empty");
+                }
+                return processAndSaveUploadedDocument(uploadDto.getFile());
+        }
+
+        public DocumentResponseDto getDocumentById(String documentId) {
+                return getDocumentById("default", documentId);
+        }
+
+        public AiQAResponseDto askDocumentQuestion(String documentId, String question) {
+                return askDocumentQuestion("default", documentId, question);
+        }
 
     private void completeStage(String documentId, String stage) {
         processingJobRepository.save(ProcessingJobEntity.builder()

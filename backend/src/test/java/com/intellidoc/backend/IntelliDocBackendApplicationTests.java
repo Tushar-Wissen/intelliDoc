@@ -8,6 +8,7 @@ import com.intellidoc.backend.dto.DocumentUploadDto;
 import com.intellidoc.backend.dto.DocumentResponseDto;
 import com.intellidoc.backend.service.DocumentService;
 import com.intellidoc.backend.repository.ProcessingJobRepository;
+import com.intellidoc.backend.repository.DocumentRepository;
 import com.intellidoc.backend.dto.DocumentModuleDto;
 import com.intellidoc.backend.dto.FolderDocumentResponseDto;
 import com.intellidoc.backend.dto.FolderFileResponseDto;
@@ -47,6 +48,9 @@ class IntelliDocBackendApplicationTests {
 
     @Autowired
     private DocumentService documentService;
+
+        @Autowired
+        private DocumentRepository documentRepository;
 
     @Autowired
     private ProcessingJobRepository processingJobRepository;
@@ -503,10 +507,10 @@ class IntelliDocBackendApplicationTests {
         DocumentResponseDto result = documentService.processAndSaveUploadedDocument(file);
 
         assertEquals("READY", result.getStatus());
-        assertEquals("[Page 1]\nExtracted contract text.", result.getContent());
+        assertEquals("[Page 1]\nExtracted contract text.",
+                documentRepository.findById(result.getId()).orElseThrow().getContent());
         Mockito.verify(aiServiceClient).extractDocument(any(), any());
         }
-}
 
     // ============================================================
     // TEST 4
