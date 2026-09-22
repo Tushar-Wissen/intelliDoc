@@ -13,6 +13,7 @@ import org.apache.poi.xslf.usermodel.XSLFTextShape;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.springframework.stereotype.Component;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
@@ -20,6 +21,8 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 @Component
 public class DocumentTextExtractor {
@@ -29,51 +32,24 @@ public class DocumentTextExtractor {
     public DocumentTextExtractor() {
         this.tesseract = new Tesseract();
 
-        String tessDataPath =
-                new File("backend/src/main/resources/tessdata")
-                        .getAbsolutePath();
-
-        System.out.println(
-                "DocumentTextExtractor Tesseract tessdata path: "
-                        + tessDataPath
-        );
-
-        File trainedData =
-                new File(tessDataPath, "eng.traineddata");
-
-        System.out.println("======================================");
-        System.out.println(
-                "DocumentTextExtractor tessdata path: "
-                        + tessDataPath
-        );
-        System.out.println(
-                "eng.traineddata path: "
-                        + trainedData.getAbsolutePath()
-        );
-        System.out.println(
-                "eng.traineddata exists: "
-                        + trainedData.exists()
-        );
-        System.out.println(
-                "eng.traineddata readable: "
-                        + trainedData.canRead()
-        );
-        System.out.println(
-                "eng.traineddata size: "
-                        + trainedData.length()
-        );
-        System.out.println("======================================");
-
-        if (!trainedData.exists() || !trainedData.canRead()) {
-            throw new IllegalStateException(
-                    "Tesseract language file not found or not readable: "
-                            + trainedData.getAbsolutePath()
-            );
-        }
-
-        this.tesseract.setDatapath(tessDataPath);
+        this.tesseract.setDatapath(prepareTessdataPath());
         this.tesseract.setLanguage("eng");
         this.tesseract.setPageSegMode(6);
+    }
+
+    private String prepareTessdataPath() {
+        try {
+            Path tessdataPath = Files.createTempDirectory("intellidoc-tessdata-");
+            Path trainedData = tessdataPath.resolve("eng.traineddata");
+            try (var input = new ClassPathResource("tessdata/eng.traineddata").getInputStream()) {
+                Files.copy(input, trainedData);
+            }
+            trainedData.toFile().deleteOnExit();
+            tessdataPath.toFile().deleteOnExit();
+            return tessdataPath.toAbsolutePath().toString();
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to prepare bundled Tesseract language data", error);
+        }
     }
 
     public String extractText(MultipartFile file)
