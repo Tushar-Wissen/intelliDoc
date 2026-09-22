@@ -353,7 +353,7 @@ export function MyDocumentsPage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <div className={`flex items-center transition-all duration-300 gap-4 ${copilotOpen ? 'mr-80 sm:mr-96' : ''}`}>
+            <div className={`flex items-center transition-all duration-300 ease-in-out gap-4 ${copilotOpen && (!!activeFolder || !!activeTabId) ? 'mr-80 sm:mr-96' : ''}`}>
               {view !== 'evaluated' && (
                 <Button id="upload-document-button" className="gap-2" onClick={() => setUploadOpen(true)}>
                   <Plus className="h-4 w-4" />
@@ -375,7 +375,7 @@ export function MyDocumentsPage() {
 
         {activeFolder ? (
           <ScrollArea className="-mx-1 min-h-0 flex-1">
-            <div className={`px-1 pb-1 transition-all duration-300 ${copilotOpen ? 'mr-80 sm:mr-96' : ''}`}>
+            <div className={`px-1 pb-1 transition-all duration-300 ease-in-out ${copilotOpen && (!!activeFolder || !!activeTabId) ? 'mr-80 sm:mr-96' : ''}`}>
               <FolderDetail
                 folder={activeFolder}
                 showStatus={showStatus}
@@ -386,7 +386,7 @@ export function MyDocumentsPage() {
           </ScrollArea>
         ) : (
           <ScrollArea className="-mx-1 min-h-0 flex-1">
-            <div className={`px-1 pb-1 transition-all duration-300 ${copilotOpen ? 'mr-80 sm:mr-96' : ''}`}>
+            <div className={`px-1 pb-1 transition-all duration-300 ease-in-out ${copilotOpen && (!!activeFolder || !!activeTabId) ? 'mr-80 sm:mr-96' : ''}`}>
               {foldersLoading && folders.length === 0 ? (
                 <div className="flex items-center justify-center py-20">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -455,7 +455,7 @@ export function MyDocumentsPage() {
       />
 
       <CopilotSidebar
-        open={copilotOpen}
+        open={copilotOpen && (!!activeFolder || !!activeTabId)}
         onOpenChange={setCopilotOpen}
         activeTabId={activeCopilotId}
         activeTabName={activeCopilotName}
