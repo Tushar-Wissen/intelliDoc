@@ -3,10 +3,13 @@ FROM python:3.11-slim
 WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+  PYTHONDONTWRITEBYTECODE=1 \
+  OCR_ENGINE=paddle
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+  libgl1 \
+  tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

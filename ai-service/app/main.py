@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.schemas import (
@@ -8,9 +8,13 @@ from app.schemas import (
     QARequest,
     QAResponse,
     ErrorResponse,
+    ExtractionRequest,
+    ExtractionResponse,
 )
 
 from app.services.processor import DocumentProcessor
+from app.services.extractor import SelectiveExtractor
+from app.services.file_extractor import DocumentFileExtractor
 
 
 app = FastAPI(
@@ -37,6 +41,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/", tags=["Health"])
+async def root():
+    """Provide a discoverable response when the service root is opened."""
+    return {
+        "service": "intellidoc-ai-service",
+        "status": "UP",
+        "docs": "/docs",
+        "health": "/health",
+    }
 
 
 # ============================================================
@@ -128,6 +143,41 @@ async def analyze_document(
                 + str(e)
             )
         )
+
+
+@app.post(
+    "/api/v1/extract",
+    response_model=ExtractionResponse,
+    responses={400: {"model": ErrorResponse}},
+    tags=["Extraction"]
+)
+async def extract_document(request: ExtractionRequest):
+    """Selectively use native page text or an OCR result and preserve page provenance."""
+    result = SelectiveExtractor.extract(request.document_id, request.pages)
+    if not result.combined_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No extractable text was found in the supplied pages."
+        )
+    return result
+
+
+@app.post(
+    "/api/v1/extract/file",
+    response_model=ExtractionResponse,
+    responses={400: {"model": ErrorResponse}},
+    tags=["Extraction"]
+)
+async def extract_document_file(
+    document_id: str = Form(...),
+    file: UploadFile = File(...),
+):
+    """Extract text from a PDF, DOCX, or image upload with selective OCR."""
+    try:
+        content = await file.read()
+        return DocumentFileExtractor.extract(document_id, file.filename or "document", content)
+    except ValueError as error:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
 
 # ============================================================

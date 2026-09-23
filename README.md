@@ -31,12 +31,14 @@ IntelliDoc is a centralized, microservices-based enterprise platform for documen
 ## 📋 System Requirements & Prerequisites
 
 ### Option A: Running via Docker (Recommended)
+
 - **Docker**: Docker Desktop (Windows / macOS) or Docker Engine v20.10+ & Docker Compose v2.0+ (Linux).
 - **RAM**: Minimum 4 GB free RAM (8 GB total system RAM recommended).
 - **Disk Space**: ~3 GB free disk space.
 - **Ports**: Ensure ports `3000`, `8080`, `8000`, and `5432` are available.
 
 ### Option B: Running Manually Without Docker
+
 - **Java**: JDK 17+ & Apache Maven 3.8+
 - **Python**: Python 3.11+ & pip
 - **Node.js**: Node.js 18+ & npm
@@ -47,15 +49,18 @@ IntelliDoc is a centralized, microservices-based enterprise platform for documen
 ## ⚙️ Environment & Supabase Database Setup
 
 ### Step 1: Configure Environment Variables
+
 Copy `.env.example` to `.env`:
+
 ```bash
 cp .env.example .env
 ```
 
 ### Step 2: Set Up Supabase Database
+
 1. Go to your [Supabase Dashboard](https://supabase.com) (or open local PostgreSQL).
 2. Open the **SQL Editor** (`>_` icon).
-3. Copy and execute the contents of [`supabase/migrations/20260911000000_init_schema.sql`](file:///c:/Users/Wissen/Desktop/intelliDoc/codebase/supabase/migrations/20260911000000_init_schema.sql).
+3. Copy and execute the contents of [`supabase/migrations/20260911000000_init_schema.sql`](file:///c:/Users/Wissen/Desktop/intelliDoc/codebase/supabase/migrations/20260911000000_init_schema.sql)
 4. Update the database host, user, password, and keys in your `.env` file:
    ```ini
    POSTGRES_HOST=db.YOUR_SUPABASE_PROJECT_ID.supabase.co
@@ -83,6 +88,7 @@ docker compose up --build
 ```
 
 Access the application in your browser once started:
+
 - 🌐 **React Frontend App**: [http://localhost:3000](http://localhost:3000)
 - ⚙️ **Spring Boot API**: [http://localhost:8080/api/v1/documents](http://localhost:8080/api/v1/documents)
 - ❤️ **Spring Boot Health**: [http://localhost:8080/api/v1/health](http://localhost:8080/api/v1/health)
@@ -95,6 +101,7 @@ Access the application in your browser once started:
 If you prefer to run services manually on your host machine:
 
 #### 1. Python AI Service Microservice
+
 ```bash
 cd ai-service
 python -m venv venv
@@ -109,6 +116,7 @@ uvicorn app.main:app --port 8000 --reload
 ```
 
 #### 2. Spring Boot Backend API
+
 ```bash
 cd backend
 mvn clean test                          # Run unit & integration tests
@@ -116,6 +124,7 @@ mvn spring-boot:run                     # Starts API at http://localhost:8080
 ```
 
 #### 3. React Frontend Web Application
+
 ```bash
 cd frontend
 npm install
@@ -126,11 +135,11 @@ npm run dev                             # Launches Vite dev server at http://loc
 
 ## 🧪 Testing & Verification Commands
 
-| Service | Test Command | Directory |
-| :--- | :--- | :--- |
-| **Python AI Service** | `pytest` | `ai-service/` |
-| **Spring Boot Backend** | `mvn test` | `backend/` |
-| **React Frontend** | `npm run build` | `frontend/` |
+| Service                       | Test Command      | Directory       |
+| :---------------------------- | :---------------- | :-------------- |
+| **Python AI Service**   | `pytest`        | `ai-service/` |
+| **Spring Boot Backend** | `mvn test`      | `backend/`    |
+| **React Frontend**      | `npm run build` | `frontend/`   |
 
 ---
 
@@ -181,6 +190,7 @@ npm run dev                             # Launches Vite dev server at http://loc
 ## 🧪 CI/CD Pipeline
 
 The included GitHub Actions workflow ([`.github/workflows/ci.yml`](file:///.github/workflows/ci.yml)) automatically performs:
+
 1. Automated unit test execution for Python AI Service (`pytest`).
 2. Automated compilation and unit testing for Spring Boot Backend (`mvn test`).
 3. Automated compilation for React Frontend (`npm run build`).

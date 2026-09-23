@@ -3,6 +3,12 @@ package com.intellidoc.backend;
 import com.intellidoc.backend.client.AiServiceClient;
 import com.intellidoc.backend.dto.AiAnalysisRequestDto;
 import com.intellidoc.backend.dto.AiAnalysisResponseDto;
+import com.intellidoc.backend.dto.AiExtractionResponseDto;
+import com.intellidoc.backend.dto.DocumentUploadDto;
+import com.intellidoc.backend.dto.DocumentResponseDto;
+import com.intellidoc.backend.service.DocumentService;
+import com.intellidoc.backend.repository.ProcessingJobRepository;
+import com.intellidoc.backend.repository.DocumentRepository;
 import com.intellidoc.backend.dto.DocumentModuleDto;
 import com.intellidoc.backend.dto.FolderDocumentResponseDto;
 import com.intellidoc.backend.dto.FolderFileResponseDto;
@@ -43,7 +49,11 @@ class IntelliDocBackendApplicationTests {
     @Autowired
     private DocumentService documentService;
 
+        @Autowired
+        private DocumentRepository documentRepository;
 
+    @Autowired
+    private ProcessingJobRepository processingJobRepository;
     // ============================================================
     // MOCK SERVICES
     // ============================================================
@@ -278,7 +288,6 @@ class IntelliDocBackendApplicationTests {
 
         FolderUploadResponseDto response =
                 documentService.processAndSaveDocument(
-
                         workspaceId,
 
                         testFile1,
@@ -474,6 +483,34 @@ class IntelliDocBackendApplicationTests {
         );
     }
 
+        @Test
+        void testProcessAndSaveUploadedDocumentUsesExtractedText() {
+        AiExtractionResponseDto extraction = new AiExtractionResponseDto();
+        extraction.setCombinedText("[Page 1]\nExtracted contract text.");
+        Mockito.when(aiServiceClient.extractDocument(any(), any()))
+            .thenReturn(extraction);
+
+        AiAnalysisResponseDto analysis = AiAnalysisResponseDto.builder()
+            .summary("Extracted contract summary")
+            .sentiment("NEUTRAL")
+            .confidenceScore(0.9)
+            .entities(List.of("Contract"))
+            .keyTopics(List.of("Agreement"))
+            .build();
+        Mockito.when(aiServiceClient.analyzeDocument(any(AiAnalysisRequestDto.class)))
+            .thenReturn(analysis);
+
+        MockMultipartFile file = new MockMultipartFile(
+            "file", "contract.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "binary document".getBytes());
+
+        DocumentResponseDto result = documentService.processAndSaveUploadedDocument(file);
+
+        assertEquals("READY", result.getStatus());
+        assertEquals("[Page 1]\nExtracted contract text.",
+                documentRepository.findById(result.getId()).orElseThrow().getContent());
+        Mockito.verify(aiServiceClient).extractDocument(any(), any());
+        }
 
     // ============================================================
     // TEST 4

@@ -7,6 +7,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -19,4 +21,8 @@ public class DocumentUploadDto {
     private MultipartFile file;
 
     private String contentType;
+
+    private List<AiExtractionResponseDto.ExtractedPageDto> pages;
+    private List<AiExtractionResponseDto.ExtractedSectionDto> sections;
+    private List<AiExtractionResponseDto.ExtractedChunkDto> chunks;
 }

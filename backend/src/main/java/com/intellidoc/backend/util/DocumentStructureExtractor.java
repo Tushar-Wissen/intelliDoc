@@ -18,6 +18,7 @@ import org.apache.poi.xslf.usermodel.XSLFTextRun;
 import org.apache.poi.xslf.usermodel.XSLFTextShape;
 import org.apache.poi.sl.usermodel.Placeholder;
 import org.springframework.stereotype.Component;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
@@ -30,6 +31,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 @Component
 public class DocumentStructureExtractor {
@@ -56,25 +59,25 @@ public class DocumentStructureExtractor {
 
         this.tesseract = new Tesseract();
 
-        String tessDataPath =
-                new File("backend/src/main/resources/tessdata")
-                        .getAbsolutePath();
-
-        File trainedData =
-                new File(tessDataPath, "eng.traineddata");
-
-        System.out.println("======================================");
-        System.out.println("Tesseract tessdata path: " + tessDataPath);
-        System.out.println("eng.traineddata path: " + trainedData.getAbsolutePath());
-        System.out.println("eng.traineddata exists: " + trainedData.exists());
-        System.out.println("eng.traineddata readable: " + trainedData.canRead());
-        System.out.println("eng.traineddata size: " + trainedData.length());
-        System.out.println("======================================");
-
-        this.tesseract.setDatapath(tessDataPath);
+                this.tesseract.setDatapath(prepareTessdataPath());
         this.tesseract.setLanguage("eng");
         this.tesseract.setPageSegMode(6);
     }
+
+        private String prepareTessdataPath() {
+                try {
+                        Path tessdataPath = Files.createTempDirectory("intellidoc-tessdata-");
+                        Path trainedData = tessdataPath.resolve("eng.traineddata");
+                        try (var input = new ClassPathResource("tessdata/eng.traineddata").getInputStream()) {
+                                Files.copy(input, trainedData);
+                        }
+                        trainedData.toFile().deleteOnExit();
+                        tessdataPath.toFile().deleteOnExit();
+                        return tessdataPath.toAbsolutePath().toString();
+                } catch (IOException error) {
+                        throw new IllegalStateException("Unable to prepare bundled Tesseract language data", error);
+                }
+        }
 
 
 

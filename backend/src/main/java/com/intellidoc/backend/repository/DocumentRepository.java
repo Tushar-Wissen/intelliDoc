@@ -20,6 +20,8 @@ public interface DocumentRepository
             String workspaceId
     );
 
+    List<DocumentEntity> findAllByOrderByCreatedAtDesc();
+
 
     // ============================================================
     // GET ONE DOCUMENT ONLY IF IT BELONGS TO WORKSPACE
