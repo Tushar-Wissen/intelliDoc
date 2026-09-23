@@ -1,9 +1,29 @@
-import React from 'react';
-import { Folder, FileText, Diamond, CircleDot, Square, Circle, Hexagon, Triangle } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import {
+  Folder,
+  FileText,
+  Diamond,
+  CircleDot,
+  Square,
+  Circle,
+  Hexagon,
+  Triangle,
+  ChevronDown,
+  UploadCloud,
+  Search,
+} from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { StatusBadge } from '@/components/features/status-badge';
+import { formatDate } from '@/lib/format';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const FOLDER_COLORS = [
   { bg: 'bg-violet-500/10', fg: 'text-violet-600 dark:text-violet-400' },
@@ -113,57 +133,211 @@ function FileGroup({ file, onFileClick }) {
   );
 }
 
-export function FolderDetail({ folder, showStatus, onFileClick, activeFileId }) {
+function FileTableRow({ file, updatedAt, onClick }) {
+  const tagColor = TAG_COLORS[file.tag] ?? DEFAULT_TAG_COLOR;
+  const sectionsCount = file.sections?.length ?? 0;
+
+  return (
+    <tr
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick?.();
+        }
+      }}
+      className="cursor-pointer transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none"
+    >
+      <td className="px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', tagColor.bg)}>
+            <FileText className={cn('h-4 w-4', tagColor.fg)} />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-medium text-card-foreground">{file.name}</p>
+            <p className="truncate text-xs text-muted-foreground sm:hidden">{file.tag}</p>
+          </div>
+        </div>
+      </td>
+      <td className="hidden px-4 py-3 sm:table-cell">
+        <span
+          className={cn(
+            'inline-flex w-fit shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium capitalize',
+            tagColor.bg,
+            tagColor.fg
+          )}
+        >
+          {file.tag}
+        </span>
+      </td>
+      <td className="hidden whitespace-nowrap px-4 py-3 text-xs text-muted-foreground md:table-cell">
+        {sectionsCount} {sectionsCount === 1 ? 'section' : 'sections'}
+      </td>
+      <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-muted-foreground">
+        {formatDate(updatedAt)}
+      </td>
+    </tr>
+  );
+}
+
+function FolderOverview({ folder, onFileClick, onUploadClick }) {
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
   const color = colorForFolder(folder);
   const allFiles = folder.files ?? [];
+
+  const availableTags = useMemo(
+    () => Array.from(new Set(allFiles.map((f) => f.tag).filter(Boolean))),
+    [allFiles]
+  );
+
+  const filteredFiles = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return allFiles.filter((file) => {
+      if (typeFilter !== 'all' && file.tag !== typeFilter) return false;
+      if (query && !file.name?.toLowerCase().includes(query)) return false;
+      return true;
+    });
+  }, [allFiles, search, typeFilter]);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', color.bg)}>
+            <Folder className={cn('h-5 w-5', color.fg)} />
+          </div>
+          <div className="min-w-0">
+            <h2 className="truncate text-xl font-semibold tracking-tight text-foreground">{folder.name}</h2>
+            <p className="text-sm text-muted-foreground">
+              {allFiles.length} {allFiles.length === 1 ? 'document' : 'documents'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            type="button"
+            onClick={onUploadClick}
+            className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
+          >
+            <UploadCloud className="h-4 w-4" />
+            Upload
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search documents..."
+            className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="justify-between gap-2 capitalize sm:w-40">
+              <span className="truncate">{typeFilter === 'all' ? 'All types' : typeFilter}</span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setTypeFilter('all')}>All types</DropdownMenuItem>
+            {availableTags.map((tag) => (
+              <DropdownMenuItem key={tag} className="capitalize" onClick={() => setTypeFilter(tag)}>
+                {tag}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {allFiles.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-16 text-center">
+          <FileText className="h-10 w-10 text-muted-foreground" />
+          <p className="font-medium text-muted-foreground">No files in this folder yet</p>
+        </div>
+      ) : filteredFiles.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
+          No documents match your search.
+        </p>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border">
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <table className="w-full border-collapse text-left">
+              <thead className="sticky top-0 z-10 bg-muted">
+                <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  <th className="w-full px-4 py-2.5 font-semibold">Name</th>
+                  <th className="hidden px-4 py-2.5 font-semibold sm:table-cell">Type</th>
+                  <th className="hidden px-4 py-2.5 font-semibold md:table-cell">Sections</th>
+                  <th className="px-4 py-2.5 text-right font-semibold">Updated</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border bg-card">
+                {filteredFiles.map((file) => (
+                  <FileTableRow
+                    key={file.id}
+                    file={file}
+                    updatedAt={folder.updatedAt}
+                    onClick={() => onFileClick?.({ ...file, folderId: folder.id, folderName: folder.name })}
+                  />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function FolderDetail({ folder, onFileClick, activeFileId, onUploadClick }) {
+  const allFiles = folder.files ?? [];
   const activeFile = activeFileId ? allFiles.find((f) => f.id === activeFileId) : null;
-  const visibleFiles = activeFile ? [activeFile] : allFiles;
-  const hasFiles = visibleFiles.length > 0;
-  const extractionsCount = activeFile ? activeFile.sections?.length ?? 0 : folder.sectionsCount;
+
+  if (!activeFile) {
+    return (
+      <FolderOverview
+        folder={folder}
+        onFileClick={onFileClick}
+        onUploadClick={onUploadClick}
+      />
+    );
+  }
+
+  const extractionsCount = activeFile.sections?.length ?? 0;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
-          <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', color.bg)}>
-            <Folder className={cn('h-5 w-5', color.fg)} />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted">
+            <FileText className="h-5 w-5 text-muted-foreground" />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h2 className="truncate text-xl font-semibold tracking-tight text-foreground">
-                {activeFile ? activeFile.name : folder.name}
-              </h2>
-              {showStatus && !activeFile && folder.status && <StatusBadge value={folder.status} />}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {activeFile
-                ? folder.name
-                : `${folder.filesCount} ${folder.filesCount === 1 ? 'document' : 'documents'} · AI smart folder`}
-            </p>
+            <h2 className="truncate text-xl font-semibold tracking-tight text-foreground">{activeFile.name}</h2>
+            <p className="text-sm text-muted-foreground">{folder.name}</p>
           </div>
         </div>
 
-        <Badge variant="outline" className="shrink-0">
-          {extractionsCount} extractions
-        </Badge>
+        <div className="flex shrink-0 items-center gap-2">
+          <Badge variant="outline" className="shrink-0">
+            {extractionsCount} extractions
+          </Badge>
+        </div>
       </div>
 
-      {hasFiles ? (
-        <div className="flex flex-col gap-4">
-          {visibleFiles.map((file) => (
-            <FileGroup
-              key={file.id}
-              file={file}
-              onFileClick={(f) => onFileClick?.({ ...f, folderId: folder.id, folderName: folder.name })}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border text-center">
-          <FileText className="h-10 w-10 text-muted-foreground" />
-          <p className="font-medium text-muted-foreground">No files in this folder yet</p>
-        </div>
-      )}
+      <div className="flex flex-col gap-4">
+        <FileGroup
+          file={activeFile}
+          onFileClick={(f) => onFileClick?.({ ...f, folderId: folder.id, folderName: folder.name })}
+        />
+      </div>
     </div>
   );
 }

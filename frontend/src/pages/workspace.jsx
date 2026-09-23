@@ -1,23 +1,33 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
-import { Search, Plus, UploadCloud, FileWarning, FileText, Loader2, Sparkles } from 'lucide-react';
+import { Search, Plus, UploadCloud, FileWarning, FileText, Loader2, FolderKanban, FolderOpen } from 'lucide-react';
 
 import { AppShell } from '@/components/layout/app-shell';
-import { TabsBar } from '@/components/layout/tabs-bar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Card, CardContent } from '@/components/ui/card';
 import { FolderCard } from '@/components/features/folder-card';
 import { FolderDetail } from '@/components/features/folder-detail';
 import { UploadDialog } from '@/components/features/upload-dialog';
 import { ToastNotification } from '@/components/ui/toast-notification';
 import { CopilotSidebar } from '@/components/features/copilot-sidebar';
 import { EmptyWorkspaceState } from '@/components/features/empty-workspace-state';
+import { CreateFolderDialog } from '@/components/features/create-folder-dialog';
+import { RecentDocumentsCard } from '@/components/features/recent-documents-card';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
-import { fetchDocumentFolders, invalidateDocumentFoldersCache } from '@/lib/documents-api';
+import {
+  fetchDocumentFolders,
+  invalidateDocumentFoldersCache,
+  addFileToCachedDocument,
+  updateCachedDocumentTitle,
+  removeCachedDocument,
+} from '@/lib/documents-api';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { useHealthStatus } from '@/hooks/use-health-status';
+import { useAuth } from '@/context/auth-context';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 const FOLDERS_PAGE_SIZE = 12;
@@ -45,9 +55,13 @@ export function WorkspacePage() {
   const [documents, setDocuments] = useState([]);
   const [search, setSearch] = useState('');
   const healthStatus = useHealthStatus();
+  const { user } = useAuth();
 
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [copilotOpen, setCopilotOpen] = useState(false);
+  const [uploadLockedFolderId, setUploadLockedFolderId] = useState(null);
+  const [createFolderOpen, setCreateFolderOpen] = useState(false);
+  const [editingFolder, setEditingFolder] = useState(null);
+  const [deletingFolder, setDeletingFolder] = useState(null);
 
   const [activeFolder, setActiveFolder] = useState(null);
   const [activeFileId, setActiveFileId] = useState(null);
@@ -60,6 +74,7 @@ export function WorkspacePage() {
   const [foldersPage, setFoldersPage] = useState(1);
   const [foldersHasMore, setFoldersHasMore] = useState(true);
   const [foldersLoading, setFoldersLoading] = useState(true);
+  const [foldersError, setFoldersError] = useState(null);
   const foldersViewRef = useRef(view);
 
   const [toastOpen, setToastOpen] = useState(false);
@@ -78,6 +93,7 @@ export function WorkspacePage() {
     setFoldersPage(1);
     setFoldersHasMore(true);
     setFoldersLoading(true);
+    setFoldersError(null);
 
     fetchDocumentFolders({
       apiBaseUrl: API_BASE_URL,
@@ -91,7 +107,10 @@ export function WorkspacePage() {
       })
       .catch((err) => {
         console.error('Failed to fetch document folders', err);
-        if (!cancelled) setFoldersHasMore(false);
+        if (!cancelled) {
+          setFoldersHasMore(false);
+          setFoldersError(err?.message || 'We could not load your folders right now.');
+        }
       })
       .finally(() => {
         if (!cancelled) setFoldersLoading(false);
@@ -176,6 +195,63 @@ export function WorkspacePage() {
     refreshFolders();
   };
 
+  const handleFolderSaved = (folder, isEdit) => {
+    if (!folder?.name) return;
+
+    if (isEdit) {
+      updateCachedDocumentTitle(folder.id, folder.name);
+      setFolders((prev) => prev.map((f) => (f.id === folder.id ? { ...f, ...folder } : f)));
+      setActiveFolder((prev) => (prev?.id === folder.id ? { ...prev, ...folder } : prev));
+      return;
+    }
+
+    setFolders((prev) => [
+      {
+        ...folder,
+        files: folder.files || [],
+        filesCount: Number(folder.filesCount || 0),
+      },
+      ...prev,
+    ]);
+    setFoldersHasMore(true);
+  };
+
+  const handleEditFolder = (folder) => {
+    setEditingFolder(folder);
+    setCreateFolderOpen(true);
+  };
+
+  const handleDeleteFolder = (folder) => {
+    setDeletingFolder(folder);
+  };
+
+  const handleConfirmDeleteFolder = () => {
+    if (!deletingFolder) return;
+    const folderId = deletingFolder.id;
+
+    removeCachedDocument(folderId);
+    setFolders((prev) => prev.filter((f) => f.id !== folderId));
+    setActiveFolder((prev) => (prev?.id === folderId ? null : prev));
+    setOpenTabs((prev) => prev.filter((t) => t.id !== `folder:${folderId}`));
+    setDeletingFolder(null);
+  };
+
+  const handleFileAddedToFolder = (folderId, file) => {
+    addFileToCachedDocument(folderId, file.name);
+    setFolders((prev) =>
+      prev.map((folder) =>
+        folder.id === folderId
+          ? { ...folder, files: [...(folder.files || []), file], filesCount: (folder.filesCount || 0) + 1 }
+          : folder
+      )
+    );
+    setActiveFolder((prev) =>
+      prev?.id === folderId
+        ? { ...prev, files: [...(prev.files || []), file], filesCount: (prev.filesCount || 0) + 1 }
+        : prev
+    );
+  };
+
   const handleSelectFolder = (folder) => {
     setActiveFolder(folder);
     setActiveFileId(null);
@@ -197,18 +273,28 @@ export function WorkspacePage() {
   };
 
   // Opens a folder (and optionally a specific file within it) passed in via router state
-  // when navigating here from the sidebar's quick folder/file list.
+  // when navigating here from the sidebar's quick folder/file list. The sidebar's "My
+  // Workspace" link also uses this to reliably clear the active folder even when it's
+  // navigating to the same /workspace path (which wouldn't otherwise reset local state).
   useEffect(() => {
     const pendingFolderId = location.state?.folderId;
-    if (!pendingFolderId) return;
-    const folder = folders.find((f) => f.id === pendingFolderId);
-    if (folder) {
-      handleSelectFolder(folder);
-      const pendingFileId = location.state?.fileId;
-      const file = pendingFileId ? folder.files?.find((f) => f.id === pendingFileId) : null;
-      if (file) {
-        handleFileClick({ ...file, folderId: folder.id, folderName: folder.name });
+    if (pendingFolderId) {
+      const folder = folders.find((f) => f.id === pendingFolderId);
+      if (folder) {
+        handleSelectFolder(folder);
+        const pendingFileId = location.state?.fileId;
+        const file = pendingFileId ? folder.files?.find((f) => f.id === pendingFileId) : null;
+        if (file) {
+          handleFileClick({ ...file, folderId: folder.id, folderName: folder.name });
+        }
+        navigate(location.pathname + location.search, { replace: true, state: {} });
       }
+      return;
+    }
+
+    if (location.state?.clearFolder) {
+      setActiveFolder(null);
+      setActiveFileId(null);
       navigate(location.pathname + location.search, { replace: true, state: {} });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -241,45 +327,6 @@ export function WorkspacePage() {
     }
   }, [folders]);
 
-  const handleSelectTab = useCallback((tabId) => {
-    setActiveTabId(tabId);
-
-    const tab = openTabs.find((t) => t.id === tabId);
-    if (!tab) return;
-
-    if (tab.type === 'folder') {
-      const folderId = tabId.replace(/^folder:/, '');
-      setActiveFolder((prev) => (prev?.id === folderId ? prev : folders.find((f) => f.id === folderId) ?? prev));
-      setActiveFileId(null);
-    } else {
-      setActiveFileId(tabId);
-      if (tab.folderId) {
-        setActiveFolder((prev) => (prev?.id === tab.folderId ? prev : folders.find((f) => f.id === tab.folderId) ?? prev));
-      }
-    }
-  }, [openTabs, folders]);
-
-  const handleCloseTab = useCallback((tabId) => {
-    setOpenTabs((prev) => {
-      const idx = prev.findIndex((t) => t.id === tabId);
-      const next = prev.filter((t) => t.id !== tabId);
-
-      setActiveTabId((currentActive) => {
-        if (currentActive !== tabId) return currentActive;
-        if (next.length === 0) return null;
-        return next[Math.min(idx, next.length - 1)].id;
-      });
-
-      return next;
-    });
-    // Clear chat history so re-opening this tab starts a fresh session
-    setChatHistories((prev) => {
-      const next = { ...prev };
-      delete next[tabId];
-      return next;
-    });
-  }, []);
-
   const activeTabName = openTabs.find((t) => t.id === activeTabId)?.name;
 
   // Unified copilot context: active tab takes priority; falls back to active folder
@@ -299,6 +346,56 @@ export function WorkspacePage() {
     if (!query) return folders;
     return folders.filter((folder) => folder.name?.toLowerCase().includes(query));
   }, [folders, search]);
+
+  const totalFilesCount = useMemo(
+    () => folders.reduce((sum, folder) => sum + (folder.filesCount || 0), 0),
+    [folders]
+  );
+
+  const workspaceSummary = useMemo(
+    () => [
+      {
+        label: 'Total folders',
+        value: String(folders.length),
+        detail: folders.length > 0 ? `${totalFilesCount} files across workspace` : 'Create your first folder',
+        icon: FolderKanban,
+      },
+      {
+        label: 'Files',
+        value: String(totalFilesCount),
+        detail: 'Across all folders',
+        icon: FileText,
+      },
+      {
+        label: 'Owner',
+        value: user?.fullName || 'You',
+        detail: 'Workspace admin',
+        icon: FolderOpen,
+      },
+    ],
+    [folders, totalFilesCount, user]
+  );
+
+  // IntelliDoc AI's chat panel is always visible; its subtitle/placeholder switch between
+  // workspace-wide and single-folder context depending on whether a folder is open.
+  const copilotSubtitle = activeFolder
+    ? 'Searching across documents in this folder'
+    : `Searching across ${totalFilesCount} ${totalFilesCount === 1 ? 'document' : 'documents'}`;
+  const copilotPlaceholder = activeFolder
+    ? 'Ask IntelliDoc AI about your folder...'
+    : 'Ask IntelliDoc AI about your workspace...';
+
+  const recentFiles = useMemo(() => {
+    const flattened = [];
+    folders.forEach((folder) => {
+      (folder.files || []).forEach((file) => {
+        flattened.push({ ...file, folderId: folder.id, folderName: folder.name, date: folder.updatedAt });
+      });
+    });
+    return flattened
+      .sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))
+      .slice(0, 5);
+  }, [folders]);
 
   // Files that uploaded successfully but have no extracted sections yet.
   const orphanedFiles = useMemo(() => {
@@ -321,19 +418,6 @@ export function WorkspacePage() {
       title={activeFolder ? activeFolder.name : title}
       subtitle={activeFolder ? undefined : subtitle}
       healthStatus={healthStatus}
-      tabsBar={
-        activeFolder && openTabs.length > 0 && (
-          <TabsBar
-            tabs={openTabs}
-            activeTabId={activeTabId}
-            onSelectTab={handleSelectTab}
-            onCloseTab={handleCloseTab}
-            onUploadClick={() => setUploadOpen(true)}
-            onCopilotClick={() => setCopilotOpen((prev) => !prev)}
-            copilotOpen={copilotOpen}
-          />
-        )
-      }
     >
       <div className="flex min-h-0 flex-1 flex-col gap-6">
         {!activeFolder && !(view === 'all' && !foldersLoading && folders.length === 0) && (
@@ -352,38 +436,50 @@ export function WorkspacePage() {
             ) : (
               <div />
             )}
-            <div className={`flex items-center transition-all duration-300 ease-in-out gap-4 ${copilotOpen && (!!activeFolder || !!activeTabId) ? 'mr-80 sm:mr-96' : ''}`}>
-              <Button id="upload-document-button" className="gap-2" onClick={() => setUploadOpen(true)}>
+            <div className="flex items-center gap-3 mr-80 sm:mr-96">
+              <Button
+                id="create-folder-button"
+                data-testid="create-folder-button"
+                variant="default"
+                className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
+                onClick={() => setCreateFolderOpen(true)}
+              >
                 <Plus className="h-4 w-4" />
+                Create Folder
+              </Button>
+              <Button
+                id="upload-document-button"
+                data-testid="upload-document-button"
+                className="gap-2"
+                onClick={() => {
+                  setUploadLockedFolderId(null);
+                  setUploadOpen(true);
+                }}
+              >
+                <UploadCloud className="h-4 w-4" />
                 Upload
               </Button>
-              {activeTabId && (
-                <div
-                  id="copilot-toggle-button"
-                  onClick={() => setCopilotOpen(!copilotOpen)}
-                  className="cursor-pointer flex items-center justify-center h-10 w-10 rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
-                >
-                  <Sparkles className="h-5 w-5" />
-                </div>
-              )}
             </div>
           </div>
         )}
 
         {activeFolder ? (
           <ScrollArea className="-mx-1 min-h-0 flex-1">
-            <div className={`px-1 pb-1 transition-all duration-300 ease-in-out ${copilotOpen && (!!activeFolder || !!activeTabId) ? 'mr-80 sm:mr-96' : ''}`}>
+            <div className="px-1 pb-1 mr-80 sm:mr-96">
               <FolderDetail
                 folder={activeFolder}
-                showStatus
                 onFileClick={handleFileClick}
                 activeFileId={activeFileId}
+                onUploadClick={() => {
+                  setUploadLockedFolderId(activeFolder.id);
+                  setUploadOpen(true);
+                }}
               />
             </div>
           </ScrollArea>
         ) : view === 'orphaned' ? (
           <ScrollArea className="-mx-1 min-h-0 flex-1">
-            <div className={`px-1 pb-1 transition-all duration-300 ease-in-out ${copilotOpen ? 'mr-80 sm:mr-96' : ''}`}>
+            <div className="px-1 pb-1 mr-80 sm:mr-96">
               {foldersLoading && folders.length === 0 ? (
                 <div className="flex items-center justify-center py-20">
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -423,20 +519,38 @@ export function WorkspacePage() {
           </ScrollArea>
         ) : (
           <ScrollArea className="-mx-1 min-h-0 flex-1">
-            <div className={`px-1 pb-1 transition-all duration-300 ease-in-out ${copilotOpen && (!!activeFolder || !!activeTabId) ? 'mr-80 sm:mr-96' : ''}`}>
+            <div className="px-1 pb-1 mr-80 sm:mr-96">
               {foldersLoading && folders.length === 0 ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                  {Array.from({ length: 6 }).map((_, idx) => (
+                    <div key={idx} className="h-40 animate-pulse rounded-2xl border border-border bg-muted/40" />
+                  ))}
+                </div>
+              ) : foldersError && folders.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-4 px-6 py-16 text-center">
+                  <FolderOpen className="h-10 w-10 text-muted-foreground" />
+                  <div className="space-y-1">
+                    <p className="text-lg font-semibold text-foreground">Unable to load folders</p>
+                    <p className="max-w-md text-sm text-muted-foreground">{foldersError}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => refreshFolders()}
+                    data-testid="workspace-retry-folder-load"
+                  >
+                    Try again
+                  </Button>
                 </div>
               ) : folders.length === 0 ? (
                 <EmptyWorkspaceState
                   className="flex-1 justify-center px-4 py-16"
                   icon={FileText}
-                  heading="Upload documents to get started"
-                  description="Add documents to a folder, or keep them in Orphaned Files. You can ask questions, get insights and collaborate with your team."
-                  ctaLabel="Upload Document"
-                  ctaIcon={UploadCloud}
-                  onCtaClick={() => setUploadOpen(true)}
+                  heading="Your folders are empty"
+                  description="Create your first folder to keep related documents organized and ready for AI-powered review."
+                  ctaLabel="Create Folder"
+                  ctaIcon={Plus}
+                  onCtaClick={() => setCreateFolderOpen(true)}
                 />
               ) : filteredFolders.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
@@ -444,21 +558,53 @@ export function WorkspacePage() {
                 </p>
               ) : (
                 <>
-                  <div className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-4">
+                  <div className="mb-6 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+                    <div className="border-b border-border bg-gradient-to-r from-wissen-navy/5 via-card to-primary/5 p-5">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                        Workspace Overview
+                      </p>
+                      <h2 className="text-2xl font-semibold tracking-tight text-foreground">My Workspace</h2>
+                    </div>
+
+                    <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+                      {workspaceSummary.map(({ label, value, detail, icon: Icon }) => (
+                        <Card key={label} className="border-border bg-muted/20 shadow-none">
+                          <CardContent className="flex items-center justify-between gap-3 p-4">
+                            <div>
+                              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                                {label}
+                              </p>
+                              <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
+                              <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
+                            </div>
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-wissen-navy/10 text-wissen-navy dark:text-wissen-navy-light">
+                              <Icon className="h-4 w-4" />
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </div>
+
+                  {!search && <RecentDocumentsCard loading={false} files={recentFiles} onOpenFile={handleFileClick} />}
+
+                  <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {filteredFolders.map((folder, idx) => (
                       <FolderCard
                         key={folder.id}
                         folder={folder}
                         index={idx}
                         selected={activeFolder?.id === folder.id}
-                        showStatus
+                        createdBy={user?.fullName || 'You'}
                         onClick={() => handleSelectFolder(folder)}
+                        onEdit={handleEditFolder}
+                        onDelete={handleDeleteFolder}
                       />
                     ))}
                   </div>
 
                   {!search && foldersHasMore && (
-                    <div ref={foldersSentinelRef} className="flex h-10 items-center justify-center">
+                    <div ref={foldersSentinelRef} className="flex h-12 items-center justify-center">
                       {foldersLoading && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
                     </div>
                   )}
@@ -469,19 +615,42 @@ export function WorkspacePage() {
         )}
       </div>
 
+      <CreateFolderDialog
+        open={createFolderOpen}
+        onOpenChange={(next) => {
+          setCreateFolderOpen(next);
+          if (!next) setEditingFolder(null);
+        }}
+        folder={editingFolder}
+        onCreated={handleFolderSaved}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deletingFolder)}
+        onOpenChange={(next) => { if (!next) setDeletingFolder(null); }}
+        title="Delete folder?"
+        description={deletingFolder ? `Delete "${deletingFolder.name}"? This can't be undone.` : ''}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={handleConfirmDeleteFolder}
+      />
+
       <UploadDialog
         open={uploadOpen}
         onOpenChange={setUploadOpen}
         apiBaseUrl={API_BASE_URL}
+        folders={folders}
         onCreated={handleCreated}
+        onAddToFolder={handleFileAddedToFolder}
         onShowToast={handleShowToast}
+        lockedFolderId={uploadLockedFolderId}
       />
 
       <CopilotSidebar
-        open={copilotOpen && (!!activeFolder || !!activeTabId)}
-        onOpenChange={setCopilotOpen}
         activeTabId={activeCopilotId}
         activeTabName={activeCopilotName}
+        subtitle={copilotSubtitle}
+        placeholder={copilotPlaceholder}
         chatHistories={chatHistories}
         onUpdateHistory={handleUpdateChatHistory}
       />
