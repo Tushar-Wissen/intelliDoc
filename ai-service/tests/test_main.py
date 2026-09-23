@@ -115,6 +115,46 @@ def test_file_extraction_rejects_unsupported_files():
     assert response.status_code == 400
 
 
+def test_pdf_pixmap_is_converted_before_ocr():
+    from PIL import Image
+    from app.services.file_extractor import DocumentFileExtractor
+
+    class FakePixmap:
+        width = 2
+        height = 2
+        n = 3
+        samples = bytes([255, 255, 255] * 4)
+
+    class FakeAdapter:
+        def extract(self, image):
+            assert isinstance(image, Image.Image)
+            assert image.mode == "RGB"
+            return "converted image text", 0.9
+
+    from unittest.mock import patch
+    with patch("app.services.file_extractor.create_ocr_adapter", return_value=FakeAdapter()):
+        assert DocumentFileExtractor._ocr_image(FakePixmap()) == ("converted image text", 0.9)
+
+
+def test_image_upload_does_not_create_nested_pages():
+    from PIL import Image
+    from app.services.file_extractor import DocumentFileExtractor
+
+    class FakeImageAdapter:
+        def extract(self, image):
+            return "converted image text", 0.9
+
+    image_bytes = BytesIO()
+    Image.new("RGB", (2, 2), "white").save(image_bytes, format="PNG")
+
+    with patch("app.services.file_extractor.create_ocr_adapter", return_value=FakeImageAdapter()):
+        result = DocumentFileExtractor.extract("doc_image_100", "scan.png", image_bytes.getvalue())
+
+    assert len(result.pages) == 1
+    assert result.pages[0].page_number == 1
+    assert result.pages[0].method == "ocr"
+
+
 def test_qa_endpoint_success():
     payload = {
         "document_id": "doc_test_200",

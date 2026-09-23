@@ -28,7 +28,7 @@ class DocumentFileExtractor:
         elif extension == ".docx":
             pages = cls._extract_docx(content)
         else:
-            pages = [cls._extract_image(content)]
+            pages = cls._extract_image(content)
 
         result = SelectiveExtractor.extract(document_id, pages)
         if not result.combined_text:
@@ -83,8 +83,22 @@ class DocumentFileExtractor:
     @staticmethod
     def _ocr_image(image) -> tuple[str, float | None]:
         try:
+            # PaddleOCR accepts standard image objects; convert PyMuPDF pixmaps
+            # produced for scanned PDF pages into RGB PIL images first.
+            if hasattr(image, "samples") and hasattr(image, "width") and hasattr(image, "height"):
+                from PIL import Image
+
+                mode = "RGBA" if image.n >= 4 else "RGB"
+                image = Image.frombytes(mode, (image.width, image.height), image.samples)
+                if mode == "RGBA":
+                    image = image.convert("RGB")
+            elif getattr(image, "mode", None) == "RGBA":
+                image = image.convert("RGB")
             return create_ocr_adapter().extract(image)
         except Exception as error:
+            import logging
+
+            logging.getLogger(__name__).exception("OCR extraction failed")
             raise ValueError(
-                "OCR is unavailable. Verify the configured OCR engine and upload a document with a text layer."
+                f"OCR is unavailable: {error}. Verify the configured OCR engine or upload a document with a text layer."
             ) from error

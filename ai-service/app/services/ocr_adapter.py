@@ -1,4 +1,5 @@
 import os
+import json
 from typing import Protocol
 
 
@@ -34,12 +35,22 @@ class PaddleOcrAdapter:
         self.engine = PaddleOCR(lang="en")
 
     def extract(self, image) -> tuple[str, float | None]:
+        import numpy as np
+
+        if not isinstance(image, np.ndarray):
+            image = np.asarray(image.convert("RGB") if hasattr(image, "convert") else image)
+
         results = self.engine.predict(input=image)
         for result in results:
             payload = result.json() if callable(getattr(result, "json", None)) else getattr(result, "json", result)
+            if isinstance(payload, str):
+                payload = json.loads(payload)
             if isinstance(payload, list):
                 payload = payload[0] if payload else {}
-            payload = payload.get("res", payload) if isinstance(payload, dict) else {}
+            if isinstance(payload, dict):
+                payload = payload.get("res", payload)
+            else:
+                payload = getattr(result, "res", {})
             texts = payload.get("rec_texts", [])
             scores = payload.get("rec_scores", [])
             confidences = [float(score) for score in scores if float(score) >= 0]
