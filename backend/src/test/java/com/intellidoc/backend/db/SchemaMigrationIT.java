@@ -98,6 +98,34 @@ class SchemaMigrationIT {
         );
         assertEquals(1, hnsw);
 
+        String ftsIndex = jdbcTemplate.queryForObject(
+                """
+                        SELECT indexdef
+                        FROM pg_indexes
+                        WHERE tablename = 'document_chunk'
+                          AND indexname = 'idx_document_chunk_chunk_text_fts'
+                        """,
+                String.class
+        );
+        assertTrue(ftsIndex != null && ftsIndex.contains("to_tsvector('simple'"), ftsIndex);
+
+        Integer pgTrgm = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM pg_extension WHERE extname = 'pg_trgm'",
+                Integer.class
+        );
+        assertEquals(1, pgTrgm);
+
+        String trgmIndex = jdbcTemplate.queryForObject(
+                """
+                        SELECT indexdef
+                        FROM pg_indexes
+                        WHERE tablename = 'document_chunk'
+                          AND indexname = 'idx_document_chunk_chunk_text_trgm'
+                        """,
+                String.class
+        );
+        assertTrue(trgmIndex != null && trgmIndex.contains("gin_trgm_ops"), trgmIndex);
+
         Integer uniqueModule = jdbcTemplate.queryForObject(
                 """
                         SELECT COUNT(*)

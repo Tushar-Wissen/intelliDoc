@@ -10,6 +10,7 @@ from app.schemas import (
     ErrorResponse,
 )
 
+from app.routers.documents import router as documents_router
 from app.services.processor import DocumentProcessor
 
 
@@ -37,6 +38,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(documents_router)
 
 
 # ============================================================

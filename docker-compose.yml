@@ -92,12 +92,33 @@ services:
       - "${AI_SERVICE_PORT:-8000}:8000"
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=${POSTGRES_DB:-intellidoc}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - MINIO_ENDPOINT=http://minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-minioadmin}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minioadmin}
+      - MINIO_BUCKET=${MINIO_BUCKET:-intellidoc}
+      - OCR_TEXT_DENSITY_THRESHOLD=${OCR_TEXT_DENSITY_THRESHOLD:-80}
+      - CHUNK_TOKEN_TARGET_MIN=${CHUNK_TOKEN_TARGET_MIN:-200}
+      - CHUNK_TOKEN_TARGET_MAX=${CHUNK_TOKEN_TARGET_MAX:-500}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
+      start_period: 40s
     networks:
       - intellidoc-network
 

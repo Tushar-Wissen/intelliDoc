@@ -2,6 +2,36 @@
 
 Three-service stack: React web client, Java/Spring Boot Core API, and Python/FastAPI AI Service, plus Postgres+pgvector, Neo4j, Redis, and MinIO.
 
+## Where the work stands
+
+Ingestion runs in the AI service as one pipeline: parse, selective OCR, chunk, classify and extract, then embed. A successful document stops at `processing_status = INDEXING`. It is not marked `READY`. Epic 5 (knowledge graph) is the remaining gate before `READY`.
+
+| Epic | Status | Where to look |
+|---|---|---|
+| 0 Foundation | In the repo: Compose stack, Flyway schema, JWT login | `docs/Implementation/01_EPIC_00_FOUNDATION_IMPLEMENTATION_PLAN.md` |
+| 1 DMS | In the repo: workspaces, modules, upload, document status | `docs/Implementation/02_EPIC_01_DMS_IMPLEMENTATION_PLAN.md` |
+| 2 Parsing and OCR | In the repo | `ai-service/app/pipeline/parsing.py`, `ocr.py`, `chunking.py` |
+| 3 Classification and extraction | In the repo | `ai-service/app/pipeline/classification.py`, `extraction.py`; field review API under `backend/.../field/` |
+| 4 Search indexing | In the repo | `ai-service/app/pipeline/indexing.py`; Flyway `V22` (simple full-text) and `V23` (`pg_trgm`) |
+| 5 Knowledge graph | Not started | Next epic. Do not mark documents `READY` until the graph stage exists |
+| 6–10 | Not started | Epic 6 retrieval should call `route_text_search()`, not `keyword_search()` directly |
+
+Plans live in `docs/Implementation/`. Requirements and the ERD live in `docs/ReqAndDesign/`. Follow the plan for the epic you pick up. Do not add tables or columns that are not in the ERD.
+
+Search behavior already in Epic 4:
+
+- `generate_embeddings()` writes `document_chunk.embedding` (`vector(1024)`). Blank chunks are skipped.
+- `vector_search()` ranks by cosine distance.
+- `keyword_search()` is Postgres full-text with the `simple` config.
+- `is_identifier_like()` plus `trigram_search()` handle reference-number queries such as `SA-2026-014`. `route_text_search()` chooses between those two text paths.
+
+Still open inside Epic 4:
+
+- `SELECT to_tsvector('simple', 'SA-2026-014')` has not been run against a dev database and recorded in the Epic 4 plan.
+- The `V23` trigram migration is in the repo. It applies the next time Core API starts Flyway. An existing database does not need a volume wipe for a new `Vxx` file.
+
+The frontend still uses its mock login. Core API auth is `POST /auth/login`.
+
 ## Run locally in under 10 minutes
 
 ### Prerequisites
@@ -31,17 +61,27 @@ Infra health is Compose `healthcheck` blocks (`pg_isready`, Neo4j HTTP, Redis `P
 
 ### Seed a POC login (Story 0.4)
 
-There is no signup API. After Core API has applied Flyway migrations:
+There is no signup API. Run this **after** `docker compose up` and Core API has applied Flyway migrations (tables `tenant` and `user_account` exist).
+
+**Docker (Linux/macOS / Git Bash):**
 
 ```bash
 docker compose exec -T postgres psql -U postgres -d intellidoc -f - < scripts/seed_users.sql
 ```
 
-On Windows PowerShell:
+**Docker (Windows PowerShell):**
 
 ```powershell
 Get-Content scripts/seed_users.sql | docker compose exec -T postgres psql -U postgres -d intellidoc
 ```
+
+**Host `psql`** (Postgres published on `localhost:5432`; default password `postgres`):
+
+```bash
+psql -h localhost -U postgres -d intellidoc -f scripts/seed_users.sql
+```
+
+Seeded login: `jane.doe@company.com` / `password`.
 
 Then:
 
@@ -50,6 +90,7 @@ curl -X POST http://localhost:8080/auth/login ^
   -H "Content-Type: application/json" ^
   -d "{\"email\":\"jane.doe@company.com\",\"password\":\"password\"}"
 ```
+
 
 Use the returned bearer token:
 
@@ -102,6 +143,8 @@ pip install -r requirements.txt
 pytest
 uvicorn app.main:app --port 8000 --reload
 ```
+
+`requirements.txt` is enough for the API and unit tests. The Docker image also installs `requirements-pipeline.txt` (Docling, PaddleOCR, and the BGE-M3 embedding library). Unit tests inject a fake embedder and do not download that model.
 
 ### Core API
 

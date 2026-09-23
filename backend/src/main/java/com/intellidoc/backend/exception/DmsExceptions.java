@@ -110,4 +110,12 @@ public final class DmsExceptions {
                 "Document not found."
         );
     }
+
+    public static ApiException fieldNotFound() {
+        return new ApiException(
+                HttpStatus.NOT_FOUND.value(),
+                "FIELD_NOT_FOUND",
+                "Extracted field not found."
+        );
+    }
 }
