@@ -61,20 +61,12 @@ export function invalidateDocumentFoldersCache() {
   documentsCache = null;
 }
 
-export async function fetchDocumentFolders({
-  apiBaseUrl = '',
-  page = 1,
-  pageSize = 12,
-  evaluatedOnly = false,
-} = {}) {
+export async function fetchDocumentFolders({ apiBaseUrl = '', page = 1, pageSize = 12 } = {}) {
   const documents = await loadWorkspaceDocuments(apiBaseUrl);
-  const source = evaluatedOnly
-    ? documents.filter((doc) => doc.status === 'COMPLETED')
-    : documents;
 
   const start = (page - 1) * pageSize;
-  const items = source.slice(start, start + pageSize).map(adaptDocumentToFolder);
-  const hasMore = start + pageSize < source.length;
+  const items = documents.slice(start, start + pageSize).map(adaptDocumentToFolder);
+  const hasMore = start + pageSize < documents.length;
 
-  return { items, hasMore, total: source.length };
+  return { items, hasMore, total: documents.length };
 }
