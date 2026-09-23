@@ -6,6 +6,7 @@ import { LoginPage } from '@/pages/login';
 import { ProfilePage } from '@/pages/profile';
 import { DashboardPage } from '@/pages/dashboard';
 import { WorkspacePage } from '@/pages/workspace';
+import { OrphanedFilesPage } from '@/pages/orphaned-files';
 
 export default function App() {
   return (
@@ -32,6 +33,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <WorkspacePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/orphaned-files"
+        element={
+          <ProtectedRoute>
+            <OrphanedFilesPage />
           </ProtectedRoute>
         }
       />

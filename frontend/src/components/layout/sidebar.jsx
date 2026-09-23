@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FileText, X, Folder, Loader2, LogOut, ChevronRight, ChevronDown } from 'lucide-react';
+import { FileText, X, Folder, Loader2, LogOut, ChevronRight, ChevronDown, Plus, FolderOpen } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { colorForFolder } from '@/lib/folder-colors';
@@ -10,10 +10,8 @@ import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { NAV_ITEMS, WORKSPACE_UTILITY_ITEMS } from '@/constants/nav';
-import { fetchDocumentFolders } from '@/lib/documents-api';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-const SIDEBAR_FOLDERS_LIMIT = 6;
+import { useFolders } from '@/context/folder-context';
+import { CreateFolderDialog } from '@/components/features/create-folder-dialog';
 
 function isNavItemActive(item, location) {
   if (item.comingSoon) return false;
@@ -42,6 +40,11 @@ function NavLink({ item, onNavigate }) {
   return (
     <Link
       to={item.to}
+      id={item.testId}
+      data-testid={item.testId}
+      // "My Workspace" always resets any active folder view, even when clicked from
+      // inside a folder (same /workspace path, so a plain Link wouldn't reset local state).
+      state={item.key === 'workspace' ? { clearFolder: true } : undefined}
       onClick={(e) => {
         if (item.comingSoon) {
           e.preventDefault();
@@ -99,14 +102,20 @@ function FileRow({ file, folder, onNavigate }) {
   );
 }
 
-function FolderNode({ folder, index, expanded, onToggle, onNavigate }) {
+function FolderNode({ folder, index, expanded, selected, onToggle, onNavigate }) {
   const color = colorForFolder(folder, index);
   const navigate = useNavigate();
   const hasFiles = folder.files?.length > 0;
 
   return (
-    <div>
-      <div className="flex items-center gap-0.5">
+    <div id={`folder-item-${folder.id}`} data-testid={`folder-item-${folder.id}`}>
+      {/* The hover/selected background sits on the whole row (chevron slot included) so it lines up with the nav items. */}
+      <div
+        className={cn(
+          'flex items-center gap-0.5 rounded-lg pl-1 transition-colors hover:bg-sidebar-accent/60',
+          selected && 'bg-sidebar-accent/60'
+        )}
+      >
         <button
           type="button"
           onClick={() => hasFiles && onToggle()}
@@ -125,7 +134,8 @@ function FolderNode({ folder, index, expanded, onToggle, onNavigate }) {
             navigate('/workspace', { state: { folderId: folder.id } });
             onNavigate?.();
           }}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-1.5 pr-2 text-left transition-colors hover:bg-sidebar-accent/60"
+          aria-current={selected ? 'true' : undefined}
+          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-2 text-left"
         >
           <Folder className={cn('h-4 w-4 shrink-0', color.fg)} />
           <Tooltip>
@@ -154,29 +164,17 @@ function FolderNode({ folder, index, expanded, onToggle, onNavigate }) {
 }
 
 function FoldersSection({ onNavigate }) {
-  const [folders, setFolders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [total, setTotal] = useState(0);
+  const { folders, loading, error, selectedFolderId, refreshFolders } = useFolders();
   const [expandedFolderIds, setExpandedFolderIds] = useState(() => new Set());
+  const [createOpen, setCreateOpen] = useState(false);
+  const total = folders.length;
 
+  // Expand the selected folder (e.g. one that was just created) when it has files to show.
   useEffect(() => {
-    let cancelled = false;
-    fetchDocumentFolders({ apiBaseUrl: API_BASE_URL, page: 1, pageSize: SIDEBAR_FOLDERS_LIMIT })
-      .then(({ items, total: totalCount }) => {
-        if (cancelled) return;
-        setFolders(items);
-        setTotal(totalCount);
-      })
-      .catch(() => {
-        if (!cancelled) setFolders([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const selected = folders.find((f) => f.id === selectedFolderId);
+    if (!selected?.files?.length) return;
+    setExpandedFolderIds((prev) => (prev.has(selected.id) ? prev : new Set(prev).add(selected.id)));
+  }, [folders, selectedFolderId]);
 
   const toggleFolder = (folderId) => {
     setExpandedFolderIds((prev) => {
@@ -188,48 +186,112 @@ function FoldersSection({ onNavigate }) {
   };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between px-3 pb-1.5">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/45">Folders</h2>
-        {total > 0 && <span className="text-[11px] tabular-nums text-sidebar-foreground/35">{total}</span>}
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2 scrollbar-thin">
-        {loading ? (
-          <div className="flex items-center justify-center py-4">
-            <Loader2 className="h-4 w-4 animate-spin text-sidebar-foreground/30" />
+    <>
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="flex items-center justify-between px-3 pb-1.5">
+          <div className="flex items-center gap-2">
+            <h2 className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/45">Folders</h2>
+            {total > 0 && <span className="text-[11px] tabular-nums text-sidebar-foreground/35">{total}</span>}
           </div>
-        ) : folders.length === 0 ? (
-          <p className="px-2.5 py-3 text-xs text-sidebar-foreground/45">No folders yet.</p>
-        ) : (
-          folders.map((folder, idx) => (
-            <FolderNode
-              key={folder.id}
-              folder={folder}
-              index={idx}
-              expanded={expandedFolderIds.has(folder.id)}
-              onToggle={() => toggleFolder(folder.id)}
-              onNavigate={onNavigate}
-            />
-          ))
-        )}
 
-        {!loading && total > folders.length && (
-          <Link
-            to="/workspace"
-            onClick={() => onNavigate?.()}
-            className="mt-1 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-wissen-navy hover:bg-sidebar-accent/60 dark:text-wissen-navy-light"
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            id="sidebar-create-folder-button"
+            data-testid="sidebar-create-folder-button"
+            aria-label="Create folder"
+            onClick={() => setCreateOpen(true)}
           >
-            View all folders
-            <ChevronRight className="h-3 w-3" />
-          </Link>
-        )}
+            <Plus className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+
+        <div
+          id="folder-list"
+          data-testid="folder-list"
+          className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2 scrollbar-thin"
+        >
+          {loading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-4 w-4 animate-spin text-sidebar-foreground/30" />
+            </div>
+          ) : error && folders.length === 0 ? (
+            <div className="px-2 py-3 text-center text-[12px]">
+              <p className="text-destructive">{error.message}</p>
+              <button
+                type="button"
+                className="mt-1 font-medium text-wissen-navy underline-offset-4 hover:underline dark:text-wissen-navy-light"
+                onClick={() => refreshFolders().catch(() => {})}
+              >
+                Try again
+              </button>
+            </div>
+          ) : folders.length === 0 ? (
+            <div className="mt-1 flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-[#eef2f5] px-4 py-4 text-center shadow-[inset_0_0_0_1px_rgba(255,255,255,0.2)]">
+              <div className="relative">
+                <div className="flex h-14 w-14 items-center justify-center rounded-[1.1rem] bg-slate-200/80 text-wissen-navy shadow-inner dark:text-wissen-navy-light">
+                  <FolderOpen className="h-6 w-6" />
+                </div>
+                <span className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-wissen-navy text-white shadow-sm">
+                  <Plus className="h-3 w-3" />
+                </span>
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-[0.92rem] font-bold leading-none tracking-[-0.03em] text-wissen-navy dark:text-wissen-navy-light">
+                  No folders yet
+                </h3>
+                <p className="max-w-[210px] text-[0.72rem] leading-[1.3] text-wissen-navy/75 dark:text-wissen-navy-light/90">
+                  Create your first folder to keep related documents organized and ready for AI-powered review.
+                </p>
+              </div>
+
+              <Button
+                type="button"
+                className="w-full gap-2 bg-wissen-navy text-xs font-semibold text-white hover:bg-wissen-navy/90"
+                onClick={() => setCreateOpen(true)}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Create Folder
+              </Button>
+            </div>
+          ) : (
+            folders.map((folder, idx) => (
+              <FolderNode
+                key={folder.id}
+                folder={folder}
+                index={idx}
+                expanded={expandedFolderIds.has(folder.id)}
+                selected={folder.id === selectedFolderId}
+                onToggle={() => toggleFolder(folder.id)}
+                onNavigate={onNavigate}
+              />
+            ))
+          )}
+
+          {!loading && folders.length > 0 && (
+            <Link
+              to="/workspace"
+              // Same as the "My Workspace" nav link: land on the workspace overview, not an open folder.
+              state={{ clearFolder: true }}
+              onClick={() => onNavigate?.()}
+              className="mt-1 flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-wissen-navy hover:bg-sidebar-accent/60 dark:text-wissen-navy-light"
+            >
+              View all folders
+              <ChevronRight className="h-3 w-3" />
+            </Link>
+          )}
+        </div>
       </div>
-    </div>
+
+      <CreateFolderDialog open={createOpen} onOpenChange={setCreateOpen} />
+    </>
   );
 }
 
-function SidebarBody({ onNavigate }) {
+function SidebarBody({ onNavigate, scrollContainerRef }) {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
 
@@ -292,16 +354,20 @@ function SidebarBody({ onNavigate }) {
 }
 
 export function Sidebar() {
+  const sidebarScrollRef = useRef(null);
+
   return (
     <aside className="hidden w-64 shrink-0 border-r border-sidebar-border md:block">
       <div className="sticky top-0 h-screen">
-        <SidebarBody />
+        <SidebarBody scrollContainerRef={sidebarScrollRef} />
       </div>
     </aside>
   );
 }
 
 export function MobileSidebar({ open, onOpenChange }) {
+  const sidebarScrollRef = useRef(null);
+
   if (!open) return null;
 
   return (
@@ -316,7 +382,7 @@ export function MobileSidebar({ open, onOpenChange }) {
         >
           <X className="h-4 w-4" />
         </Button>
-        <SidebarBody onNavigate={() => onOpenChange(false)} />
+        <SidebarBody onNavigate={() => onOpenChange(false)} scrollContainerRef={sidebarScrollRef} />
       </div>
     </div>
   );

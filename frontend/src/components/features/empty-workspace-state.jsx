@@ -17,6 +17,7 @@ export function EmptyWorkspaceState({
   ctaLabel,
   ctaIcon: CtaIcon,
   onCtaClick,
+  ctaTestId,
   features = DEFAULT_FEATURES,
   className,
 }) {
@@ -37,6 +38,7 @@ export function EmptyWorkspaceState({
       </div>
 
       <Button
+        data-testid={ctaTestId}
         size="lg"
         className="gap-2 bg-wissen-navy px-6 text-white hover:bg-wissen-navy/90"
         onClick={onCtaClick}

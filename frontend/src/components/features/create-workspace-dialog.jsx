@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { FolderPlus } from 'lucide-react';
+import { FolderPlus, Loader2 } from 'lucide-react';
 
+import { useWorkspace } from '@/context/workspace-context';
+import { useToast } from '@/context/toast-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -15,9 +17,15 @@ import {
 } from '@/components/ui/dialog';
 
 export function CreateWorkspaceDialog({ open, onOpenChange, onCreated }) {
+  const { createWorkspace } = useWorkspace();
+  const toast = useToast();
+
   const [name, setName] = useState('');
+  // The workspace API only accepts a name, so the description is kept in the form for now
+  // but is not sent to the backend.
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const reset = () => {
     setName('');
@@ -26,18 +34,36 @@ export function CreateWorkspaceDialog({ open, onOpenChange, onCreated }) {
   };
 
   const handleOpenChange = (next) => {
+    // Don't let the dialog be dismissed mid-request; the outcome would otherwise go unseen.
+    if (submitting) return;
     if (!next) reset();
     onOpenChange(next);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!name.trim()) {
+    if (submitting) return;
+
+    const cleanedName = name.trim();
+    if (!cleanedName) {
       setError('Workspace name is required.');
       return;
     }
-    onCreated?.({ name: name.trim(), description: description.trim() });
-    handleOpenChange(false);
+
+    setSubmitting(true);
+    try {
+      // Creates the workspace, refreshes the list and selects it (see WorkspaceProvider).
+      const workspace = await createWorkspace(cleanedName);
+      toast.success('Workspace created', `"${workspace.name}" is ready to use.`);
+      setSubmitting(false);
+      reset();
+      onOpenChange(false);
+      onCreated?.(workspace);
+    } catch (err) {
+      // Keep the dialog open with the entered name so the user can retry.
+      toast.error('Could not create workspace', err?.message || 'Something went wrong. Please try again.');
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -52,13 +78,15 @@ export function CreateWorkspaceDialog({ open, onOpenChange, onCreated }) {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="workspace-name">
+            <Label htmlFor="workspace-name-input">
               Workspace Name <span className="text-destructive">*</span>
             </Label>
             <Input
-              id="workspace-name"
+              id="workspace-name-input"
+              data-testid="workspace-name-input"
               placeholder="e.g. HR Knowledge Hub"
               value={name}
+              disabled={submitting}
               onChange={(e) => {
                 setName(e.target.value);
                 if (error) setError('');
@@ -75,17 +103,25 @@ export function CreateWorkspaceDialog({ open, onOpenChange, onCreated }) {
               rows={3}
               placeholder="Store and manage all HR related documents, policies and guidelines."
               value={description}
+              disabled={submitting}
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+            <Button type="button" variant="outline" disabled={submitting} onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90">
-              <FolderPlus className="h-4 w-4" />
-              Create Workspace
+            <Button
+              id="workspace-submit-button"
+              data-testid="workspace-submit-button"
+              type="submit"
+              disabled={submitting}
+              aria-busy={submitting}
+              className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
+            >
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FolderPlus className="h-4 w-4" />}
+              {submitting ? 'Creating...' : 'Create Workspace'}
             </Button>
           </DialogFooter>
         </form>

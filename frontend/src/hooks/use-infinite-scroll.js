@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 
-export function useInfiniteScroll({ hasMore, loading, onLoadMore }) {
+export function useInfiniteScroll({ hasMore, loading, onLoadMore, root = null }) {
   const observerRef = useRef(null);
 
   const sentinelRef = useCallback(
@@ -12,15 +12,19 @@ export function useInfiniteScroll({ hasMore, loading, onLoadMore }) {
 
       observerRef.current = new IntersectionObserver(
         (entries) => {
-          if (entries[0].isIntersecting && !loading) {
+          const target = entries[0];
+          if (target?.isIntersecting && !loading) {
             onLoadMore();
           }
         },
-        { rootMargin: '200px' }
+        {
+          root: root?.current ?? null,
+          rootMargin: '200px',
+        }
       );
       observerRef.current.observe(node);
     },
-    [hasMore, loading, onLoadMore]
+    [hasMore, loading, onLoadMore, root]
   );
 
   useEffect(() => () => observerRef.current?.disconnect(), []);

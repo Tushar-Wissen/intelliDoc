@@ -28,3 +28,11 @@ export function formatDate(value) {
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
+
+// e.g. "22 Sep 2026, 10:24 AM"
+export function formatDateTime(value) {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) return '—';
+  const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return `${formatDate(value)}, ${time}`;
+}

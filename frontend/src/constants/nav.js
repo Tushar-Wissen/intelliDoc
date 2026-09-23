@@ -6,7 +6,7 @@ export const NAV_ITEMS = [
 ];
 
 export const WORKSPACE_UTILITY_ITEMS = [
-  { key: 'orphaned', label: 'Orphaned Files', icon: FileWarning, to: '/workspace?view=orphaned', comingSoon: true },
+  { key: 'orphaned', label: 'Orphaned Files', icon: FileWarning, to: '/orphaned-files', testId: 'orphaned-files-nav' },
   { key: 'shared', label: 'Shared with me', icon: Users, to: '#', comingSoon: true },
   { key: 'trash', label: 'Trash', icon: Trash2, to: '#', comingSoon: true },
 ];

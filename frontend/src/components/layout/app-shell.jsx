@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Sidebar, MobileSidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 
-export function AppShell({ title, subtitle, healthStatus, tabsBar, children }) {
+export function AppShell({ title, subtitle, badge, headerTestId, healthStatus, tabsBar, children }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   return (
@@ -15,6 +15,8 @@ export function AppShell({ title, subtitle, healthStatus, tabsBar, children }) {
         <Header
           title={title}
           subtitle={subtitle}
+          badge={badge}
+          testId={headerTestId}
           healthStatus={healthStatus}
           onMenuClick={() => setMobileNavOpen(true)}
         />

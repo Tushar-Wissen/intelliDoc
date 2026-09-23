@@ -1,72 +1,81 @@
 import axios from 'axios';
 
-const WORKSPACE_ID = 'ws_001';
-const FILE_TAGS = ['policy', 'compliance', 'finance', 'legal', 'operations'];
+import { API_BASE_URL, API_ERROR_CODES, authHeaders, toApiError } from '@/lib/api-client';
+import { getFileExtension } from '@/lib/file-types';
 
-function adaptDocumentToFolder(doc) {
-  const files = doc.files || [];
+export const SUPPORTED_UPLOAD_EXTENSIONS = ['PDF', 'DOCX'];
 
+const DOCUMENT_ERROR_MESSAGES = {
+  [API_ERROR_CODES.INVALID]: 'The file could not be uploaded. Only PDF and DOCX files are accepted.',
+  [API_ERROR_CODES.NOT_FOUND]: 'This workspace no longer exists. Select another workspace and try again.',
+};
+
+const documentsUrl = (workspaceId) => `${API_BASE_URL}/workspaces/${encodeURIComponent(workspaceId)}/documents`;
+
+// Adapts an API document to the file shape the UI uses.
+function toAppDocument(apiDocument) {
   return {
-    id: doc.id,
-    name: doc.title,
-    status: doc.status,
-    filesCount: Number(doc.files_count) || files.length,
-    sectionsCount: Number(doc.sections_count) || 0,
-    createdAt: doc.uploaded_date,
-    updatedAt: doc.uploaded_date,
-    files: files.map((file, fileIndex) => ({
-      id: `${doc.id}-file-${file.files_number ?? fileIndex}`,
-      name: file.files_name,
-      tag: FILE_TAGS[Number(file.files_number ?? fileIndex) % FILE_TAGS.length],
-      hasUpdates: false,
-      sections: (file.children || []).map((section, sectionIndex) => ({
-        id: `${doc.id}-section-${section.sections_number ?? sectionIndex}`,
-        name: section.sections_name,
-        metric: section.sections_number,
-        pages:
-          section.page_start != null && section.page_end != null
-            ? `${section.page_start}-${section.page_end}`
-            : undefined,
-        vectors: section.vectors,
-      })),
-    })),
+    id: apiDocument.id,
+    name: apiDocument.fileName,
+    type: getFileExtension(apiDocument.fileName),
+    status: apiDocument.processingStatus,
+    createdAt: apiDocument.createdAt,
   };
 }
 
-let documentsCache = null;
-let inFlightRequest = null;
+// The API can accept some files and reject others in the same request.
+function toAppRejection(apiRejection) {
+  return {
+    fileName: apiRejection.fileName,
+    code: apiRejection.code,
+    message: apiRejection.message,
+  };
+}
 
-async function loadWorkspaceDocuments(apiBaseUrl) {
-  if (documentsCache) return documentsCache;
+// Multipart field name for the uploaded files (one part per file).
+const UPLOAD_FILES_FIELD = 'files';
 
-  if (!inFlightRequest) {
-    inFlightRequest = axios
-      .get(`${apiBaseUrl}/api/v1/workspaces/${WORKSPACE_ID}/documents`)
-      .then((res) => {
-        if (res.data?.isError) {
-          throw new Error(res.data?.message || 'Failed to load documents.');
-        }
-        documentsCache = res.data?.data ?? [];
-        return documentsCache;
-      })
-      .finally(() => {
-        inFlightRequest = null;
+// Builds the multipart body. When the backend starts accepting a folder/module for uploads,
+// append its id here (and take it as a parameter); nothing else in the UI needs to change.
+function buildUploadFormData({ files, title }) {
+  const formData = new FormData();
+  files.forEach((file) => formData.append(UPLOAD_FILES_FIELD, file));
+  if (title) formData.append('title', title);
+  return formData;
+}
+
+export const documentsApi = {
+  // GET /workspaces/{workspaceId}/documents -> { documents: [{ id, fileName, processingStatus, createdAt }] }
+  async list(workspaceId) {
+    try {
+      const { data } = await axios.get(documentsUrl(workspaceId), { headers: authHeaders() });
+      const items = Array.isArray(data) ? data : data?.documents;
+      return (Array.isArray(items) ? items : []).map(toAppDocument);
+    } catch (err) {
+      throw toApiError(err, DOCUMENT_ERROR_MESSAGES);
+    }
+  },
+
+  // POST /workspaces/{workspaceId}/documents  (multipart: files[, title])
+  //   -> { documents: [...accepted], rejections: [{ fileName, code, message }] }
+  // Uploaded documents belong to the workspace (they show under Orphaned Files) for now.
+  // `title` is optional and only makes sense for a single file. `onProgress` receives 0-100
+  // while the files are being sent.
+  async upload(workspaceId, { files, title }, { onProgress } = {}) {
+    try {
+      // No Content-Type header: the browser adds the multipart boundary itself.
+      const { data } = await axios.post(documentsUrl(workspaceId), buildUploadFormData({ files, title }), {
+        headers: authHeaders(),
+        onUploadProgress: (event) => {
+          if (event.total) onProgress?.(Math.round((event.loaded * 100) / event.total));
+        },
       });
-  }
-
-  return inFlightRequest;
-}
-
-export function invalidateDocumentFoldersCache() {
-  documentsCache = null;
-}
-
-export async function fetchDocumentFolders({ apiBaseUrl = '', page = 1, pageSize = 12 } = {}) {
-  const documents = await loadWorkspaceDocuments(apiBaseUrl);
-
-  const start = (page - 1) * pageSize;
-  const items = documents.slice(start, start + pageSize).map(adaptDocumentToFolder);
-  const hasMore = start + pageSize < documents.length;
-
-  return { items, hasMore, total: documents.length };
-}
+      return {
+        documents: (data?.documents ?? []).map(toAppDocument),
+        rejections: (data?.rejections ?? []).map(toAppRejection),
+      };
+    } catch (err) {
+      throw toApiError(err, DOCUMENT_ERROR_MESSAGES);
+    }
+  },
+};
