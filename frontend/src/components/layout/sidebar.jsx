@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FileText, X, Folder, Loader2, LogOut, ChevronRight, ChevronDown, Plus, FolderOpen } from 'lucide-react';
 
@@ -10,12 +10,8 @@ import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { NAV_ITEMS, WORKSPACE_UTILITY_ITEMS } from '@/constants/nav';
-import { fetchDocumentFolders } from '@/lib/documents-api';
+import { useFolders } from '@/context/folder-context';
 import { CreateFolderDialog } from '@/components/features/create-folder-dialog';
-import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-const SIDEBAR_FOLDERS_LIMIT = 6;
 
 function isNavItemActive(item, location) {
   if (item.comingSoon) return false;
@@ -44,6 +40,8 @@ function NavLink({ item, onNavigate }) {
   return (
     <Link
       to={item.to}
+      id={item.testId}
+      data-testid={item.testId}
       // "My Workspace" always resets any active folder view, even when clicked from
       // inside a folder (same /workspace path, so a plain Link wouldn't reset local state).
       state={item.key === 'workspace' ? { clearFolder: true } : undefined}
@@ -104,14 +102,20 @@ function FileRow({ file, folder, onNavigate }) {
   );
 }
 
-function FolderNode({ folder, index, expanded, onToggle, onNavigate }) {
+function FolderNode({ folder, index, expanded, selected, onToggle, onNavigate }) {
   const color = colorForFolder(folder, index);
   const navigate = useNavigate();
   const hasFiles = folder.files?.length > 0;
 
   return (
-    <div>
-      <div className="flex items-center gap-0.5">
+    <div id={`folder-item-${folder.id}`} data-testid={`folder-item-${folder.id}`}>
+      {/* The hover/selected background sits on the whole row (chevron slot included) so it lines up with the nav items. */}
+      <div
+        className={cn(
+          'flex items-center gap-0.5 rounded-lg pl-1 transition-colors hover:bg-sidebar-accent/60',
+          selected && 'bg-sidebar-accent/60'
+        )}
+      >
         <button
           type="button"
           onClick={() => hasFiles && onToggle()}
@@ -130,7 +134,8 @@ function FolderNode({ folder, index, expanded, onToggle, onNavigate }) {
             navigate('/workspace', { state: { folderId: folder.id } });
             onNavigate?.();
           }}
-          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-1.5 pr-2 text-left transition-colors hover:bg-sidebar-accent/60"
+          aria-current={selected ? 'true' : undefined}
+          className="flex min-w-0 flex-1 items-center gap-2 py-1.5 pr-2 text-left"
         >
           <Folder className={cn('h-4 w-4 shrink-0', color.fg)} />
           <Tooltip>
@@ -158,82 +163,18 @@ function FolderNode({ folder, index, expanded, onToggle, onNavigate }) {
   );
 }
 
-function FoldersSection({ onNavigate, scrollContainerRef }) {
-  const [folders, setFolders] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [total, setTotal] = useState(0);
+function FoldersSection({ onNavigate }) {
+  const { folders, loading, error, selectedFolderId, refreshFolders } = useFolders();
   const [expandedFolderIds, setExpandedFolderIds] = useState(() => new Set());
   const [createOpen, setCreateOpen] = useState(false);
-  const scrollRef = useRef(null);
+  const total = folders.length;
 
-  const fetchFolderPage = useCallback(async (requestedPage) => {
-    const { items, total: totalCount, hasMore: more } = await fetchDocumentFolders({
-      apiBaseUrl: API_BASE_URL,
-      page: requestedPage,
-      pageSize: SIDEBAR_FOLDERS_LIMIT,
-    });
-
-    return { items, totalCount, hasMore: more };
-  }, []);
-
+  // Expand the selected folder (e.g. one that was just created) when it has files to show.
   useEffect(() => {
-    let cancelled = false;
-
-    setLoading(true);
-    setPage(1);
-    setHasMore(true);
-
-    fetchFolderPage(1)
-      .then(({ items, totalCount, hasMore: more }) => {
-        if (cancelled) return;
-        setFolders(items);
-        setTotal(totalCount);
-        setHasMore(more);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setFolders([]);
-          setHasMore(false);
-          setTotal(0);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [fetchFolderPage]);
-
-  const loadMoreFolders = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
-
-    setLoadingMore(true);
-    const nextPage = page + 1;
-
-    try {
-      const { items, totalCount, hasMore: more } = await fetchFolderPage(nextPage);
-      setFolders((prev) => [...prev, ...items]);
-      setPage(nextPage);
-      setTotal(totalCount);
-      setHasMore(more);
-    } catch {
-      setHasMore(false);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, [fetchFolderPage, hasMore, loadingMore, page]);
-
-  const sentinelRef = useInfiniteScroll({
-    hasMore,
-    loading: loadingMore,
-    onLoadMore: loadMoreFolders,
-    root: scrollRef,
-  });
+    const selected = folders.find((f) => f.id === selectedFolderId);
+    if (!selected?.files?.length) return;
+    setExpandedFolderIds((prev) => (prev.has(selected.id) ? prev : new Set(prev).add(selected.id)));
+  }, [folders, selectedFolderId]);
 
   const toggleFolder = (folderId) => {
     setExpandedFolderIds((prev) => {
@@ -242,20 +183,6 @@ function FoldersSection({ onNavigate, scrollContainerRef }) {
       else next.add(folderId);
       return next;
     });
-  };
-
-  const handleFolderCreated = (newFolder) => {
-    if (!newFolder?.name) return;
-    setFolders((prev) => [
-      {
-        ...newFolder,
-        files: newFolder.files || [],
-        filesCount: Number(newFolder.filesCount || 0),
-      },
-      ...prev,
-    ]);
-    setTotal((prev) => prev + 1);
-    setHasMore(true);
   };
 
   return (
@@ -272,6 +199,8 @@ function FoldersSection({ onNavigate, scrollContainerRef }) {
             variant="ghost"
             size="icon"
             className="h-6 w-6 rounded-md text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            id="sidebar-create-folder-button"
+            data-testid="sidebar-create-folder-button"
             aria-label="Create folder"
             onClick={() => setCreateOpen(true)}
           >
@@ -279,10 +208,25 @@ function FoldersSection({ onNavigate, scrollContainerRef }) {
           </Button>
         </div>
 
-        <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-2 scrollbar-thin">
+        <div
+          id="folder-list"
+          data-testid="folder-list"
+          className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2 scrollbar-thin"
+        >
           {loading ? (
             <div className="flex items-center justify-center py-6">
               <Loader2 className="h-4 w-4 animate-spin text-sidebar-foreground/30" />
+            </div>
+          ) : error && folders.length === 0 ? (
+            <div className="px-2 py-3 text-center text-[12px]">
+              <p className="text-destructive">{error.message}</p>
+              <button
+                type="button"
+                className="mt-1 font-medium text-wissen-navy underline-offset-4 hover:underline dark:text-wissen-navy-light"
+                onClick={() => refreshFolders().catch(() => {})}
+              >
+                Try again
+              </button>
             </div>
           ) : folders.length === 0 ? (
             <div className="mt-1 flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-[#eef2f5] px-4 py-4 text-center shadow-[inset_0_0_0_1px_rgba(255,255,255,0.2)]">
@@ -320,28 +264,18 @@ function FoldersSection({ onNavigate, scrollContainerRef }) {
                 folder={folder}
                 index={idx}
                 expanded={expandedFolderIds.has(folder.id)}
+                selected={folder.id === selectedFolderId}
                 onToggle={() => toggleFolder(folder.id)}
                 onNavigate={onNavigate}
               />
             ))
           )}
 
-          {loadingMore && (
-            <div className="flex items-center justify-center gap-2 py-3 text-[11px] text-sidebar-foreground/50">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Loading more folders...
-            </div>
-          )}
-
-          {!loading && !loadingMore && !hasMore && folders.length > 0 && (
-            <div className="px-2 py-2 text-center text-[11px] font-medium text-sidebar-foreground/45">No more folders</div>
-          )}
-
-          {hasMore && <div ref={sentinelRef} className="h-1" aria-hidden="true" />}
-
-          {!loading && folders.length > 0 && !hasMore && (
+          {!loading && folders.length > 0 && (
             <Link
               to="/workspace"
+              // Same as the "My Workspace" nav link: land on the workspace overview, not an open folder.
+              state={{ clearFolder: true }}
               onClick={() => onNavigate?.()}
               className="mt-1 flex items-center justify-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium text-wissen-navy hover:bg-sidebar-accent/60 dark:text-wissen-navy-light"
             >
@@ -352,7 +286,7 @@ function FoldersSection({ onNavigate, scrollContainerRef }) {
         </div>
       </div>
 
-      <CreateFolderDialog open={createOpen} onOpenChange={setCreateOpen} onCreated={handleFolderCreated} />
+      <CreateFolderDialog open={createOpen} onOpenChange={setCreateOpen} />
     </>
   );
 }
@@ -387,7 +321,7 @@ function SidebarBody({ onNavigate, scrollContainerRef }) {
 
         <Separator className="my-4 bg-sidebar-border" />
 
-        <FoldersSection onNavigate={onNavigate} scrollContainerRef={scrollContainerRef} />
+        <FoldersSection onNavigate={onNavigate} />
 
         <div className="space-y-1 border-t border-sidebar-border px-3 py-2">
           {WORKSPACE_UTILITY_ITEMS.map((item) => (

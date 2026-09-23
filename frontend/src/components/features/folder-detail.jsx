@@ -11,6 +11,7 @@ import {
   ChevronDown,
   UploadCloud,
   Search,
+  Sparkles,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
@@ -24,6 +25,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+
+// Formats accepted by the upload dialog, shown as hints in the empty state.
+const EMPTY_STATE_FORMATS = ['PDF', 'DOCX', 'CSV', 'TXT'];
 
 const FOLDER_COLORS = [
   { bg: 'bg-violet-500/10', fg: 'text-violet-600 dark:text-violet-400' },
@@ -258,9 +262,47 @@ function FolderOverview({ folder, onFileClick, onUploadClick }) {
       </div>
 
       {allFiles.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-16 text-center">
-          <FileText className="h-10 w-10 text-muted-foreground" />
-          <p className="font-medium text-muted-foreground">No files in this folder yet</p>
+        <div
+          data-testid="folder-empty-state"
+          className="flex flex-1 flex-col items-center justify-center gap-6 rounded-xl border border-dashed border-border bg-gradient-to-b from-wissen-navy/[0.03] to-transparent px-6 py-14 text-center"
+        >
+          <div className="relative">
+            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-wissen-navy/10">
+              <FileText className="h-9 w-9 text-wissen-navy dark:text-wissen-navy-light" />
+            </div>
+            <span className="absolute -right-2 -top-2 flex h-7 w-7 items-center justify-center rounded-full bg-wissen-navy text-white shadow-sm">
+              <Sparkles className="h-3.5 w-3.5" />
+            </span>
+          </div>
+
+          <div className="space-y-1.5">
+            <h3 className="font-display text-lg font-semibold tracking-tight text-foreground">
+              No files in this folder yet
+            </h3>
+            <p className="mx-auto max-w-sm text-sm leading-relaxed text-muted-foreground">
+              Upload your first document to start organizing it here and asking IntelliDoc AI questions about it.
+            </p>
+          </div>
+
+          <Button
+            type="button"
+            onClick={onUploadClick}
+            className="gap-2 bg-wissen-navy px-5 text-white hover:bg-wissen-navy/90"
+          >
+            <UploadCloud className="h-4 w-4" />
+            Upload document
+          </Button>
+
+          <div className="flex flex-wrap items-center justify-center gap-1.5">
+            {EMPTY_STATE_FORMATS.map((format) => (
+              <span
+                key={format}
+                className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-medium text-muted-foreground"
+              >
+                {format}
+              </span>
+            ))}
+          </div>
         </div>
       ) : filteredFiles.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">

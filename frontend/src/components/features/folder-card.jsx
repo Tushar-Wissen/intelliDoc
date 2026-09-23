@@ -17,7 +17,7 @@ export function FolderCard({
   index = 0,
   selected = false,
   onClick,
-  onEdit,
+  onRename,
   onDelete,
   createdBy = 'You',
 }) {
@@ -92,9 +92,13 @@ export function FolderCard({
                 <Eye className="h-4 w-4" />
                 View
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={runMenuAction(() => onEdit?.(folder))}>
+              <DropdownMenuItem
+                id="rename-folder-button"
+                data-testid="rename-folder-button"
+                onClick={runMenuAction(() => onRename?.(folder))}
+              >
                 <Pencil className="h-4 w-4" />
-                Edit
+                Rename
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem

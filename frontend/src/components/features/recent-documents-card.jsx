@@ -1,13 +1,14 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, ChevronRight } from 'lucide-react';
+import { FileText, ChevronRight, Clock, UploadCloud } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/format';
 import { colorForFolder } from '@/lib/folder-colors';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-export function RecentDocumentsCard({ loading, files, onOpenFile, viewAllHref }) {
+export function RecentDocumentsCard({ loading, files, onOpenFile, onUploadClick, viewAllHref }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -30,7 +31,38 @@ export function RecentDocumentsCard({ loading, files, onOpenFile, viewAllHref })
             ))}
           </div>
         ) : files.length === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">No documents yet</p>
+          <div
+            data-testid="recent-documents-empty"
+            className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border bg-gradient-to-b from-wissen-navy/[0.03] to-transparent px-6 py-8 text-center"
+          >
+            <div className="relative">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-wissen-navy/10">
+                <FileText className="h-6 w-6 text-wissen-navy dark:text-wissen-navy-light" />
+              </div>
+              <span className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full bg-wissen-navy text-white shadow-sm">
+                <Clock className="h-3 w-3" />
+              </span>
+            </div>
+
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-foreground">No documents yet</p>
+              <p className="mx-auto max-w-xs text-xs leading-relaxed text-muted-foreground">
+                Documents you upload or open will show up here for quick access.
+              </p>
+            </div>
+
+            {onUploadClick && (
+              <Button
+                type="button"
+                size="sm"
+                onClick={onUploadClick}
+                className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
+              >
+                <UploadCloud className="h-3.5 w-3.5" />
+                Upload document
+              </Button>
+            )}
+          </div>
         ) : (
           <div className="flex flex-col divide-y divide-border">
             {files.map((file, idx) => {

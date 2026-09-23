@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import axios from 'axios';
-import { Search, Plus, UploadCloud, FileWarning, FileText, Loader2, FolderKanban, FolderOpen } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Search, Plus, UploadCloud, FileText, FolderKanban, FolderOpen } from 'lucide-react';
 
 import { AppShell } from '@/components/layout/app-shell';
 import { Button } from '@/components/ui/button';
@@ -11,214 +10,80 @@ import { Card, CardContent } from '@/components/ui/card';
 import { FolderCard } from '@/components/features/folder-card';
 import { FolderDetail } from '@/components/features/folder-detail';
 import { UploadDialog } from '@/components/features/upload-dialog';
-import { ToastNotification } from '@/components/ui/toast-notification';
 import { CopilotSidebar } from '@/components/features/copilot-sidebar';
 import { EmptyWorkspaceState } from '@/components/features/empty-workspace-state';
 import { CreateFolderDialog } from '@/components/features/create-folder-dialog';
+import { RenameFolderDialog } from '@/components/features/rename-folder-dialog';
 import { RecentDocumentsCard } from '@/components/features/recent-documents-card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
-import {
-  fetchDocumentFolders,
-  invalidateDocumentFoldersCache,
-  addFileToCachedDocument,
-  updateCachedDocumentTitle,
-  removeCachedDocument,
-} from '@/lib/documents-api';
-import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { useHealthStatus } from '@/hooks/use-health-status';
 import { useAuth } from '@/context/auth-context';
+import { useWorkspace } from '@/context/workspace-context';
+import { useFolders } from '@/context/folder-context';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-const FOLDERS_PAGE_SIZE = 12;
-// Orphaned Files scans every file for zero-section ones, so it fetches a much larger page
-// than the card grid ever needs.
-const ORPHANED_SCAN_PAGE_SIZE = 200;
-
-const VIEWS = {
-  all: {
-    title: 'My Workspace',
-    subtitle: 'Browse folders and analyze documents with AI',
-  },
-  orphaned: {
-    title: 'Orphaned Files',
-    subtitle: "Files that haven't been indexed into any section yet",
-  },
-};
+const SUBTITLE = 'Browse folders and analyze documents with AI';
 
 export function WorkspacePage() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const view = searchParams.get('view') === 'orphaned' ? 'orphaned' : 'all';
 
-  const [documents, setDocuments] = useState([]);
   const [search, setSearch] = useState('');
   const healthStatus = useHealthStatus();
   const { user } = useAuth();
+  const { workspaceName, selectedWorkspaceId } = useWorkspace();
+  const {
+    folders,
+    loading: foldersLoading,
+    error: foldersError,
+    selectFolder,
+    refreshFolders,
+    removeFolderLocally,
+  } = useFolders();
 
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [uploadLockedFolderId, setUploadLockedFolderId] = useState(null);
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
-  const [editingFolder, setEditingFolder] = useState(null);
+  const [renamingFolder, setRenamingFolder] = useState(null);
   const [deletingFolder, setDeletingFolder] = useState(null);
 
-  const [activeFolder, setActiveFolder] = useState(null);
+  // Only the id is stored; the folder itself is looked up so it always reflects the shared list.
+  const [activeFolderId, setActiveFolderId] = useState(null);
   const [activeFileId, setActiveFileId] = useState(null);
 
   const [openTabs, setOpenTabs] = useState([]);
   const [activeTabId, setActiveTabId] = useState(null);
   const [chatHistories, setChatHistories] = useState({});
 
-  const [folders, setFolders] = useState([]);
-  const [foldersPage, setFoldersPage] = useState(1);
-  const [foldersHasMore, setFoldersHasMore] = useState(true);
-  const [foldersLoading, setFoldersLoading] = useState(true);
-  const [foldersError, setFoldersError] = useState(null);
-  const foldersViewRef = useRef(view);
-
-  const [toastOpen, setToastOpen] = useState(false);
-  const [toastMessage, setToastMessage] = useState(
-    'We’ve got your file(s) and are working on them right now. Sit tight—the details will appear shortly.'
+  const activeFolder = useMemo(
+    () => folders.find((f) => f.id === activeFolderId) ?? null,
+    [folders, activeFolderId]
   );
 
+  // Tabs and the open folder belong to a workspace, so start fresh when it changes.
   useEffect(() => {
-    fetchDocuments();
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    foldersViewRef.current = view;
-    setFolders([]);
-    setFoldersPage(1);
-    setFoldersHasMore(true);
-    setFoldersLoading(true);
-    setFoldersError(null);
-
-    fetchDocumentFolders({
-      apiBaseUrl: API_BASE_URL,
-      page: 1,
-      pageSize: view === 'orphaned' ? ORPHANED_SCAN_PAGE_SIZE : FOLDERS_PAGE_SIZE,
-    })
-      .then(({ items, hasMore }) => {
-        if (cancelled) return;
-        setFolders(items);
-        setFoldersHasMore(hasMore);
-      })
-      .catch((err) => {
-        console.error('Failed to fetch document folders', err);
-        if (!cancelled) {
-          setFoldersHasMore(false);
-          setFoldersError(err?.message || 'We could not load your folders right now.');
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setFoldersLoading(false);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [view]);
-
-  useEffect(() => {
-    setActiveFolder(null);
+    setActiveFolderId(null);
     setActiveFileId(null);
-  }, [view]);
+    setOpenTabs([]);
+    setActiveTabId(null);
+  }, [selectedWorkspaceId]);
 
-  const loadMoreFolders = useCallback(async () => {
-    const requestView = view;
-    setFoldersLoading(true);
-    const nextPage = foldersPage + 1;
-    try {
-      const { items, hasMore } = await fetchDocumentFolders({
-        apiBaseUrl: API_BASE_URL,
-        page: nextPage,
-        pageSize: requestView === 'orphaned' ? ORPHANED_SCAN_PAGE_SIZE : FOLDERS_PAGE_SIZE,
-      });
-      if (foldersViewRef.current !== requestView) return;
-      setFolders((prev) => [...prev, ...items]);
-      setFoldersPage(nextPage);
-      setFoldersHasMore(hasMore);
-    } catch (err) {
-      console.error('Failed to fetch document folders', err);
-      if (foldersViewRef.current === requestView) setFoldersHasMore(false);
-    } finally {
-      if (foldersViewRef.current === requestView) setFoldersLoading(false);
-    }
-  }, [foldersPage, view]);
+  // Mirror the open folder into the shared folder state so the sidebar can highlight it.
+  useEffect(() => {
+    selectFolder(activeFolderId);
+  }, [activeFolderId, selectFolder]);
+  useEffect(() => () => selectFolder(null), [selectFolder]);
 
-  const refreshFolders = useCallback(async () => {
-    const requestView = view;
-    invalidateDocumentFoldersCache();
-    setFoldersLoading(true);
-    try {
-      const { items, hasMore } = await fetchDocumentFolders({
-        apiBaseUrl: API_BASE_URL,
-        page: 1,
-        pageSize: requestView === 'orphaned' ? ORPHANED_SCAN_PAGE_SIZE : FOLDERS_PAGE_SIZE,
-      });
-      if (foldersViewRef.current !== requestView) return;
-      setFolders(items);
-      setFoldersPage(1);
-      setFoldersHasMore(hasMore);
-    } catch (err) {
-      console.error('Failed to refresh document folders', err);
-    } finally {
-      if (foldersViewRef.current === requestView) setFoldersLoading(false);
-    }
-  }, [view]);
-
-  const foldersSentinelRef = useInfiniteScroll({
-    hasMore: foldersHasMore,
-    loading: foldersLoading,
-    onLoadMore: loadMoreFolders,
-  });
-
-  const fetchDocuments = async () => {
-    try {
-      const res = await axios.get(`${API_BASE_URL}/api/v1/documents`);
-      setDocuments(res.data);
-    } catch (err) {
-      console.error('Failed to fetch documents', err);
-    }
-  };
-
-  const handleShowToast = (msg) => {
-    setToastMessage(msg || 'We’ve got your files and are working on them right now. Sit tight—the details will appear shortly.');
-    setToastOpen(true);
-  };
-
-  const handleCreated = (newItems) => {
-    const items = Array.isArray(newItems) ? newItems : [newItems];
-    setDocuments((prev) => [...items, ...prev]);
-    refreshFolders();
-  };
-
-  const handleFolderSaved = (folder, isEdit) => {
-    if (!folder?.name) return;
-
-    if (isEdit) {
-      updateCachedDocumentTitle(folder.id, folder.name);
-      setFolders((prev) => prev.map((f) => (f.id === folder.id ? { ...f, ...folder } : f)));
-      setActiveFolder((prev) => (prev?.id === folder.id ? { ...prev, ...folder } : prev));
-      return;
-    }
-
-    setFolders((prev) => [
-      {
-        ...folder,
-        files: folder.files || [],
-        filesCount: Number(folder.filesCount || 0),
-      },
-      ...prev,
-    ]);
-    setFoldersHasMore(true);
-  };
-
-  const handleEditFolder = (folder) => {
-    setEditingFolder(folder);
-    setCreateFolderOpen(true);
+  // The shared folder list is already updated by the time this runs, so the sidebar, cards and
+  // the page title (all derived from it) show the new name. Open tabs keep their own copy of
+  // the name, so refresh those, and the active folder simply stays selected by id.
+  const handleFolderRenamed = (folder) => {
+    setOpenTabs((prev) =>
+      prev.map((tab) => {
+        if (tab.id === `folder:${folder.id}`) return { ...tab, name: folder.name };
+        if (tab.folderId === folder.id) return { ...tab, folderName: folder.name };
+        return tab;
+      })
+    );
   };
 
   const handleDeleteFolder = (folder) => {
@@ -229,31 +94,14 @@ export function WorkspacePage() {
     if (!deletingFolder) return;
     const folderId = deletingFolder.id;
 
-    removeCachedDocument(folderId);
-    setFolders((prev) => prev.filter((f) => f.id !== folderId));
-    setActiveFolder((prev) => (prev?.id === folderId ? null : prev));
+    removeFolderLocally(folderId);
+    setActiveFolderId((prev) => (prev === folderId ? null : prev));
     setOpenTabs((prev) => prev.filter((t) => t.id !== `folder:${folderId}`));
     setDeletingFolder(null);
   };
 
-  const handleFileAddedToFolder = (folderId, file) => {
-    addFileToCachedDocument(folderId, file.name);
-    setFolders((prev) =>
-      prev.map((folder) =>
-        folder.id === folderId
-          ? { ...folder, files: [...(folder.files || []), file], filesCount: (folder.filesCount || 0) + 1 }
-          : folder
-      )
-    );
-    setActiveFolder((prev) =>
-      prev?.id === folderId
-        ? { ...prev, files: [...(prev.files || []), file], filesCount: (prev.filesCount || 0) + 1 }
-        : prev
-    );
-  };
-
   const handleSelectFolder = (folder) => {
-    setActiveFolder(folder);
+    setActiveFolderId(folder.id);
     setActiveFileId(null);
 
     const tabId = `folder:${folder.id}`;
@@ -293,7 +141,7 @@ export function WorkspacePage() {
     }
 
     if (location.state?.clearFolder) {
-      setActiveFolder(null);
+      setActiveFolderId(null);
       setActiveFileId(null);
       navigate(location.pathname + location.search, { replace: true, state: {} });
     }
@@ -320,10 +168,7 @@ export function WorkspacePage() {
     setActiveTabId(tabId);
     setActiveFileId(fileData.id);
     if (fileData.folderId) {
-      setActiveFolder((prev) => {
-        if (prev?.id === fileData.folderId) return prev;
-        return folders.find((f) => f.id === fileData.folderId) ?? prev;
-      });
+      setActiveFolderId((prev) => (folders.some((f) => f.id === fileData.folderId) ? fileData.folderId : prev));
     }
   }, [folders]);
 
@@ -397,45 +242,28 @@ export function WorkspacePage() {
       .slice(0, 5);
   }, [folders]);
 
-  // Files that uploaded successfully but have no extracted sections yet.
-  const orphanedFiles = useMemo(() => {
-    if (view !== 'orphaned') return [];
-    const flattened = [];
-    folders.forEach((folder) => {
-      (folder.files || []).forEach((file) => {
-        if (!file.sections || file.sections.length === 0) {
-          flattened.push({ ...file, folderId: folder.id, folderName: folder.name });
-        }
-      });
-    });
-    return flattened;
-  }, [folders, view]);
-
-  const { title, subtitle } = VIEWS[view];
+  // The page is titled with the selected workspace's name.
+  const title = workspaceName || 'Workspace';
 
   return (
     <AppShell
       title={activeFolder ? activeFolder.name : title}
-      subtitle={activeFolder ? undefined : subtitle}
+      subtitle={activeFolder ? undefined : SUBTITLE}
       healthStatus={healthStatus}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-6">
-        {!activeFolder && !(view === 'all' && !foldersLoading && folders.length === 0) && (
+        {!activeFolder && !(!foldersLoading && folders.length === 0) && (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            {view === 'all' ? (
-              <div className="relative w-full sm:max-w-xs">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  id="folder-search-input"
-                  placeholder="Filter folders..."
-                  className="pl-9"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-            ) : (
-              <div />
-            )}
+            <div className="relative w-full sm:max-w-xs">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="folder-search-input"
+                placeholder="Filter folders..."
+                className="pl-9"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
             <div className="flex items-center gap-3 mr-80 sm:mr-96">
               <Button
                 id="create-folder-button"
@@ -448,13 +276,10 @@ export function WorkspacePage() {
                 Create Folder
               </Button>
               <Button
-                id="upload-document-button"
-                data-testid="upload-document-button"
-                className="gap-2"
-                onClick={() => {
-                  setUploadLockedFolderId(null);
-                  setUploadOpen(true);
-                }}
+                id="document-upload-button"
+                data-testid="document-upload-button"
+                className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
+                onClick={() => setUploadOpen(true)}
               >
                 <UploadCloud className="h-4 w-4" />
                 Upload
@@ -470,51 +295,8 @@ export function WorkspacePage() {
                 folder={activeFolder}
                 onFileClick={handleFileClick}
                 activeFileId={activeFileId}
-                onUploadClick={() => {
-                  setUploadLockedFolderId(activeFolder.id);
-                  setUploadOpen(true);
-                }}
+                onUploadClick={() => setUploadOpen(true)}
               />
-            </div>
-          </ScrollArea>
-        ) : view === 'orphaned' ? (
-          <ScrollArea className="-mx-1 min-h-0 flex-1">
-            <div className="px-1 pb-1 mr-80 sm:mr-96">
-              {foldersLoading && folders.length === 0 ? (
-                <div className="flex items-center justify-center py-20">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : orphanedFiles.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-20 text-center">
-                  <FileWarning className="h-10 w-10 text-muted-foreground" />
-                  <p className="font-medium text-muted-foreground">No orphaned files</p>
-                  <p className="max-w-xs text-sm text-muted-foreground">
-                    Every uploaded file has been indexed into at least one section.
-                  </p>
-                </div>
-              ) : (
-                <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
-                  {orphanedFiles.map((file) => (
-                    <button
-                      key={file.id}
-                      type="button"
-                      onClick={() => handleFileClick(file)}
-                      className="flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/40"
-                    >
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/10">
-                        <FileText className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-card-foreground">{file.name}</p>
-                        <p className="truncate text-xs text-muted-foreground">{file.folderName}</p>
-                      </div>
-                      <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
-                        Not indexed
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
           </ScrollArea>
         ) : (
@@ -531,12 +313,12 @@ export function WorkspacePage() {
                   <FolderOpen className="h-10 w-10 text-muted-foreground" />
                   <div className="space-y-1">
                     <p className="text-lg font-semibold text-foreground">Unable to load folders</p>
-                    <p className="max-w-md text-sm text-muted-foreground">{foldersError}</p>
+                    <p className="max-w-md text-sm text-muted-foreground">{foldersError.message}</p>
                   </div>
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => refreshFolders()}
+                    onClick={() => refreshFolders().catch(() => {})}
                     data-testid="workspace-retry-folder-load"
                   >
                     Try again
@@ -563,7 +345,7 @@ export function WorkspacePage() {
                       <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                         Workspace Overview
                       </p>
-                      <h2 className="text-2xl font-semibold tracking-tight text-foreground">My Workspace</h2>
+                      <h2 className="text-2xl font-semibold tracking-tight text-foreground">{workspaceName || 'Workspace'}</h2>
                     </div>
 
                     <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -586,7 +368,12 @@ export function WorkspacePage() {
                     </div>
                   </div>
 
-                  {!search && <RecentDocumentsCard loading={false} files={recentFiles} onOpenFile={handleFileClick} />}
+                  {!search && <RecentDocumentsCard
+                      loading={false}
+                      files={recentFiles}
+                      onOpenFile={handleFileClick}
+                      onUploadClick={() => setUploadOpen(true)}
+                    />}
 
                   <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {filteredFolders.map((folder, idx) => (
@@ -597,17 +384,11 @@ export function WorkspacePage() {
                         selected={activeFolder?.id === folder.id}
                         createdBy={user?.fullName || 'You'}
                         onClick={() => handleSelectFolder(folder)}
-                        onEdit={handleEditFolder}
+                        onRename={setRenamingFolder}
                         onDelete={handleDeleteFolder}
                       />
                     ))}
                   </div>
-
-                  {!search && foldersHasMore && (
-                    <div ref={foldersSentinelRef} className="flex h-12 items-center justify-center">
-                      {foldersLoading && <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />}
-                    </div>
-                  )}
                 </>
               )}
             </div>
@@ -615,14 +396,13 @@ export function WorkspacePage() {
         )}
       </div>
 
-      <CreateFolderDialog
-        open={createFolderOpen}
-        onOpenChange={(next) => {
-          setCreateFolderOpen(next);
-          if (!next) setEditingFolder(null);
-        }}
-        folder={editingFolder}
-        onCreated={handleFolderSaved}
+      <CreateFolderDialog open={createFolderOpen} onOpenChange={setCreateFolderOpen} />
+
+      <RenameFolderDialog
+        open={Boolean(renamingFolder)}
+        onOpenChange={(next) => { if (!next) setRenamingFolder(null); }}
+        folder={renamingFolder}
+        onRenamed={handleFolderRenamed}
       />
 
       <ConfirmDialog
@@ -635,16 +415,7 @@ export function WorkspacePage() {
         onConfirm={handleConfirmDeleteFolder}
       />
 
-      <UploadDialog
-        open={uploadOpen}
-        onOpenChange={setUploadOpen}
-        apiBaseUrl={API_BASE_URL}
-        folders={folders}
-        onCreated={handleCreated}
-        onAddToFolder={handleFileAddedToFolder}
-        onShowToast={handleShowToast}
-        lockedFolderId={uploadLockedFolderId}
-      />
+      <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
 
       <CopilotSidebar
         activeTabId={activeCopilotId}
@@ -653,12 +424,6 @@ export function WorkspacePage() {
         placeholder={copilotPlaceholder}
         chatHistories={chatHistories}
         onUpdateHistory={handleUpdateChatHistory}
-      />
-
-      <ToastNotification
-        open={toastOpen}
-        onClose={() => setToastOpen(false)}
-        message={toastMessage}
       />
     </AppShell>
   );

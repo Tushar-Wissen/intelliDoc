@@ -45,7 +45,7 @@ function getInitials(user) {
   return (user?.email?.[0] || '?').toUpperCase();
 }
 
-export function Header({ title, subtitle, healthStatus, onMenuClick }) {
+export function Header({ title, subtitle, badge, testId, healthStatus, onMenuClick }) {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
 
@@ -62,7 +62,7 @@ export function Header({ title, subtitle, healthStatus, onMenuClick }) {
   const allUp = services.every((s) => s.status === 'up');
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:px-6">
+    <header id={testId} data-testid={testId} className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:px-6">
       <TooltipProvider delayDuration={200}>
         <Button
           variant="ghost"
@@ -75,12 +75,19 @@ export function Header({ title, subtitle, healthStatus, onMenuClick }) {
         </Button>
 
         <div className="min-w-0 flex-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <h1 className="truncate text-base font-semibold tracking-tight">{title}</h1>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">{title}</TooltipContent>
-          </Tooltip>
+          <div className="flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <h1 className="truncate text-base font-semibold tracking-tight">{title}</h1>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{title}</TooltipContent>
+            </Tooltip>
+            {badge && (
+              <span className="shrink-0 rounded-full bg-wissen-navy/10 px-2 py-0.5 text-[11px] font-semibold text-wissen-navy dark:text-wissen-navy-light">
+                {badge}
+              </span>
+            )}
+          </div>
           {subtitle && <p className="hidden truncate text-xs text-muted-foreground sm:block">{subtitle}</p>}
         </div>
 

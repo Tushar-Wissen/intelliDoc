@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FileText, FolderKanban, FolderPlus, MessageSquareText, Database, BarChart3, PieChart, Plus, Loader2 } from 'lucide-react';
 
@@ -8,16 +8,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { UploadDialog } from '@/components/features/upload-dialog';
 import { CreateWorkspaceDialog } from '@/components/features/create-workspace-dialog';
-import { ToastNotification } from '@/components/ui/toast-notification';
 import { EmptyWorkspaceState } from '@/components/features/empty-workspace-state';
 import { RecentDocumentsCard } from '@/components/features/recent-documents-card';
 
-import { fetchDocumentFolders, invalidateDocumentFoldersCache, addFileToCachedDocument } from '@/lib/documents-api';
 import { useHealthStatus } from '@/hooks/use-health-status';
 import { useWorkspace } from '@/context/workspace-context';
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-const DASHBOARD_FOLDERS_PAGE_SIZE = 100;
+import { useFolders } from '@/context/folder-context';
 
 function StatCard({ icon: Icon, label, value, hint, iconBg, iconFg }) {
   return (
@@ -54,38 +50,12 @@ function InsightPlaceholder({ title, icon: Icon, message, action }) {
 export function DashboardPage() {
   const healthStatus = useHealthStatus();
   const navigate = useNavigate();
-  const { setWorkspaceName } = useWorkspace();
-
-  const [folders, setFolders] = useState([]);
-  const [totalFolders, setTotalFolders] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const { workspaces, loading: workspacesLoading } = useWorkspace();
+  const { folders, loading } = useFolders();
+  const totalFolders = folders.length;
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
-  const [toastOpen, setToastOpen] = useState(false);
-  const [toastMessage, setToastMessage] = useState(
-    'We’ve got your file(s) and are working on them right now. Sit tight—the details will appear shortly.'
-  );
-
-  const loadFolders = () => {
-    setLoading(true);
-    return fetchDocumentFolders({ apiBaseUrl: API_BASE_URL, page: 1, pageSize: DASHBOARD_FOLDERS_PAGE_SIZE })
-      .then(({ items, total }) => {
-        setFolders(items);
-        setTotalFolders(total);
-      })
-      .catch((err) => console.error('Failed to fetch document folders', err))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    loadFolders().catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const totalDocuments = useMemo(
     () => folders.reduce((sum, folder) => sum + (folder.filesCount || 0), 0),
@@ -113,29 +83,8 @@ export function DashboardPage() {
     navigate('/workspace', { state: { folderId: file.folderId, fileId: file.id } });
   };
 
-  const handleCreated = () => {
-    invalidateDocumentFoldersCache();
-    loadFolders();
-  };
-
-  const handleFileAddedToFolder = (folderId, file) => {
-    addFileToCachedDocument(folderId, file.name);
-    setFolders((prev) =>
-      prev.map((folder) =>
-        folder.id === folderId
-          ? { ...folder, files: [...(folder.files || []), file], filesCount: (folder.filesCount || 0) + 1 }
-          : folder
-      )
-    );
-  };
-
-  const handleShowToast = (msg) => {
-    setToastMessage(msg || 'We’ve got your files and are working on them right now. Sit tight—the details will appear shortly.');
-    setToastOpen(true);
-  };
-
-  const handleWorkspaceCreated = (workspace) => {
-    setWorkspaceName(workspace.name);
+  // The new workspace is already selected by the workspace context at this point.
+  const handleWorkspaceCreated = () => {
     // Wait for the Create Workspace dialog's ~200ms close animation to finish
     // before opening the Upload dialog, so the two don't render stacked mid-transition.
     setTimeout(() => setUploadOpen(true), 250);
@@ -143,11 +92,11 @@ export function DashboardPage() {
 
   return (
     <AppShell title="Dashboard" subtitle={today} healthStatus={healthStatus}>
-      {loading ? (
+      {loading || workspacesLoading ? (
         <div className="flex flex-1 items-center justify-center">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
-      ) : totalFolders === 0 ? (
+      ) : workspaces.length === 0 ? (
         <EmptyWorkspaceState
           className="flex-1 justify-center px-4 py-16"
           icon={FolderPlus}
@@ -156,6 +105,7 @@ export function DashboardPage() {
           ctaLabel="Create Workspace"
           ctaIcon={FolderPlus}
           onCtaClick={() => setCreateWorkspaceOpen(true)}
+          ctaTestId="workspace-empty-create-button"
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto">
@@ -215,7 +165,13 @@ export function DashboardPage() {
             />
           </div>
 
-          <RecentDocumentsCard loading={false} files={recentFiles} onOpenFile={handleOpenFile} viewAllHref="/workspace" />
+          <RecentDocumentsCard
+            loading={false}
+            files={recentFiles}
+            onOpenFile={handleOpenFile}
+            onUploadClick={() => setUploadOpen(true)}
+            viewAllHref="/workspace"
+          />
         </div>
       )}
 
@@ -225,17 +181,7 @@ export function DashboardPage() {
         onCreated={handleWorkspaceCreated}
       />
 
-      <UploadDialog
-        open={uploadOpen}
-        onOpenChange={setUploadOpen}
-        apiBaseUrl={API_BASE_URL}
-        folders={folders}
-        onCreated={handleCreated}
-        onAddToFolder={handleFileAddedToFolder}
-        onShowToast={handleShowToast}
-      />
-
-      <ToastNotification open={toastOpen} onClose={() => setToastOpen(false)} message={toastMessage} />
+      <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
     </AppShell>
   );
 }
