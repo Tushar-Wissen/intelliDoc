@@ -4,7 +4,8 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { ProtectedRoute } from '@/components/auth/protected-route';
 import { LoginPage } from '@/pages/login';
 import { ProfilePage } from '@/pages/profile';
-import { MyDocumentsPage } from '@/pages/my-documents';
+import { DashboardPage } from '@/pages/dashboard';
+import { WorkspacePage } from '@/pages/workspace';
 
 export default function App() {
   return (
@@ -22,7 +23,15 @@ export default function App() {
         path="/"
         element={
           <ProtectedRoute>
-            <MyDocumentsPage />
+            <DashboardPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/workspace"
+        element={
+          <ProtectedRoute>
+            <WorkspacePage />
           </ProtectedRoute>
         }
       />

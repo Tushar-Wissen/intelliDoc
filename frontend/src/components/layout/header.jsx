@@ -1,13 +1,13 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Menu, Database, Server, Cpu, LogOut } from 'lucide-react';
+import { Menu, Database, Server, Cpu, LogOut } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { ThemeToggle } from '@/components/theme-toggle';
+import { WorkspaceSelector } from '@/components/layout/workspace-selector';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -99,19 +99,9 @@ export function Header({ title, subtitle, healthStatus, onMenuClick }) {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-[1.1rem] w-[1.1rem]" />
-              <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-primary" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Notifications</TooltipContent>
-        </Tooltip>
       </TooltipProvider>
 
-      <ThemeToggle />
+      <WorkspaceSelector />
 
       <Separator orientation="vertical" className="hidden h-6 sm:block" />
 
@@ -130,9 +120,6 @@ export function Header({ title, subtitle, healthStatus, onMenuClick }) {
           <DropdownMenuSeparator />
           <DropdownMenuItem id="profile-menu-item" onClick={() => navigate('/profile')}>
             Profile
-          </DropdownMenuItem>
-          <DropdownMenuItem id="settings-menu-item" disabled>
-            Settings
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem id="sign-out-menu-item" onClick={handleSignOut}>

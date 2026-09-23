@@ -3,43 +3,18 @@ import React, { useState } from 'react';
 import { Sidebar, MobileSidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 
-export function AppShell({
-  title,
-  subtitle,
-  healthStatus,
-  onUploadClick,
-  activeView,
-  onNavigate,
-  activeFolder,
-  secondaryPanel,
-  tabsBar,
-  children,
-}) {
+export function AppShell({ title, subtitle, healthStatus, tabsBar, children }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const collapsed = Boolean(activeFolder);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar
-        onUploadClick={onUploadClick}
-        activeView={activeView}
-        onNavigate={onNavigate}
-        collapsed={collapsed}
-      />
-      <MobileSidebar
-        open={mobileNavOpen}
-        onOpenChange={setMobileNavOpen}
-        onUploadClick={onUploadClick}
-        activeView={activeView}
-        onNavigate={onNavigate}
-      />
-
-      {secondaryPanel}
+      <Sidebar />
+      <MobileSidebar open={mobileNavOpen} onOpenChange={setMobileNavOpen} />
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Header
-          title={activeFolder ? activeFolder.name : title}
-          subtitle={activeFolder ? 'Folder selected — full navigation coming soon' : subtitle}
+          title={title}
+          subtitle={subtitle}
           healthStatus={healthStatus}
           onMenuClick={() => setMobileNavOpen(true)}
         />

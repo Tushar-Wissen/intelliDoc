@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
-import { Search, Plus, FolderOpen, BadgeCheck, Loader2, Sparkles } from 'lucide-react';
+import { Search, Plus, UploadCloud, FileWarning, FileText, Loader2, Sparkles } from 'lucide-react';
 
 import { AppShell } from '@/components/layout/app-shell';
-import { FolderPanel } from '@/components/layout/folder-panel';
 import { TabsBar } from '@/components/layout/tabs-bar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,7 @@ import { FolderDetail } from '@/components/features/folder-detail';
 import { UploadDialog } from '@/components/features/upload-dialog';
 import { ToastNotification } from '@/components/ui/toast-notification';
 import { CopilotSidebar } from '@/components/features/copilot-sidebar';
+import { EmptyWorkspaceState } from '@/components/features/empty-workspace-state';
 
 import { fetchDocumentFolders, invalidateDocumentFoldersCache } from '@/lib/documents-api';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
@@ -20,27 +21,33 @@ import { useHealthStatus } from '@/hooks/use-health-status';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 const FOLDERS_PAGE_SIZE = 12;
+// Orphaned Files scans every file for zero-section ones, so it fetches a much larger page
+// than the card grid ever needs.
+const ORPHANED_SCAN_PAGE_SIZE = 200;
 
 const VIEWS = {
   all: {
-    title: 'My Documents',
+    title: 'My Workspace',
     subtitle: 'Browse folders and analyze documents with AI',
   },
-  evaluated: {
-    title: 'Evaluated Docs',
-    subtitle: 'Folders containing documents with completed AI evaluation',
+  orphaned: {
+    title: 'Orphaned Files',
+    subtitle: "Files that haven't been indexed into any section yet",
   },
 };
 
-export function MyDocumentsPage() {
+export function WorkspacePage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const view = searchParams.get('view') === 'orphaned' ? 'orphaned' : 'all';
+
   const [documents, setDocuments] = useState([]);
   const [search, setSearch] = useState('');
-  const [view, setView] = useState('all');
   const healthStatus = useHealthStatus();
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [copilotOpen, setCopilotOpen] = useState(false);
-  const [panelSearch, setPanelSearch] = useState('');
 
   const [activeFolder, setActiveFolder] = useState(null);
   const [activeFileId, setActiveFileId] = useState(null);
@@ -75,8 +82,7 @@ export function MyDocumentsPage() {
     fetchDocumentFolders({
       apiBaseUrl: API_BASE_URL,
       page: 1,
-      pageSize: FOLDERS_PAGE_SIZE,
-      evaluatedOnly: view === 'evaluated',
+      pageSize: view === 'orphaned' ? ORPHANED_SCAN_PAGE_SIZE : FOLDERS_PAGE_SIZE,
     })
       .then(({ items, hasMore }) => {
         if (cancelled) return;
@@ -96,6 +102,11 @@ export function MyDocumentsPage() {
     };
   }, [view]);
 
+  useEffect(() => {
+    setActiveFolder(null);
+    setActiveFileId(null);
+  }, [view]);
+
   const loadMoreFolders = useCallback(async () => {
     const requestView = view;
     setFoldersLoading(true);
@@ -104,8 +115,7 @@ export function MyDocumentsPage() {
       const { items, hasMore } = await fetchDocumentFolders({
         apiBaseUrl: API_BASE_URL,
         page: nextPage,
-        pageSize: FOLDERS_PAGE_SIZE,
-        evaluatedOnly: requestView === 'evaluated',
+        pageSize: requestView === 'orphaned' ? ORPHANED_SCAN_PAGE_SIZE : FOLDERS_PAGE_SIZE,
       });
       if (foldersViewRef.current !== requestView) return;
       setFolders((prev) => [...prev, ...items]);
@@ -127,8 +137,7 @@ export function MyDocumentsPage() {
       const { items, hasMore } = await fetchDocumentFolders({
         apiBaseUrl: API_BASE_URL,
         page: 1,
-        pageSize: FOLDERS_PAGE_SIZE,
-        evaluatedOnly: requestView === 'evaluated',
+        pageSize: requestView === 'orphaned' ? ORPHANED_SCAN_PAGE_SIZE : FOLDERS_PAGE_SIZE,
       });
       if (foldersViewRef.current !== requestView) return;
       setFolders(items);
@@ -142,11 +151,6 @@ export function MyDocumentsPage() {
   }, [view]);
 
   const foldersSentinelRef = useInfiniteScroll({
-    hasMore: foldersHasMore,
-    loading: foldersLoading,
-    onLoadMore: loadMoreFolders,
-  });
-  const panelSentinelRef = useInfiniteScroll({
     hasMore: foldersHasMore,
     loading: foldersLoading,
     onLoadMore: loadMoreFolders,
@@ -172,12 +176,6 @@ export function MyDocumentsPage() {
     refreshFolders();
   };
 
-  const handleNavigate = (nextView) => {
-    setActiveFolder(null);
-    setActiveFileId(null);
-    setView(nextView);
-  };
-
   const handleSelectFolder = (folder) => {
     setActiveFolder(folder);
     setActiveFileId(null);
@@ -197,6 +195,24 @@ export function MyDocumentsPage() {
     });
     setActiveTabId(tabId);
   };
+
+  // Opens a folder (and optionally a specific file within it) passed in via router state
+  // when navigating here from the sidebar's quick folder/file list.
+  useEffect(() => {
+    const pendingFolderId = location.state?.folderId;
+    if (!pendingFolderId) return;
+    const folder = folders.find((f) => f.id === pendingFolderId);
+    if (folder) {
+      handleSelectFolder(folder);
+      const pendingFileId = location.state?.fileId;
+      const file = pendingFileId ? folder.files?.find((f) => f.id === pendingFileId) : null;
+      if (file) {
+        handleFileClick({ ...file, folderId: folder.id, folderName: folder.name });
+      }
+      navigate(location.pathname + location.search, { replace: true, state: {} });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state, folders]);
 
   /* ─── Tab management ─── */
   const handleFileClick = useCallback((fileData) => {
@@ -284,48 +300,27 @@ export function MyDocumentsPage() {
     return folders.filter((folder) => folder.name?.toLowerCase().includes(query));
   }, [folders, search]);
 
-  const panelFolders = useMemo(() => {
-    const query = panelSearch.trim().toLowerCase();
-    if (!query) return folders;
-    return folders.filter((folder) => folder.name?.toLowerCase().includes(query));
-  }, [folders, panelSearch]);
-
-  const showStatus = view !== 'evaluated';
-
-  const panelEmptyMessage = useMemo(() => {
-    if (panelSearch.trim()) return `No folders match "${panelSearch}".`;
-    return view === 'evaluated' ? 'No evaluated folders yet.' : 'No folders yet.';
-  }, [panelSearch, view]);
+  // Files that uploaded successfully but have no extracted sections yet.
+  const orphanedFiles = useMemo(() => {
+    if (view !== 'orphaned') return [];
+    const flattened = [];
+    folders.forEach((folder) => {
+      (folder.files || []).forEach((file) => {
+        if (!file.sections || file.sections.length === 0) {
+          flattened.push({ ...file, folderId: folder.id, folderName: folder.name });
+        }
+      });
+    });
+    return flattened;
+  }, [folders, view]);
 
   const { title, subtitle } = VIEWS[view];
 
   return (
     <AppShell
-      title={title}
-      subtitle={subtitle}
+      title={activeFolder ? activeFolder.name : title}
+      subtitle={activeFolder ? undefined : subtitle}
       healthStatus={healthStatus}
-      onUploadClick={() => setUploadOpen(true)}
-      activeView={view}
-      onNavigate={handleNavigate}
-      activeFolder={activeFolder}
-      secondaryPanel={
-        activeFolder && (
-          <FolderPanel
-            heading={title}
-            search={panelSearch}
-            onSearchChange={setPanelSearch}
-            folders={panelFolders}
-            activeFolderId={activeFolder?.id}
-            onSelectFolder={handleSelectFolder}
-            showStatus={showStatus}
-            loading={foldersLoading}
-            hasMore={foldersHasMore}
-            sentinelRef={panelSentinelRef}
-            emptyMessage={panelEmptyMessage}
-            onFileClick={handleFileClick}
-          />
-        )
-      }
       tabsBar={
         activeFolder && openTabs.length > 0 && (
           <TabsBar
@@ -341,25 +336,27 @@ export function MyDocumentsPage() {
       }
     >
       <div className="flex min-h-0 flex-1 flex-col gap-6">
-        {!activeFolder && (
+        {!activeFolder && !(view === 'all' && !foldersLoading && folders.length === 0) && (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative w-full sm:max-w-xs">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                id="folder-search-input"
-                placeholder="Filter folders..."
-                className="pl-9"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
+            {view === 'all' ? (
+              <div className="relative w-full sm:max-w-xs">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  id="folder-search-input"
+                  placeholder="Filter folders..."
+                  className="pl-9"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+            ) : (
+              <div />
+            )}
             <div className={`flex items-center transition-all duration-300 ease-in-out gap-4 ${copilotOpen && (!!activeFolder || !!activeTabId) ? 'mr-80 sm:mr-96' : ''}`}>
-              {view !== 'evaluated' && (
-                <Button id="upload-document-button" className="gap-2" onClick={() => setUploadOpen(true)}>
-                  <Plus className="h-4 w-4" />
-                  Upload
-                </Button>
-              )}
+              <Button id="upload-document-button" className="gap-2" onClick={() => setUploadOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Upload
+              </Button>
               {activeTabId && (
                 <div
                   id="copilot-toggle-button"
@@ -378,10 +375,50 @@ export function MyDocumentsPage() {
             <div className={`px-1 pb-1 transition-all duration-300 ease-in-out ${copilotOpen && (!!activeFolder || !!activeTabId) ? 'mr-80 sm:mr-96' : ''}`}>
               <FolderDetail
                 folder={activeFolder}
-                showStatus={showStatus}
+                showStatus
                 onFileClick={handleFileClick}
                 activeFileId={activeFileId}
               />
+            </div>
+          </ScrollArea>
+        ) : view === 'orphaned' ? (
+          <ScrollArea className="-mx-1 min-h-0 flex-1">
+            <div className={`px-1 pb-1 transition-all duration-300 ease-in-out ${copilotOpen ? 'mr-80 sm:mr-96' : ''}`}>
+              {foldersLoading && folders.length === 0 ? (
+                <div className="flex items-center justify-center py-20">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : orphanedFiles.length === 0 ? (
+                <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-20 text-center">
+                  <FileWarning className="h-10 w-10 text-muted-foreground" />
+                  <p className="font-medium text-muted-foreground">No orphaned files</p>
+                  <p className="max-w-xs text-sm text-muted-foreground">
+                    Every uploaded file has been indexed into at least one section.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col divide-y divide-border rounded-xl border border-border bg-card">
+                  {orphanedFiles.map((file) => (
+                    <button
+                      key={file.id}
+                      type="button"
+                      onClick={() => handleFileClick(file)}
+                      className="flex items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-accent/40"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-500/10">
+                        <FileText className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-card-foreground">{file.name}</p>
+                        <p className="truncate text-xs text-muted-foreground">{file.folderName}</p>
+                      </div>
+                      <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                        Not indexed
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </ScrollArea>
         ) : (
@@ -392,29 +429,15 @@ export function MyDocumentsPage() {
                   <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                 </div>
               ) : folders.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border py-20 text-center">
-                  {view === 'evaluated' ? (
-                    <>
-                      <BadgeCheck className="h-10 w-10 text-muted-foreground" />
-                      <p className="font-medium text-muted-foreground">No evaluated folders yet</p>
-                      <p className="max-w-xs text-sm text-muted-foreground">
-                        Folders show up here once their documents&apos; AI evaluation finishes successfully.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <FolderOpen className="h-10 w-10 text-muted-foreground" />
-                      <p className="font-medium text-muted-foreground">No folders yet</p>
-                      <p className="max-w-xs text-sm text-muted-foreground">
-                        Upload a document to get instant AI summaries, entities and Q&amp;A.
-                      </p>
-                      <Button id="empty-state-upload-button" className="mt-2 gap-2" onClick={() => setUploadOpen(true)}>
-                        <Plus className="h-4 w-4" />
-                        Upload Document
-                      </Button>
-                    </>
-                  )}
-                </div>
+                <EmptyWorkspaceState
+                  className="flex-1 justify-center px-4 py-16"
+                  icon={FileText}
+                  heading="Upload documents to get started"
+                  description="Add documents to a folder, or keep them in Orphaned Files. You can ask questions, get insights and collaborate with your team."
+                  ctaLabel="Upload Document"
+                  ctaIcon={UploadCloud}
+                  onCtaClick={() => setUploadOpen(true)}
+                />
               ) : filteredFolders.length === 0 ? (
                 <p className="rounded-xl border border-dashed border-border py-16 text-center text-sm text-muted-foreground">
                   No folders match &ldquo;{search}&rdquo;.
@@ -428,7 +451,7 @@ export function MyDocumentsPage() {
                         folder={folder}
                         index={idx}
                         selected={activeFolder?.id === folder.id}
-                        showStatus={showStatus}
+                        showStatus
                         onClick={() => handleSelectFolder(folder)}
                       />
                     ))}
