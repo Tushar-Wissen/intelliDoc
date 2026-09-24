@@ -3,5 +3,8 @@
 docling>=2.0.0,<3.0.0
 paddleocr>=2.8.0,<3.0.0
 paddlepaddle>=2.6.0,<3.1.0
-# BGE-M3 dense embeddings (Story 4.1). Lazy-imported; unit tests inject a fake encoder.
+# BGE-M3 dense embeddings (Story 4.1) and the BGE cross-encoder reranker (Story 6.3).
+# Lazy-imported; unit tests inject a fake encoder and an overlap reranker.
 sentence-transformers>=3.0.0,<4.0.0
+# SimpleKGPipeline (Epic 5). Lazy-imported; unit tests inject a rules extractor.
+neo4j-graphrag>=1.7.0,<2.0.0

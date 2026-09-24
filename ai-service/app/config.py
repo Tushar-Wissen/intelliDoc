@@ -66,6 +66,16 @@ class Settings:
     # ASSUMPTION: 3 keeps 1–2 character strings out of pg_trgm. Not specified in source docs.
     identifier_query_min_length: int = _int("IDENTIFIER_QUERY_MIN_LENGTH", 3)
 
+    # Epic 5. Defaults match docker-compose / .env.example.
+    neo4j_uri: str = os.getenv("NEO4J_URI", "bolt://localhost:7687")
+    neo4j_user: str = os.getenv("NEO4J_USER", "neo4j")
+    neo4j_password: str = os.getenv("NEO4J_PASSWORD", "neo4jpassword")
+    # baseline = lowercase, trim, collapse internal whitespace (Epic 5 §27).
+    kg_entity_normalization_strategy: str = os.getenv(
+        "KG_ENTITY_NORMALIZATION_STRATEGY",
+        "baseline",
+    )
+
     @property
     def database_url(self) -> str:
         return (

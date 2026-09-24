@@ -62,6 +62,11 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
     }
 
+    @Override
+    protected boolean shouldNotFilterAsyncDispatch() {
+        return false;
+    }
+
     private void writeUnauthorized(
             HttpServletResponse response,
             HttpServletRequest request,

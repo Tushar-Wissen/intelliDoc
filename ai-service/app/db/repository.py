@@ -30,6 +30,7 @@ from app.db.session import get_session_factory
 PARSING = "PARSING"
 EXTRACTING = "EXTRACTING"
 INDEXING = "INDEXING"
+READY = "READY"
 FAILED = "FAILED"
 JOB_RUNNING = "RUNNING"
 JOB_COMPLETED = "COMPLETED"
@@ -43,6 +44,9 @@ class DocumentRecord:
     file_type: str
     storage_path: str
     processing_status: str
+    workspace_id: uuid.UUID | None = None
+    group_id: uuid.UUID | None = None
+    document_type: str | None = None
 
 
 @dataclass
@@ -131,6 +135,9 @@ class PipelineRepository:
     def list_chunks(self, document_id: uuid.UUID) -> list[ChunkRecord]:
         raise NotImplementedError
 
+    def list_extracted_fields(self, document_id: uuid.UUID) -> list[ExtractedFieldRecord]:
+        raise NotImplementedError
+
     def update_page_ocr(
         self,
         page_id: uuid.UUID,
@@ -191,6 +198,48 @@ class PipelineRepository:
     ) -> list[ChunkRecord]:
         raise NotImplementedError
 
+    def list_documents(self, document_ids: list[uuid.UUID]) -> list[DocumentRecord]:
+        raise NotImplementedError
+
+    def section_headings(self, section_ids: list[uuid.UUID]) -> dict[uuid.UUID, str | None]:
+        raise NotImplementedError
+
+    def scoped_vector_search(
+        self,
+        workspace_id: uuid.UUID,
+        document_ids: list[uuid.UUID],
+        query_embedding: list[float],
+        k: int,
+    ) -> list[ChunkRecord]:
+        """Cosine search joined to document for workspace and READY filters (Epic 6)."""
+        raise NotImplementedError
+
+    def scoped_keyword_search(
+        self,
+        workspace_id: uuid.UUID,
+        document_ids: list[uuid.UUID],
+        query_text: str,
+        k: int,
+    ) -> list[ChunkRecord]:
+        raise NotImplementedError
+
+    def scoped_trigram_search(
+        self,
+        workspace_id: uuid.UUID,
+        document_ids: list[uuid.UUID],
+        query_text: str,
+        k: int,
+    ) -> list[ChunkRecord]:
+        raise NotImplementedError
+
+    def scoped_chunks_by_ids(
+        self,
+        workspace_id: uuid.UUID,
+        document_ids: list[uuid.UUID],
+        chunk_ids: list[uuid.UUID],
+    ) -> list[ChunkRecord]:
+        raise NotImplementedError
+
 
 class SqlAlchemyPipelineRepository(PipelineRepository):
     def _session(self) -> Session:
@@ -207,6 +256,9 @@ class SqlAlchemyPipelineRepository(PipelineRepository):
                 file_type=row.file_type,
                 storage_path=row.storage_path,
                 processing_status=row.processing_status,
+                workspace_id=row.workspace_id,
+                group_id=row.group_id,
+                document_type=row.document_type,
             )
 
     def set_processing_status(self, document_id: uuid.UUID, status: str) -> None:
@@ -436,6 +488,30 @@ class SqlAlchemyPipelineRepository(PipelineRepository):
             ).mappings().all()
             return [_chunk_from_mapping(row) for row in rows]
 
+    def list_extracted_fields(self, document_id: uuid.UUID) -> list[ExtractedFieldRecord]:
+        with self._session() as session:
+            rows = session.scalars(
+                select(ExtractedField).where(ExtractedField.document_id == document_id)
+            ).all()
+            records: list[ExtractedFieldRecord] = []
+            for row in rows:
+                if row.source_chunk_id is None or not (row.field_value or "").strip():
+                    continue
+                records.append(
+                    ExtractedFieldRecord(
+                        id=row.id,
+                        document_id=row.document_id,
+                        field_name=row.field_name,
+                        field_category=row.field_category or "",
+                        field_value=row.field_value or "",
+                        confidence=row.confidence if row.confidence is not None else 0.0,
+                        source_page=row.source_page or 1,
+                        source_chunk_id=row.source_chunk_id,
+                        status=row.status,
+                    )
+                )
+            return records
+
     def update_embeddings(self, updates: list[tuple[uuid.UUID, list[float]]]) -> None:
         if not updates:
             return
@@ -541,6 +617,181 @@ class SqlAlchemyPipelineRepository(PipelineRepository):
                     "document_ids": document_ids,
                     "query_text": query_text,
                     "k": k,
+                },
+            ).mappings().all()
+            return [_chunk_from_mapping(row) for row in rows]
+
+    def list_documents(self, document_ids: list[uuid.UUID]) -> list[DocumentRecord]:
+        if not document_ids:
+            return []
+        with self._session() as session:
+            rows = session.scalars(select(Document).where(Document.id.in_(document_ids))).all()
+            return [
+                DocumentRecord(
+                    id=row.id,
+                    file_name=row.file_name,
+                    file_type=row.file_type,
+                    storage_path=row.storage_path,
+                    processing_status=row.processing_status,
+                    workspace_id=row.workspace_id,
+                    group_id=row.group_id,
+                    document_type=row.document_type,
+                )
+                for row in rows
+            ]
+
+    def section_headings(self, section_ids: list[uuid.UUID]) -> dict[uuid.UUID, str | None]:
+        if not section_ids:
+            return {}
+        statement = text(
+            """
+            SELECT id, heading
+            FROM document_section
+            WHERE id = ANY(:section_ids)
+            """
+        ).bindparams(bindparam("section_ids", type_=ARRAY(PG_UUID(as_uuid=True))))
+        with self._session() as session:
+            rows = session.execute(statement, {"section_ids": section_ids}).mappings().all()
+            return {_as_uuid(row["id"]): row["heading"] for row in rows}
+
+    def scoped_vector_search(
+        self,
+        workspace_id: uuid.UUID,
+        document_ids: list[uuid.UUID],
+        query_embedding: list[float],
+        k: int,
+    ) -> list[ChunkRecord]:
+        if k <= 0 or not document_ids:
+            return []
+        statement = text(
+            f"""
+            SELECT c.id, c.document_id, c.section_id, c.page_number, c.chunk_text,
+                   c.token_count, c.embedding::text AS embedding
+            FROM document_chunk c
+            JOIN document d ON d.id = c.document_id
+            WHERE d.workspace_id = :workspace_id
+              AND c.document_id = ANY(:document_ids)
+              AND d.processing_status = '{READY}'
+              AND c.embedding IS NOT NULL
+            ORDER BY c.embedding <=> CAST(:query_embedding AS vector)
+            LIMIT :k
+            """
+        ).bindparams(bindparam("document_ids", type_=ARRAY(PG_UUID(as_uuid=True))))
+        with self._session() as session:
+            rows = session.execute(
+                statement,
+                {
+                    "workspace_id": workspace_id,
+                    "document_ids": document_ids,
+                    "query_embedding": _vector_literal(query_embedding),
+                    "k": k,
+                },
+            ).mappings().all()
+            return [_chunk_from_mapping(row) for row in rows]
+
+    def scoped_keyword_search(
+        self,
+        workspace_id: uuid.UUID,
+        document_ids: list[uuid.UUID],
+        query_text: str,
+        k: int,
+    ) -> list[ChunkRecord]:
+        if k <= 0 or not document_ids or not query_text.strip():
+            return []
+        statement = text(
+            f"""
+            SELECT c.id, c.document_id, c.section_id, c.page_number, c.chunk_text,
+                   c.token_count, c.embedding::text AS embedding
+            FROM document_chunk c
+            JOIN document d ON d.id = c.document_id
+            WHERE d.workspace_id = :workspace_id
+              AND c.document_id = ANY(:document_ids)
+              AND d.processing_status = '{READY}'
+              AND to_tsvector('simple', c.chunk_text) @@ websearch_to_tsquery('simple', :query_text)
+            ORDER BY ts_rank(
+                to_tsvector('simple', c.chunk_text),
+                websearch_to_tsquery('simple', :query_text)
+            ) DESC
+            LIMIT :k
+            """
+        ).bindparams(bindparam("document_ids", type_=ARRAY(PG_UUID(as_uuid=True))))
+        with self._session() as session:
+            rows = session.execute(
+                statement,
+                {
+                    "workspace_id": workspace_id,
+                    "document_ids": document_ids,
+                    "query_text": query_text,
+                    "k": k,
+                },
+            ).mappings().all()
+            return [_chunk_from_mapping(row) for row in rows]
+
+    def scoped_trigram_search(
+        self,
+        workspace_id: uuid.UUID,
+        document_ids: list[uuid.UUID],
+        query_text: str,
+        k: int,
+    ) -> list[ChunkRecord]:
+        if k <= 0 or not document_ids or not query_text.strip():
+            return []
+        statement = text(
+            f"""
+            SELECT c.id, c.document_id, c.section_id, c.page_number, c.chunk_text,
+                   c.token_count, c.embedding::text AS embedding
+            FROM document_chunk c
+            JOIN document d ON d.id = c.document_id
+            WHERE d.workspace_id = :workspace_id
+              AND c.document_id = ANY(:document_ids)
+              AND d.processing_status = '{READY}'
+              AND c.chunk_text % :query_text
+            ORDER BY similarity(c.chunk_text, :query_text) DESC
+            LIMIT :k
+            """
+        ).bindparams(bindparam("document_ids", type_=ARRAY(PG_UUID(as_uuid=True))))
+        with self._session() as session:
+            rows = session.execute(
+                statement,
+                {
+                    "workspace_id": workspace_id,
+                    "document_ids": document_ids,
+                    "query_text": query_text,
+                    "k": k,
+                },
+            ).mappings().all()
+            return [_chunk_from_mapping(row) for row in rows]
+
+    def scoped_chunks_by_ids(
+        self,
+        workspace_id: uuid.UUID,
+        document_ids: list[uuid.UUID],
+        chunk_ids: list[uuid.UUID],
+    ) -> list[ChunkRecord]:
+        if not document_ids or not chunk_ids:
+            return []
+        statement = text(
+            f"""
+            SELECT c.id, c.document_id, c.section_id, c.page_number, c.chunk_text,
+                   c.token_count, c.embedding::text AS embedding
+            FROM document_chunk c
+            JOIN document d ON d.id = c.document_id
+            WHERE d.workspace_id = :workspace_id
+              AND c.document_id = ANY(:document_ids)
+              AND d.processing_status = '{READY}'
+              AND c.id = ANY(:chunk_ids)
+            """
+        ).bindparams(
+            bindparam("document_ids", type_=ARRAY(PG_UUID(as_uuid=True))),
+            bindparam("chunk_ids", type_=ARRAY(PG_UUID(as_uuid=True))),
+        )
+        with self._session() as session:
+            rows = session.execute(
+                statement,
+                {
+                    "workspace_id": workspace_id,
+                    "document_ids": document_ids,
+                    "chunk_ids": chunk_ids,
                 },
             ).mappings().all()
             return [_chunk_from_mapping(row) for row in rows]

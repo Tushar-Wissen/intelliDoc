@@ -38,8 +38,8 @@ def write_contract_pdf(path: Path, scanned_pages: set[int] | None = None) -> Pat
             page.insert_text((72, 72), heading, fontsize=18)
             y = 110
             for _ in range(8):
-                page.insert_text((72, y), contract_paragraph(heading), fontsize=11)
-                y += 18
+                page.insert_textbox(fitz.Rect(72, y, 540, y + 50), contract_paragraph(heading), fontsize=10)
+                y += 55
     path.parent.mkdir(parents=True, exist_ok=True)
     doc.save(path)
     doc.close()

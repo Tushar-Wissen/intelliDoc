@@ -34,7 +34,7 @@ class LlmError(Exception):
 
 class StructuredLlmClient(ABC):
     @abstractmethod
-    def complete_json(self, prompt: str, schema: type[T]) -> T:
+    def complete_json(self, prompt: str, schema: type[T], *, temperature: float | None = None) -> T:
         raise NotImplementedError
 
 
@@ -44,9 +44,47 @@ class CallableLlmClient(StructuredLlmClient):
     def __init__(self, fn) -> None:
         self._fn = fn
 
-    def complete_json(self, prompt: str, schema: type[T]) -> T:
+    def complete_json(self, prompt: str, schema: type[T], *, temperature: float | None = None) -> T:
         raw = self._fn(prompt, schema)
         return schema.model_validate(raw)
+
+
+class HostedLlmClient(StructuredLlmClient):
+    """OpenAI-compatible chat completions endpoint (LLM_PROVIDER=hosted)."""
+
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        model: str,
+        timeout_seconds: float = 120.0,
+    ) -> None:
+        self._base_url = base_url.rstrip("/")
+        self._api_key = api_key
+        self._model = model
+        self._timeout = timeout_seconds
+
+    def complete_json(self, prompt: str, schema: type[T], *, temperature: float | None = None) -> T:
+        payload = {
+            "model": self._model,
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"},
+        }
+        if temperature is not None:
+            payload["temperature"] = temperature
+        headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
+        try:
+            response = httpx.post(
+                f"{self._base_url}/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=self._timeout,
+            )
+            response.raise_for_status()
+            content = response.json()["choices"][0]["message"]["content"]
+            return schema.model_validate(json.loads(content))
+        except (httpx.HTTPError, json.JSONDecodeError, ValidationError, KeyError, IndexError) as exc:
+            raise LlmError(str(exc)) from exc
 
 
 class OllamaLlmClient(StructuredLlmClient):
@@ -60,13 +98,15 @@ class OllamaLlmClient(StructuredLlmClient):
         self._model = model
         self._timeout = timeout_seconds
 
-    def complete_json(self, prompt: str, schema: type[T]) -> T:
+    def complete_json(self, prompt: str, schema: type[T], *, temperature: float | None = None) -> T:
         payload = {
             "model": self._model,
             "prompt": prompt,
             "stream": False,
             "format": "json",
         }
+        if temperature is not None:
+            payload["options"] = {"temperature": temperature}
         try:
             response = httpx.post(
                 f"{self._base_url}/api/generate",
@@ -85,7 +125,11 @@ class OllamaLlmClient(StructuredLlmClient):
 class RulesLlmClient(StructuredLlmClient):
     """Deterministic POC client when no hosted/local model is configured."""
 
-    def complete_json(self, prompt: str, schema: type[T]) -> T:
+    def complete_json(self, prompt: str, schema: type[T], *, temperature: float | None = None) -> T:
+        from app.retrieval.schemas import QuestionRewriteSchema
+
+        if schema is QuestionRewriteSchema:
+            return schema.model_validate(self._rewrite_question(prompt))
         if schema is ClassificationResultSchema:
             return schema.model_validate(self._classify(prompt))
         if schema is UniversalExtractionSchema:
@@ -197,6 +241,23 @@ class RulesLlmClient(StructuredLlmClient):
                 fields.append(_field("Policy Owner", owner, 0.77, page, chunk_id))
         return validate_provenance_fields(fields)
 
+    def _rewrite_question(self, prompt: str) -> dict[str, str]:
+        question = _question_from_prompt(prompt)
+        lower = question.lower()
+        if "what's different between these two contracts?" in lower or "what is different between these two contracts?" in lower:
+            return {
+                "type": "comparison",
+                "rewrittenQuery": "termination clauses, obligations, key differences",
+            }
+        if any(token in lower for token in ("different", "difference", "compare", "versus", " vs ")):
+            return {"type": "comparison", "rewrittenQuery": "key differences, obligations, terms"}
+        if "summar" in lower:
+            return {"type": "summary", "rewrittenQuery": "summary of key terms and obligations"}
+        if any(token in lower for token in ("across documents", "cross-document", "which documents")):
+            return {"type": "cross-document", "rewrittenQuery": "documents mentioning the same entities and facts"}
+        rewritten = _keyword_style(question)
+        return {"type": "fact", "rewrittenQuery": rewritten or question}
+
 
 _default_client: StructuredLlmClient | None = None
 
@@ -219,6 +280,14 @@ def build_llm_client() -> StructuredLlmClient:
         base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         model = os.getenv("OLLAMA_MODEL", "llama3.2")
         return OllamaLlmClient(base_url=base, model=model)
+    if provider == "hosted":
+        return HostedLlmClient(
+            base_url=os.getenv("HOSTED_LLM_BASE_URL", "https://api.openai.com/v1"),
+            api_key=os.getenv("HOSTED_LLM_API_KEY", ""),
+            model=os.getenv("HOSTED_LLM_MODEL", "gpt-4o-mini"),
+        )
+    if provider != "rules":
+        logger.warning("Unknown LLM_PROVIDER=%s; using rules", provider)
     return RulesLlmClient()
 
 
@@ -262,6 +331,52 @@ def _parse_document_type(prompt: str) -> DocumentType:
         return DocumentType(match.group(1).lower())
     except ValueError:
         return DocumentType.OTHER
+
+
+def _question_from_prompt(prompt: str) -> str:
+    marker = "QUESTION:\n"
+    if marker in prompt:
+        return prompt.split(marker, 1)[1].strip()
+    return prompt.strip()
+
+
+_QUERY_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "the",
+        "what",
+        "whats",
+        "what's",
+        "is",
+        "are",
+        "was",
+        "were",
+        "can",
+        "you",
+        "please",
+        "tell",
+        "me",
+        "about",
+        "of",
+        "for",
+        "to",
+        "in",
+        "on",
+        "do",
+        "does",
+        "did",
+    }
+)
+
+
+def _keyword_style(question: str) -> str:
+    kept: list[str] = []
+    for token in re.findall(r"[0-9A-Za-z]+(?:-[0-9A-Za-z]+)*", question):
+        if token.lower() in _QUERY_STOPWORDS:
+            continue
+        kept.append(token)
+    return " ".join(kept)
 
 
 def _first_line(text: str) -> str:

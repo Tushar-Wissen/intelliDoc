@@ -118,4 +118,76 @@ public final class DmsExceptions {
                 "Extracted field not found."
         );
     }
+
+    public static ApiException invalidScope() {
+        return new ApiException(
+                HttpStatus.BAD_REQUEST.value(),
+                "INVALID_SCOPE",
+                "Provide exactly one scope."
+        );
+    }
+
+    public static ApiException scopeOutsideWorkspace() {
+        return new ApiException(
+                HttpStatus.BAD_REQUEST.value(),
+                "SCOPE_OUTSIDE_WORKSPACE",
+                "One or more items don't belong to this workspace."
+        );
+    }
+
+    public static ApiException emptyScope() {
+        return new ApiException(
+                HttpStatus.UNPROCESSABLE_ENTITY.value(),
+                "EMPTY_SCOPE",
+                "No documents available in this scope."
+        );
+    }
+
+    public static ApiException sessionNotFound() {
+        return new ApiException(
+                HttpStatus.NOT_FOUND.value(),
+                "SESSION_NOT_FOUND",
+                "Chat session not found."
+        );
+    }
+
+    public static ApiException messageNotFound() {
+        return new ApiException(
+                HttpStatus.NOT_FOUND.value(),
+                "MESSAGE_NOT_FOUND",
+                "Chat message not found."
+        );
+    }
+
+    public static ApiException citationNotFound() {
+        return new ApiException(
+                HttpStatus.NOT_FOUND.value(),
+                "CITATION_NOT_FOUND",
+                "Citation not found."
+        );
+    }
+
+    public static ApiException messageInProgress() {
+        return new ApiException(
+                HttpStatus.CONFLICT.value(),
+                "MESSAGE_IN_PROGRESS",
+                "Wait for the current answer."
+        );
+    }
+
+    public static ApiException sourceUnavailable() {
+        return new ApiException(
+                HttpStatus.NOT_FOUND.value(),
+                "SOURCE_UNAVAILABLE",
+                "The source is no longer available."
+        );
+    }
+
+    public static ApiException validationError(String message) {
+        return new ApiException(
+                HttpStatus.BAD_REQUEST.value(),
+                "VALIDATION_ERROR",
+                message
+        );
+    }
 }

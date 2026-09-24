@@ -28,6 +28,7 @@ class Document(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
     workspace_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    group_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     file_name: Mapped[str] = mapped_column(String(512), nullable=False)
     file_type: Mapped[str] = mapped_column(String(64), nullable=False)
     storage_path: Mapped[str] = mapped_column(String(1024), nullable=False)

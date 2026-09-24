@@ -1,8 +1,7 @@
-"""Ingestion orchestrator: parse → OCR → chunk → extract → index.
+"""Ingestion orchestrator: parse → OCR → chunk → extract → index → graph.
 
-READY stays unset. Epic 4 plan §11 requires overview, fields, embeddings, and
-the Epic 5 knowledge graph before READY. The graph stage is not in this
-service yet, so a successful run stops at INDEXING with the job still running.
+READY requires overview, fields, embeddings, and the knowledge graph
+(Epic 4 plan §11, Epic 5 plan §9).
 """
 
 from __future__ import annotations
@@ -12,11 +11,20 @@ import time
 import uuid
 
 from app.celery_app import celery_app
-from app.db.repository import EXTRACTING, FAILED, INDEXING, PARSING, PipelineRepository, get_repository
-from app.pipeline import chunking, indexing, ocr, parsing
+from app.db.repository import (
+    EXTRACTING,
+    FAILED,
+    INDEXING,
+    PARSING,
+    READY,
+    PipelineRepository,
+    get_repository,
+)
+from app.pipeline import chunking, indexing, kg, ocr, parsing
 from app.pipeline.classification import classify_and_extract
 from app.pipeline.chunking import ChunkingError
 from app.pipeline.indexing import IndexingError
+from app.pipeline.kg import GraphBuildError
 from app.pipeline.parsing import ParseError
 
 logger = logging.getLogger(__name__)
@@ -25,6 +33,7 @@ _USER_SAFE = {
     ParseError: "The document could not be read. The file may be corrupt or in an unsupported format.",
     ChunkingError: "The document produced no searchable text chunks.",
     IndexingError: "The document could not be indexed for search.",
+    GraphBuildError: "The document knowledge graph could not be built.",
 }
 
 
@@ -57,14 +66,26 @@ def process_document(
             document_id,
             lambda: indexing.generate_embeddings(document_id, repo=repo),
         )
-        logger.info(
-            "Indexing complete documentId=%s; READY deferred until knowledge-graph stage (Epic 5)",
+        document = repo.get_document(document_id)
+        if document is None or document.workspace_id is None:
+            raise GraphBuildError("workspace_id is required")
+        _run_stage(
+            "knowledge_graph",
             document_id,
+            lambda: _build_graph(document_id, document.workspace_id, repo),
         )
+        repo.set_processing_status(document_id, READY)
+        repo.mark_job_completed(document_id)
+        logger.info("Document ready documentId=%s", document_id)
     except Exception as exc:
         logger.exception("Pipeline failed documentId=%s", document_id)
         repo.set_processing_status(document_id, FAILED)
         repo.mark_job_failed(document_id, _user_safe_message(exc))
+
+
+def _build_graph(document_id: uuid.UUID, workspace_id: uuid.UUID, repo: PipelineRepository) -> None:
+    kg.build_knowledge_graph(document_id, workspace_id, repo=repo)
+    kg.detect_contradictions(document_id, workspace_id)
 
 
 def _run_stage(name: str, document_id: uuid.UUID, fn) -> None:

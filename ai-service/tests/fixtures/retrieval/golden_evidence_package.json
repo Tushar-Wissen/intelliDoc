@@ -1,0 +1,82 @@
+{
+  "questionType": "comparison",
+  "rewrittenQuery": "termination clauses, obligations, key differences",
+  "answerMode": "retrieval_plus_graph",
+  "workspaceId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+  "resolvedDocumentIds": [
+    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa11",
+    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa22"
+  ],
+  "chunks": [
+    {
+      "chunkId": "cccccccc-cccc-cccc-cccc-cccccccccc03",
+      "documentId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa11",
+      "documentName": "Contract-A.pdf",
+      "pageNumber": 1,
+      "sectionId": "dddddddd-dddd-dddd-dddd-dddddddddd01",
+      "sectionHeading": "Expiry",
+      "text": "Termination clauses require thirty days written notice.",
+      "rerankScore": 0.91,
+      "provenance": ["vector", "keyword"]
+    },
+    {
+      "chunkId": "cccccccc-cccc-cccc-cccc-cccccccccc06",
+      "documentId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa22",
+      "documentName": "Amendment-B.pdf",
+      "pageNumber": 1,
+      "sectionId": "dddddddd-dddd-dddd-dddd-dddddddddd02",
+      "sectionHeading": "Amendment",
+      "text": "MODULE_B_UNIQUE_SENTINEL appears only in module B.",
+      "rerankScore": 0.74,
+      "provenance": ["keyword", "graph"]
+    }
+  ],
+  "graphFacts": [
+    {
+      "factType": "DateFact",
+      "subject": "Contract-A.pdf",
+      "relationship": "EXPIRES_ON",
+      "object": "2027-03-31",
+      "documentId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa11",
+      "sourceChunkId": "cccccccc-cccc-cccc-cccc-cccccccccc02",
+      "sourcePage": 1
+    }
+  ],
+  "contradictions": [
+    {
+      "left": {
+        "factType": "DateFact",
+        "label": "expiry date",
+        "value": "2027-03-31",
+        "documentId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa11",
+        "sourceChunkId": "cccccccc-cccc-cccc-cccc-cccccccccc02",
+        "sourcePage": 1
+      },
+      "right": {
+        "factType": "DateFact",
+        "label": "expiry date",
+        "value": "2027-06-30",
+        "documentId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa22",
+        "sourceChunkId": "cccccccc-cccc-cccc-cccc-cccccccccc05",
+        "sourcePage": 1
+      }
+    }
+  ],
+  "perDocumentCounts": {
+    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa11": 1,
+    "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaa22": 1
+  },
+  "diagnostics": {
+    "graphStatus": "OK",
+    "rerankSkipped": false,
+    "vectorCount": 4,
+    "keywordCount": 3,
+    "graphChunkCount": 2,
+    "mergedCount": 6,
+    "excludedDocumentIds": [],
+    "vectorLatencyMs": 12,
+    "keywordLatencyMs": 8,
+    "graphLatencyMs": 15,
+    "totalLatencyMs": 40
+  }
+}

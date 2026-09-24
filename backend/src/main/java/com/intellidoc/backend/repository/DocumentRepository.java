@@ -27,4 +27,10 @@ public interface DocumentRepository extends JpaRepository<DocumentEntity, UUID> 
     Optional<DocumentEntity> findByIdAndDeletedAtIsNull(UUID id);
 
     List<DocumentEntity> findByGroupId(UUID groupId);
+
+    List<DocumentEntity> findByWorkspaceIdAndDeletedAtIsNull(UUID workspaceId);
+
+    List<DocumentEntity> findByWorkspaceIdAndGroupIdAndDeletedAtIsNull(UUID workspaceId, UUID groupId);
+
+    List<DocumentEntity> findByWorkspaceIdAndIdInAndDeletedAtIsNull(UUID workspaceId, java.util.Collection<UUID> ids);
 }
