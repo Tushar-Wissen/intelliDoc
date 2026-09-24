@@ -2,51 +2,35 @@ package com.intellidoc.backend.repository;
 
 import com.intellidoc.backend.model.DocumentEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
-@Repository
-public interface DocumentRepository
-        extends JpaRepository<DocumentEntity, String> {
+public interface DocumentRepository extends JpaRepository<DocumentEntity, UUID> {
 
+    @Query("""
+            select d from DocumentEntity d
+            where d.workspaceId = :workspaceId
+              and d.deletedAt is null
+              and (:groupId is null or d.groupId = :groupId)
+              and (:documentType is null or d.documentType = :documentType)
+            order by d.createdAt desc
+            """)
+    List<DocumentEntity> searchActive(
+            @Param("workspaceId") UUID workspaceId,
+            @Param("groupId") UUID groupId,
+            @Param("documentType") String documentType);
 
-    // ============================================================
-    // GET ALL DOCUMENTS FOR A WORKSPACE
-    // ============================================================
+    Optional<DocumentEntity> findByIdAndDeletedAtIsNull(UUID id);
 
-    List<DocumentEntity> findByWorkspaceIdOrderByCreatedAtDesc(
-            String workspaceId
-    );
+    List<DocumentEntity> findByGroupId(UUID groupId);
 
-    List<DocumentEntity> findAllByOrderByCreatedAtDesc();
+    List<DocumentEntity> findByWorkspaceIdAndDeletedAtIsNull(UUID workspaceId);
 
+    List<DocumentEntity> findByWorkspaceIdAndGroupIdAndDeletedAtIsNull(UUID workspaceId, UUID groupId);
 
-    // ============================================================
-    // GET ONE DOCUMENT ONLY IF IT BELONGS TO WORKSPACE
-    // ============================================================
-
-    Optional<DocumentEntity> findByIdAndWorkspaceId(
-            String id,
-            String workspaceId
-    );
-
-
-    // ============================================================
-    // GET ALL FILES INSIDE A FOLDER
-    // ============================================================
-
-    List<DocumentEntity> findByFolderIdOrderByCreatedAtAsc(
-            String folderId
-    );
-
-
-    // ============================================================
-    // COUNT FILES INSIDE A FOLDER
-    // ============================================================
-
-    long countByFolderId(
-            String folderId
-    );
+    List<DocumentEntity> findByWorkspaceIdAndIdInAndDeletedAtIsNull(UUID workspaceId, java.util.Collection<UUID> ids);
 }

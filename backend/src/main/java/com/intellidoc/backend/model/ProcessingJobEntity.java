@@ -11,33 +11,42 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "processing_job")
 @Data
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class ProcessingJobEntity {
+
     @Id
-    private String id;
+    @Column(name = "id")
+    private UUID id;
+
     @Column(name = "document_id", nullable = false)
-    private String documentId;
-    @Column(nullable = false)
+    private UUID documentId;
+
+    @Column(name = "stage", nullable = false, length = 64)
     private String stage;
-    @Column(nullable = false)
+
+    @Column(name = "status", nullable = false, length = 64)
     private String status;
+
     @Column(name = "error_message", columnDefinition = "TEXT")
     private String errorMessage;
-    @Column(name = "started_at", nullable = false)
+
+    @Column(name = "started_at")
     private OffsetDateTime startedAt;
+
     @Column(name = "completed_at")
     private OffsetDateTime completedAt;
 
     @PrePersist
     protected void onCreate() {
-        if (startedAt == null) {
-            startedAt = OffsetDateTime.now();
+        if (this.id == null) {
+            this.id = UUID.randomUUID();
         }
     }
 }

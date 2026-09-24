@@ -1,4 +1,7 @@
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.schemas import (
@@ -8,13 +11,30 @@ from app.schemas import (
     QARequest,
     QAResponse,
     ErrorResponse,
-    ExtractionRequest,
-    ExtractionResponse,
 )
 
+from app.routers.documents import router as documents_router
+from app.routers.chat_answer import router as chat_answer_router
 from app.services.processor import DocumentProcessor
-from app.services.extractor import SelectiveExtractor
-from app.services.file_extractor import DocumentFileExtractor
+
+logger = logging.getLogger(__name__)
+
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    _init_neo4j_schema()
+    yield
+
+
+def _init_neo4j_schema() -> None:
+    """Create graph indexes and uniqueness constraints. Neo4j downtime does not block /health."""
+    try:
+        from app.pipeline.neo4j_schema_init import ensure_neo4j_schema
+
+        ensure_neo4j_schema()
+    except Exception:
+        logger.exception("Neo4j schema init skipped")
 
 
 app = FastAPI(
@@ -27,6 +47,7 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
+    lifespan=_lifespan,
 )
 
 
@@ -42,16 +63,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-@app.get("/", tags=["Health"])
-async def root():
-    """Provide a discoverable response when the service root is opened."""
-    return {
-        "service": "intellidoc-ai-service",
-        "status": "UP",
-        "docs": "/docs",
-        "health": "/health",
-    }
+app.include_router(documents_router)
+app.include_router(chat_answer_router)
 
 
 # ============================================================
@@ -143,41 +156,6 @@ async def analyze_document(
                 + str(e)
             )
         )
-
-
-@app.post(
-    "/api/v1/extract",
-    response_model=ExtractionResponse,
-    responses={400: {"model": ErrorResponse}},
-    tags=["Extraction"]
-)
-async def extract_document(request: ExtractionRequest):
-    """Selectively use native page text or an OCR result and preserve page provenance."""
-    result = SelectiveExtractor.extract(request.document_id, request.pages)
-    if not result.combined_text:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No extractable text was found in the supplied pages."
-        )
-    return result
-
-
-@app.post(
-    "/api/v1/extract/file",
-    response_model=ExtractionResponse,
-    responses={400: {"model": ErrorResponse}},
-    tags=["Extraction"]
-)
-async def extract_document_file(
-    document_id: str = Form(...),
-    file: UploadFile = File(...),
-):
-    """Extract text from a PDF, DOCX, or image upload with selective OCR."""
-    try:
-        content = await file.read()
-        return DocumentFileExtractor.extract(document_id, file.filename or "document", content)
-    except ValueError as error:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(error)) from error
 
 
 # ============================================================

@@ -1,0 +1,425 @@
+{
+  "info": {
+    "name": "IntelliDoc Epic 01 — DMS",
+    "description": "Workspace, module, and document APIs. Run **Login** first. Then run the numbered happy-path folder in order.\n\nSeed user (after Flyway): `scripts/seed_users.sql`\nEmail: jane.doe@company.com / password",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{token}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "0. Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health"
+          }
+        }
+      ]
+    },
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "POST /auth/login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('login 200', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('token', json.token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "GET /auth/me",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/auth/me"
+          }
+        },
+        {
+          "name": "Protected without token → 401",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "url": "{{baseUrl}}/workspaces"
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Workspaces (Story 1.1)",
+      "item": [
+        {
+          "name": "POST /workspaces",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('workspaceId', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Q3 Vendor Contracts Review\"\n}"
+            },
+            "url": "{{baseUrl}}/workspaces"
+          }
+        },
+        {
+          "name": "POST /workspaces (second, for isolation tests)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.environment.set('workspaceBId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Governance\"\n}"
+            },
+            "url": "{{baseUrl}}/workspaces"
+          }
+        },
+        {
+          "name": "GET /workspaces",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/workspaces"
+          }
+        },
+        {
+          "name": "GET /workspaces/{workspaceId}",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}"
+          }
+        },
+        {
+          "name": "PATCH /workspaces/{workspaceId} rename",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Q3 Vendor Contracts Review (renamed)\"\n}"
+            },
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}"
+          }
+        },
+        {
+          "name": "POST empty name → 400 WORKSPACE_INVALID_NAME",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\"\n}"
+            },
+            "url": "{{baseUrl}}/workspaces"
+          }
+        },
+        {
+          "name": "GET unknown workspace → 404",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/workspaces/00000000-0000-0000-0000-000000000099"
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Modules (Story 1.5)",
+      "item": [
+        {
+          "name": "POST /workspaces/{id}/modules",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('created', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('moduleId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Contracts\"\n}"
+            },
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/modules"
+          }
+        },
+        {
+          "name": "POST same name in workspace B (should 201)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.environment.set('moduleBId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Contracts\"\n}"
+            },
+            "url": "{{baseUrl}}/workspaces/{{workspaceBId}}/modules"
+          }
+        },
+        {
+          "name": "POST duplicate name in same workspace → 409",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Contracts\"\n}"
+            },
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/modules"
+          }
+        },
+        {
+          "name": "GET /workspaces/{id}/modules",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/modules"
+          }
+        },
+        {
+          "name": "PATCH /modules/{moduleId}",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Vendor Contracts\"\n}"
+            },
+            "url": "{{baseUrl}}/modules/{{moduleId}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Documents upload / list (Stories 1.2, 1.3, 1.6)",
+      "item": [
+        {
+          "name": "POST upload two files",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('accepted', () => pm.response.to.have.status(202));",
+                  "const docs = pm.response.json().documents || [];",
+                  "if (docs.length) pm.environment.set('documentId', docs[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "Select a local .pdf (repeat the files field for a .docx)"
+                },
+                {
+                  "key": "files",
+                  "type": "file",
+                  "disabled": true,
+                  "src": [],
+                  "description": "Enable and attach a second .docx"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/documents",
+            "description": "Attach at least one .pdf or .docx to the `files` field. Expected 202, processingStatus UPLOADED."
+          }
+        },
+        {
+          "name": "POST folder upload (relativePaths)",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "files", "type": "file", "src": [] },
+                { "key": "files", "type": "file", "src": [], "disabled": true },
+                { "key": "relativePaths", "type": "text", "value": "Finance/Q3report.pdf" },
+                { "key": "relativePaths", "type": "text", "value": "loose-memo.docx", "disabled": true }
+              ]
+            },
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/documents",
+            "description": "First file should get moduleName Finance. A loose file with no folder segment stays moduleId null."
+          }
+        },
+        {
+          "name": "POST mixed valid + .xlsx (xlsx in rejections)",
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "files", "type": "file", "src": [] },
+                { "key": "files", "type": "file", "src": [], "description": "Attach a .xlsx — expect UNSUPPORTED_FILE_TYPE in rejections" }
+              ]
+            },
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/documents"
+          }
+        },
+        {
+          "name": "GET /workspaces/{id}/documents",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/documents",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "documents"]
+            }
+          }
+        },
+        {
+          "name": "GET documents filtered by moduleId",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/documents?moduleId={{moduleId}}"
+          }
+        },
+        {
+          "name": "GET documents filtered by documentType",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/documents?documentType=contract",
+            "description": "Empty until Epic 3 classifies. Use after you UPDATE document.document_type in Postgres."
+          }
+        },
+        {
+          "name": "GET /documents/{documentId}",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/documents/{{documentId}}"
+          }
+        },
+        {
+          "name": "GET /documents/{documentId}/file (original)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/documents/{{documentId}}/file",
+            "description": "Streams the original PDF/DOCX as uploaded. Use Send and Download in Postman, or open the blob in the UI. Independent of overview/summary."
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Retry / module assign / archive (Stories 1.4, 1.5 AC3)",
+      "item": [
+        {
+          "name": "PATCH /documents/{id}/module (same workspace)",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"moduleId\": \"{{moduleId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/documents/{{documentId}}/module"
+          }
+        },
+        {
+          "name": "PATCH module from other workspace → 400 INVALID_MODULE_SCOPE",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"moduleId\": \"{{moduleBId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/documents/{{documentId}}/module"
+          }
+        },
+        {
+          "name": "POST /documents/{id}/retry (expect 409 unless FAILED)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/documents/{{documentId}}/retry",
+            "description": "READY/UPLOADED → 409 INVALID_STATE_TRANSITION. To test success, run the SQL in the collection description to set processing_status = FAILED first."
+          }
+        },
+        {
+          "name": "DELETE /documents/{id} archive",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/documents/{{documentId}}"
+          }
+        },
+        {
+          "name": "DELETE /modules/{moduleId} (docs become unassigned)",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/modules/{{moduleId}}"
+          }
+        },
+        {
+          "name": "DELETE /workspaces/{id} archive",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}",
+            "description": "Soft-archives. It will disappear from GET /workspaces."
+          }
+        }
+      ]
+    }
+  ]
+}
