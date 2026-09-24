@@ -102,6 +102,8 @@ export function FolderCard({
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
+                id="delete-folder-button"
+                data-testid="delete-folder-button"
                 className="text-destructive focus:bg-destructive/10 focus:text-destructive"
                 onClick={runMenuAction(() => onDelete?.(folder))}
               >

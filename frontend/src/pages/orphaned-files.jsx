@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { AppShell } from '@/components/layout/app-shell';
 import { OrphanedFileRow } from '@/components/features/orphaned-file-row';
 import { UploadDialog } from '@/components/features/upload-dialog';
+import { MoveToFolderDialog } from '@/components/features/move-to-folder-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -32,6 +33,11 @@ import { useWorkspace } from '@/context/workspace-context';
 // The API returns every document at once, so infinite scroll reveals them in slices.
 const PAGE_SIZE = 10;
 const SEARCH_DEBOUNCE_MS = 250;
+// Phase 1 moves one document at a time; raise this (the dialog already takes a list) for multi-move.
+const MAX_MOVE_DOCUMENTS = 1;
+
+// Documents that already belong to a folder are no longer orphaned.
+const keepUnassigned = (documents) => documents.filter((doc) => !doc.moduleId);
 
 const COLUMNS = [
   { label: 'Name', className: 'px-3' },
@@ -48,6 +54,8 @@ export function OrphanedFilesPage() {
   const [search, setSearch] = useState('');
   const [bannerOpen, setBannerOpen] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [movingDocuments, setMovingDocuments] = useState([]);
   const [reloadKey, setReloadKey] = useState(0);
 
   const [files, setFiles] = useState([]);
@@ -83,7 +91,7 @@ export function OrphanedFilesPage() {
     documentsApi
       .list(selectedWorkspaceId)
       .then((documents) => {
-        if (!cancelled) setFiles(documents);
+        if (!cancelled) setFiles(keepUnassigned(documents));
       })
       .catch((err) => {
         if (cancelled) return;
@@ -143,22 +151,44 @@ export function OrphanedFilesPage() {
     setSelectedIds(allSelected ? new Set() : new Set(items.map((f) => f.id)));
   };
 
-  // Show freshly uploaded documents straight away, then quietly re-sync with the server.
+  // Quietly re-sync with the server; on failure keep what is already on screen.
+  const refreshFiles = useCallback(() => {
+    if (!selectedWorkspaceId) return;
+    documentsApi
+      .list(selectedWorkspaceId)
+      .then((documents) => setFiles(keepUnassigned(documents)))
+      .catch(() => {});
+  }, [selectedWorkspaceId]);
+
+  // Show freshly uploaded documents straight away, then re-sync.
   const handleUploaded = useCallback(
     (uploaded) => {
       setFiles((prev) => [...uploaded, ...prev.filter((f) => !uploaded.some((u) => u.id === f.id))]);
-      documentsApi
-        .list(selectedWorkspaceId)
-        .then(setFiles)
-        .catch(() => {
-          // Keep what is already on screen; the next visit or retry will re-sync.
-        });
+      refreshFiles();
     },
-    [selectedWorkspaceId]
+    [refreshFiles]
   );
 
-  // UI only for now: moving files needs a backend endpoint (and a folder picker).
-  const handleMoveToFolder = useCallback(() => {}, []);
+  // Opens the move dialog for the given document ids (one at a time for now).
+  const handleMoveToFolder = useCallback(
+    (fileIds) => {
+      const documents = files.filter((f) => fileIds.includes(f.id)).slice(0, MAX_MOVE_DOCUMENTS);
+      if (documents.length === 0) return;
+      setMovingDocuments(documents);
+      setMoveOpen(true);
+    },
+    [files]
+  );
+
+  // A moved document is no longer orphaned: drop it right away, then re-sync.
+  const handleMoved = useCallback(
+    (movedDocument) => {
+      setFiles((prev) => prev.filter((f) => f.id !== movedDocument.id));
+      setSelectedIds(new Set());
+      refreshFiles();
+    },
+    [refreshFiles]
+  );
 
   const isEmpty = !loading && !error && totalCount === 0;
   const hasNoMatches = !loading && !error && totalCount > 0 && items.length === 0;
@@ -253,7 +283,8 @@ export function OrphanedFilesPage() {
                     type="button"
                     variant="outline"
                     className="gap-2"
-                    disabled={selectedIds.size === 0}
+                    disabled={selectedIds.size !== MAX_MOVE_DOCUMENTS}
+                    title={selectedIds.size > MAX_MOVE_DOCUMENTS ? 'Select a single file to move it' : undefined}
                     onClick={() => handleMoveToFolder([...selectedIds])}
                   >
                     <FolderInput className="h-4 w-4" />
@@ -351,6 +382,12 @@ export function OrphanedFilesPage() {
           )}
         </div>
       <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} onUploaded={handleUploaded} />
+      <MoveToFolderDialog
+        open={moveOpen}
+        onOpenChange={setMoveOpen}
+        documents={movingDocuments}
+        onMoved={handleMoved}
+      />
     </AppShell>
   );
 }

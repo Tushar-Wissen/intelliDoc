@@ -21,6 +21,7 @@ import { useHealthStatus } from '@/hooks/use-health-status';
 import { useAuth } from '@/context/auth-context';
 import { useWorkspace } from '@/context/workspace-context';
 import { useFolders } from '@/context/folder-context';
+import { useToast } from '@/context/toast-context';
 
 const SUBTITLE = 'Browse folders and analyze documents with AI';
 
@@ -31,6 +32,7 @@ export function WorkspacePage() {
   const [search, setSearch] = useState('');
   const healthStatus = useHealthStatus();
   const { user } = useAuth();
+  const toast = useToast();
   const { workspaceName, selectedWorkspaceId } = useWorkspace();
   const {
     folders,
@@ -38,13 +40,14 @@ export function WorkspacePage() {
     error: foldersError,
     selectFolder,
     refreshFolders,
-    removeFolderLocally,
+    deleteFolder,
   } = useFolders();
 
   const [uploadOpen, setUploadOpen] = useState(false);
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [renamingFolder, setRenamingFolder] = useState(null);
   const [deletingFolder, setDeletingFolder] = useState(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Only the id is stored; the folder itself is looked up so it always reflects the shared list.
   const [activeFolderId, setActiveFolderId] = useState(null);
@@ -90,14 +93,32 @@ export function WorkspacePage() {
     setDeletingFolder(folder);
   };
 
-  const handleConfirmDeleteFolder = () => {
-    if (!deletingFolder) return;
-    const folderId = deletingFolder.id;
+  const handleConfirmDeleteFolder = async () => {
+    if (!deletingFolder || deleting) return;
+    const { id: folderId, name } = deletingFolder;
 
-    removeFolderLocally(folderId);
-    setActiveFolderId((prev) => (prev === folderId ? null : prev));
-    setOpenTabs((prev) => prev.filter((t) => t.id !== `folder:${folderId}`));
-    setDeletingFolder(null);
+    setDeleting(true);
+    try {
+      // Deletes via the API, then the shared folder list (sidebar, cards) updates itself.
+      await deleteFolder(folderId);
+
+      // If the deleted folder was open, clear it and fall back to the workspace-level view.
+      if (activeFolderId === folderId) {
+        setActiveFolderId(null);
+        setActiveFileId(null);
+        navigate('/workspace', { replace: true, state: { clearFolder: true } });
+      }
+      setOpenTabs((prev) => prev.filter((t) => t.id !== `folder:${folderId}` && t.folderId !== folderId));
+      setActiveTabId((prev) => (prev === `folder:${folderId}` ? null : prev));
+
+      toast.success('Folder deleted', `"${name}" was deleted.`);
+      setDeleting(false);
+      setDeletingFolder(null);
+    } catch (err) {
+      // Keep the dialog open so the user can retry or cancel.
+      toast.error('Could not delete folder', err?.message || 'Something went wrong. Please try again.');
+      setDeleting(false);
+    }
   };
 
   const handleSelectFolder = (folder) => {
@@ -412,6 +433,8 @@ export function WorkspacePage() {
         description={deletingFolder ? `Delete "${deletingFolder.name}"? This can't be undone.` : ''}
         confirmLabel="Delete"
         destructive
+        loading={deleting}
+        testIdPrefix="delete-folder"
         onConfirm={handleConfirmDeleteFolder}
       />
 

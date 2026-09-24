@@ -35,7 +35,9 @@ export class ApiError extends Error {
 // Translates an axios failure into an ApiError. `messages` lets a service override the
 // wording per code (e.g. "A workspace with this name already exists."); for validation
 // and conflict responses a message sent by the backend takes precedence over both.
-export function toApiError(err, messages = {}) {
+// `preferServerMessage` extends that to every status, for actions where the backend's reason
+// (e.g. why a delete was refused) is more useful than a generic one.
+export function toApiError(err, messages = {}, { preferServerMessage = false } = {}) {
   if (!err.response) {
     // Request never got a response: offline, DNS/CORS failure, timeout, etc.
     return new ApiError(API_ERROR_CODES.NETWORK, messages[API_ERROR_CODES.NETWORK]);
@@ -44,7 +46,7 @@ export function toApiError(err, messages = {}) {
   const { status, data } = err.response;
   const serverMessage = typeof data?.message === 'string' ? data.message : undefined;
   const pick = (code, preferServer = false) =>
-    new ApiError(code, (preferServer && serverMessage) || messages[code]);
+    new ApiError(code, ((preferServer || preferServerMessage) && serverMessage) || messages[code]);
 
   if (status === 401 || status === 403) return pick(API_ERROR_CODES.UNAUTHORIZED);
   if (status === 404) return pick(API_ERROR_CODES.NOT_FOUND);

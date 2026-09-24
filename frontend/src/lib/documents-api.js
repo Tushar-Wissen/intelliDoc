@@ -7,7 +7,7 @@ export const SUPPORTED_UPLOAD_EXTENSIONS = ['PDF', 'DOCX'];
 
 const DOCUMENT_ERROR_MESSAGES = {
   [API_ERROR_CODES.INVALID]: 'The file could not be uploaded. Only PDF and DOCX files are accepted.',
-  [API_ERROR_CODES.NOT_FOUND]: 'This workspace no longer exists. Select another workspace and try again.',
+  [API_ERROR_CODES.NOT_FOUND]: 'This document or folder no longer exists. Refresh the page and try again.',
 };
 
 const documentsUrl = (workspaceId) => `${API_BASE_URL}/workspaces/${encodeURIComponent(workspaceId)}/documents`;
@@ -19,6 +19,8 @@ function toAppDocument(apiDocument) {
     name: apiDocument.fileName,
     type: getFileExtension(apiDocument.fileName),
     status: apiDocument.processingStatus,
+    // Set once a document is assigned to a folder (module); null while it is workspace-level.
+    moduleId: apiDocument.moduleId ?? null,
     createdAt: apiDocument.createdAt,
   };
 }
@@ -74,6 +76,21 @@ export const documentsApi = {
         documents: (data?.documents ?? []).map(toAppDocument),
         rejections: (data?.rejections ?? []).map(toAppRejection),
       };
+    } catch (err) {
+      throw toApiError(err, DOCUMENT_ERROR_MESSAGES);
+    }
+  },
+
+  // PATCH /documents/{documentId}/module  { moduleId }
+  // Moves a single document into a folder. For several documents, call this once per document.
+  async moveToFolder(documentId, moduleId) {
+    try {
+      await axios.patch(
+        `${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/module`,
+        { moduleId },
+        { headers: authHeaders() }
+      );
+      return { documentId, moduleId };
     } catch (err) {
       throw toApiError(err, DOCUMENT_ERROR_MESSAGES);
     }

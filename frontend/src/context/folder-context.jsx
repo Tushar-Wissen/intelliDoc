@@ -8,9 +8,8 @@ const FolderContext = createContext(undefined);
 // Single source of truth for the selected workspace's folders (backend "modules"), shared by
 // the sidebar, dashboard, workspace page and dialogs so they all update together.
 //
-// Listing, creating and renaming folders are backed by endpoints. Deleting a folder is still applied
-// to local state only; `deletedIdsRef` keeps a deleted folder from reappearing when the list is
-// refetched during the session.
+// Every folder operation (list, create, rename, delete) goes through the API, and the API
+// response is the source of truth for what is shown.
 export function FolderProvider({ children }) {
   const { selectedWorkspaceId, loading: workspacesLoading } = useWorkspace();
 
@@ -21,22 +20,6 @@ export function FolderProvider({ children }) {
 
   const requestIdRef = useRef(0);
   const hasLoadedRef = useRef(false);
-  const deletedIdsRef = useRef(new Set());
-
-  // Merges a fresh server list with the session's local-only changes (deleted folders and their files).
-  const mergeWithLocal = useCallback(
-    (prev, incoming) => {
-      const prevById = new Map(prev.map((f) => [f.id, f]));
-      return incoming
-        .filter((f) => !deletedIdsRef.current.has(f.id))
-        .map((f) => {
-          const local = prevById.get(f.id);
-          if (!local) return f;
-          return { ...f, files: local.files, filesCount: local.filesCount };
-        });
-    },
-    []
-  );
 
   // Fetches the folder list for the selected workspace. Rejects on failure.
   const loadFolders = useCallback(async () => {
@@ -53,7 +36,7 @@ export function FolderProvider({ children }) {
       const items = await modulesApi.list(selectedWorkspaceId);
       if (!isLatest()) return items;
       hasLoadedRef.current = true;
-      setFolders((prev) => mergeWithLocal(prev, items));
+      setFolders(items);
       return items;
     } catch (err) {
       if (isLatest()) setError(err);
@@ -61,13 +44,12 @@ export function FolderProvider({ children }) {
     } finally {
       if (isLatest()) setLoading(false);
     }
-  }, [selectedWorkspaceId, mergeWithLocal]);
+  }, [selectedWorkspaceId]);
 
   // Reload whenever the selected workspace changes; folders never carry across workspaces.
   useEffect(() => {
     requestIdRef.current += 1; // discard any in-flight response for the previous workspace
     hasLoadedRef.current = false;
-    deletedIdsRef.current = new Set();
     setFolders([]);
     setSelectedFolderId(null);
     setError(null);
@@ -115,13 +97,21 @@ export function FolderProvider({ children }) {
     return updated;
   }, []);
 
-  /* ─── Local-only changes (no endpoint yet) ─── */
+  // Deletes a folder via the API, drops it from state right away and re-syncs the list.
+  // Rejects with an ApiError when the request fails (state is left untouched in that case).
+  const deleteFolder = useCallback(
+    async (folderId) => {
+      await modulesApi.remove(folderId);
 
-  const removeFolderLocally = useCallback((folderId) => {
-    deletedIdsRef.current.add(folderId);
-    setFolders((prev) => prev.filter((f) => f.id !== folderId));
-    setSelectedFolderId((prev) => (prev === folderId ? null : prev));
-  }, []);
+      setFolders((prev) => prev.filter((f) => f.id !== folderId));
+      setSelectedFolderId((prev) => (prev === folderId ? null : prev));
+
+      // The folder is gone server-side, so a failed refresh must not turn into a delete error;
+      // the list already reflects the deletion.
+      loadFolders().catch(() => {});
+    },
+    [loadFolders]
+  );
 
   const value = useMemo(
     () => ({
@@ -133,7 +123,7 @@ export function FolderProvider({ children }) {
       createFolder,
       renameFolder,
       refreshFolders: loadFolders,
-      removeFolderLocally,
+      deleteFolder,
     }),
     [
       folders,
@@ -144,7 +134,7 @@ export function FolderProvider({ children }) {
       createFolder,
       renameFolder,
       loadFolders,
-      removeFolderLocally,
+      deleteFolder,
     ]
   );
 
