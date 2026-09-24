@@ -60,4 +60,14 @@ export const modulesApi = {
       throw toApiError(err, MODULE_ERROR_MESSAGES);
     }
   },
+
+  // DELETE /modules/{moduleId}
+  async remove(moduleId) {
+    try {
+      await axios.delete(`${API_BASE_URL}/modules/${encodeURIComponent(moduleId)}`, { headers: authHeaders() });
+    } catch (err) {
+      // Show the backend's own reason when it gives one (e.g. why a delete was refused).
+      throw toApiError(err, MODULE_ERROR_MESSAGES, { preferServerMessage: true });
+    }
+  },
 };

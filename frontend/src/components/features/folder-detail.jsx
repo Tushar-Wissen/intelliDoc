@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 
 // Formats accepted by the upload dialog, shown as hints in the empty state.
-const EMPTY_STATE_FORMATS = ['PDF', 'DOCX', 'CSV', 'TXT'];
+const EMPTY_STATE_FORMATS = ['PDF', 'DOCX'];
 
 const FOLDER_COLORS = [
   { bg: 'bg-violet-500/10', fg: 'text-violet-600 dark:text-violet-400' },
