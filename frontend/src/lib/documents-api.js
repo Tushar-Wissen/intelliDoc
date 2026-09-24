@@ -95,4 +95,13 @@ export const documentsApi = {
       throw toApiError(err, DOCUMENT_ERROR_MESSAGES);
     }
   },
+
+  // DELETE /documents/{documentId}
+  async remove(documentId) {
+    try {
+      await axios.delete(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}`, { headers: authHeaders() });
+    } catch (err) {
+      throw toApiError(err, DOCUMENT_ERROR_MESSAGES, { preferServerMessage: true });
+    }
+  },
 };

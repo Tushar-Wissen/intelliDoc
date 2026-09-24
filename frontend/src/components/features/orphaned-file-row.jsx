@@ -1,5 +1,5 @@
 import React from 'react';
-import { FolderInput, MoreHorizontal } from 'lucide-react';
+import { FolderInput, MoreHorizontal, Trash2 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/format';
@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-export function OrphanedFileRow({ file, selected, onToggleSelect, onMoveToFolder }) {
+export function OrphanedFileRow({ file, selected, onToggleSelect, onMoveToFolder, onDelete }) {
   const { Icon, label, className: typeClassName } = getFileTypeMeta(file.name);
 
   return (
@@ -76,6 +76,13 @@ export function OrphanedFileRow({ file, selected, onToggleSelect, onMoveToFolder
               <DropdownMenuItem onClick={() => onMoveToFolder([file.id])}>
                 <FolderInput className="h-4 w-4" />
                 Move to folder
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                onClick={() => onDelete(file)}
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

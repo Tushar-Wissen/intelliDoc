@@ -29,6 +29,8 @@ import { documentsApi } from '@/lib/documents-api';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { useHealthStatus } from '@/hooks/use-health-status';
 import { useWorkspace } from '@/context/workspace-context';
+import { useToast } from '@/context/toast-context';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 // The API returns every document at once, so infinite scroll reveals them in slices.
 const PAGE_SIZE = 10;
@@ -49,6 +51,7 @@ const COLUMNS = [
 export function OrphanedFilesPage() {
   const healthStatus = useHealthStatus();
   const { selectedWorkspaceId, loading: workspaceLoading } = useWorkspace();
+  const toast = useToast();
 
   const [searchInput, setSearchInput] = useState('');
   const [search, setSearch] = useState('');
@@ -56,6 +59,8 @@ export function OrphanedFilesPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [movingDocuments, setMovingDocuments] = useState([]);
+  const [deletingFile, setDeletingFile] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
   const [files, setFiles] = useState([]);
@@ -189,6 +194,31 @@ export function OrphanedFilesPage() {
     },
     [refreshFiles]
   );
+
+  const handleDelete = useCallback((file) => {
+    setDeletingFile(file);
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
+    if (!deletingFile || deleting) return;
+
+    setDeleting(true);
+    try {
+      await documentsApi.remove(deletingFile.id);
+      setFiles((prev) => prev.filter((file) => file.id !== deletingFile.id));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(deletingFile.id);
+        return next;
+      });
+      toast.success('File deleted', `"${deletingFile.name}" was deleted.`);
+      setDeletingFile(null);
+    } catch (err) {
+      toast.error('Could not delete file', err?.message || 'Something went wrong. Please try again.');
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleting, deletingFile, toast]);
 
   const isEmpty = !loading && !error && totalCount === 0;
   const hasNoMatches = !loading && !error && totalCount > 0 && items.length === 0;
@@ -363,6 +393,7 @@ export function OrphanedFilesPage() {
                               selected={selectedIds.has(file.id)}
                               onToggleSelect={toggleSelect}
                               onMoveToFolder={handleMoveToFolder}
+                              onDelete={handleDelete}
                             />
                         ))}
                       </tbody>
@@ -387,6 +418,17 @@ export function OrphanedFilesPage() {
         onOpenChange={setMoveOpen}
         documents={movingDocuments}
         onMoved={handleMoved}
+      />
+      <ConfirmDialog
+        open={Boolean(deletingFile)}
+        onOpenChange={(open) => !deleting && !open && setDeletingFile(null)}
+        title="Delete file?"
+        description={deletingFile ? `Delete "${deletingFile.name}"? This can't be undone.` : ''}
+        confirmLabel="Delete"
+        destructive
+        loading={deleting}
+        testIdPrefix="delete-orphaned-file"
+        onConfirm={handleConfirmDelete}
       />
     </AppShell>
   );
