@@ -14,7 +14,6 @@ import { CopilotSidebar } from '@/components/features/copilot-sidebar';
 import { EmptyWorkspaceState } from '@/components/features/empty-workspace-state';
 import { CreateFolderDialog } from '@/components/features/create-folder-dialog';
 import { RenameFolderDialog } from '@/components/features/rename-folder-dialog';
-import { RecentDocumentsCard } from '@/components/features/recent-documents-card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 import { useHealthStatus } from '@/hooks/use-health-status';
@@ -388,13 +387,6 @@ export function WorkspacePage() {
                       ))}
                     </div>
                   </div>
-
-                  {!search && <RecentDocumentsCard
-                      loading={false}
-                      files={recentFiles}
-                      onOpenFile={handleFileClick}
-                      onUploadClick={() => setUploadOpen(true)}
-                    />}
 
                   <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                     {filteredFolders.map((folder, idx) => (
