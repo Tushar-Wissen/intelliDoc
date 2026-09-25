@@ -170,27 +170,27 @@ export function ProfilePage() {
       onNavigate={(view) => navigate('/', { state: { view } })}
     >
       <ScrollArea id="profile-page" className="-mx-1 min-h-0 flex-1">
-      <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 px-1 pb-10">
-        <Card id="profile-info-card">
-          <CardHeader className="flex-row items-center gap-4 border-b border-border bg-muted/30 py-5">
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-1 pb-10">
+        <Card id="profile-info-card" className="overflow-hidden border-border/80 shadow-sm">
+          <CardHeader className="flex-row items-center gap-4 border-b border-border/80 bg-gradient-to-r from-wissen-navy/[0.08] via-card to-card py-6 dark:from-wissen-navy-light/[0.14]">
             <Avatar className="h-14 w-14 shrink-0">
-              <AvatarFallback className="bg-gradient-to-br from-primary to-violet-500 text-base font-semibold text-primary-foreground">
+              <AvatarFallback className="bg-wissen-navy text-base font-semibold text-white shadow-sm dark:bg-wissen-navy-light">
                 {getInitials(user)}
               </AvatarFallback>
             </Avatar>
             <div className="min-w-0">
-              <CardTitle id="profile-display-name" className="truncate">
+              <CardTitle id="profile-display-name" className="truncate font-display text-lg">
                 {user?.fullName || 'Your profile'}
               </CardTitle>
-              <CardDescription className="truncate">{user?.email}</CardDescription>
+              <CardDescription className="truncate text-sm">{user?.email}</CardDescription>
               <p id="profile-member-since" className="mt-0.5 text-xs text-muted-foreground">
                 Member since {formatDate(user?.createdAt)}
               </p>
             </div>
           </CardHeader>
           <CardContent className="pt-5">
-            <div className="mb-4 flex items-center gap-2 text-sm font-medium">
-              <UserRound className="h-4 w-4 text-muted-foreground" />
+            <div className="mb-4 flex items-center gap-2 font-display text-sm font-semibold">
+              <UserRound className="h-4 w-4 text-wissen-navy dark:text-wissen-navy-light" />
               Personal information
             </div>
             <form id="profile-form" className="flex flex-col gap-4" onSubmit={handleSaveProfile} noValidate>
@@ -239,7 +239,7 @@ export function ProfilePage() {
                 <Button
                   id="save-profile-button"
                   type="submit"
-                  className="gap-2"
+                  className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
                   disabled={savingProfile || !trimmedFullName || isNameUnchanged}
                 >
                   {savingProfile && <Loader2 className="h-4 w-4 animate-spin" />}
@@ -261,10 +261,10 @@ export function ProfilePage() {
           </CardContent>
         </Card>
 
-        <Card id="change-password-card">
+        <Card id="change-password-card" className="border-border/80 shadow-sm">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <KeyRound className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="flex items-center gap-2 font-display">
+              <KeyRound className="h-4 w-4 text-wissen-navy dark:text-wissen-navy-light" />
               Change password
             </CardTitle>
             <CardDescription>Update the password used to sign in</CardDescription>
@@ -317,7 +317,12 @@ export function ProfilePage() {
               )}
 
               <div>
-                <Button id="update-password-button" type="submit" className="gap-2" disabled={savingPassword}>
+                <Button
+                  id="update-password-button"
+                  type="submit"
+                  className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
+                  disabled={savingPassword}
+                >
                   {savingPassword && <Loader2 className="h-4 w-4 animate-spin" />}
                   Update password
                 </Button>
@@ -326,9 +331,9 @@ export function ProfilePage() {
           </CardContent>
         </Card>
 
-        <Card id="account-card">
+        <Card id="account-card" className="border-border/80 shadow-sm">
           <CardHeader>
-            <CardTitle>Account</CardTitle>
+            <CardTitle className="font-display">Account</CardTitle>
             <CardDescription>Sign out of IntelliDoc on this device</CardDescription>
           </CardHeader>
           <Separator />
@@ -347,9 +352,9 @@ export function ProfilePage() {
           </CardFooter>
         </Card>
 
-        <Card id="danger-zone-card" className="border-destructive/30">
+        <Card id="danger-zone-card" className="border-destructive/30 shadow-sm">
           <CardHeader>
-            <CardTitle className="text-destructive">Remove account</CardTitle>
+            <CardTitle className="font-display text-destructive">Remove account</CardTitle>
             <CardDescription>Permanently delete your IntelliDoc account and sign out everywhere</CardDescription>
           </CardHeader>
           <Separator className="bg-destructive/20" />
