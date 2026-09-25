@@ -1,9 +1,12 @@
 package com.intellidoc.backend.service;
 
 import com.intellidoc.backend.dto.LoginResponseDto;
+import com.intellidoc.backend.exception.EmailAlreadyExistsException;
 import com.intellidoc.backend.exception.InvalidCredentialsException;
 import com.intellidoc.backend.exception.UserNotFoundException;
+import com.intellidoc.backend.model.TenantEntity;
 import com.intellidoc.backend.model.UserAccountEntity;
+import com.intellidoc.backend.repository.TenantRepository;
 import com.intellidoc.backend.repository.UserAccountRepository;
 import com.intellidoc.backend.security.JwtTokenProvider;
 import org.junit.jupiter.api.BeforeEach;
@@ -30,6 +33,9 @@ class AuthServiceTest {
     private UserAccountRepository userAccountRepository;
 
     @Mock
+    private TenantRepository tenantRepository;
+
+    @Mock
     private JwtTokenProvider jwtTokenProvider;
 
     private AuthService authService;
@@ -39,7 +45,7 @@ class AuthServiceTest {
     @BeforeEach
     void setUp() {
         passwordEncoder = new BCryptPasswordEncoder();
-        authService = new AuthService(userAccountRepository, passwordEncoder, jwtTokenProvider);
+        authService = new AuthService(userAccountRepository, tenantRepository, passwordEncoder, jwtTokenProvider);
         user = UserAccountEntity.builder()
                 .id(UUID.fromString("00000000-0000-0000-0000-000000000002"))
                 .tenantId(UUID.fromString("00000000-0000-0000-0000-000000000001"))
@@ -48,6 +54,44 @@ class AuthServiceTest {
                 .role("member")
                 .passwordHash(passwordEncoder.encode("password"))
                 .build();
+    }
+
+    @Test
+    void signupCreatesTenantAndUser() {
+        UUID tenantId = UUID.fromString("00000000-0000-0000-0000-000000000003");
+        UUID userId = UUID.fromString("00000000-0000-0000-0000-000000000004");
+        when(userAccountRepository.findByEmailIgnoreCase("new.user@company.com")).thenReturn(Optional.empty());
+        when(tenantRepository.save(any(TenantEntity.class))).thenAnswer(invocation -> {
+            TenantEntity tenant = invocation.getArgument(0);
+            tenant.setId(tenantId);
+            return tenant;
+        });
+        when(userAccountRepository.save(any(UserAccountEntity.class))).thenAnswer(invocation -> {
+            UserAccountEntity saved = invocation.getArgument(0);
+            saved.setId(userId);
+            return saved;
+        });
+        when(jwtTokenProvider.generateToken(userId, tenantId)).thenReturn("new-token");
+
+        LoginResponseDto response = authService.signup("  New.User@company.com ", "password", "  New User ");
+
+        assertEquals("new-token", response.getToken());
+        assertEquals(userId, response.getUser().getId());
+        assertEquals("New User", response.getUser().getDisplayName());
+        assertEquals("member", response.getUser().getRole());
+    }
+
+    @Test
+    void signupRejectsExistingEmail() {
+        when(userAccountRepository.findByEmailIgnoreCase("jane.doe@company.com"))
+                .thenReturn(Optional.of(user));
+
+        EmailAlreadyExistsException ex = assertThrows(
+                EmailAlreadyExistsException.class,
+                () -> authService.signup("jane.doe@company.com", "password", "Jane Doe")
+        );
+
+        assertEquals("AUTH_EMAIL_ALREADY_EXISTS", ex.getCode());
     }
 
     @Test

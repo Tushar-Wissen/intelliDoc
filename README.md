@@ -33,7 +33,7 @@ Still open inside Epic 4:
 - `SELECT to_tsvector('simple', 'SA-2026-014')` has not been run against a dev database and recorded in the Epic 4 plan.
 - The `V23` trigram migration is in the repo. It applies the next time Core API starts Flyway. An existing database does not need a volume wipe for a new `Vxx` file.
 
-The frontend still uses its mock login. Core API auth is `POST /auth/login`.
+The frontend still uses its mock login. Core API auth is `POST /auth/signup` and `POST /auth/login`.
 
 **Chat (backend + Postman):** Set `CHAT_ANSWER_GENERATOR_MODE=http` (default in Docker Compose) so answers come from the AI service. Follow [`docs/Testing/E2E_UPLOAD_TO_CHAT_MANUAL_TEST.md`](docs/Testing/E2E_UPLOAD_TO_CHAT_MANUAL_TEST.md). Documents must reach `READY` before chat session creation.
 
@@ -68,9 +68,17 @@ Both return `200` with `"status":"UP"`.
 
 Infra health is Compose `healthcheck` blocks (`pg_isready`, Neo4j HTTP, Redis `PING`, MinIO `/minio/health/live`).
 
-### Seed a POC login (Story 0.4)
+### Create an account or seed a POC login (Story 0.4)
 
-There is no signup API. Run this **after** `docker compose up` and Core API has applied Flyway migrations (tables `tenant` and `user_account` exist).
+**Option A — signup API** (no seed script required):
+
+```bash
+curl -X POST http://localhost:8080/auth/signup ^
+  -H "Content-Type: application/json" ^
+  -d "{\"email\":\"you@company.com\",\"password\":\"password\",\"displayName\":\"Your Name\"}"
+```
+
+**Option B — seed script** (legacy demo user). Run this **after** `docker compose up` and Core API has applied Flyway migrations (tables `tenant` and `user_account` exist).
 
 **Docker (Linux/macOS / Git Bash):**
 

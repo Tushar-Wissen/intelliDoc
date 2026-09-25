@@ -42,9 +42,20 @@
 
 | Method | Path | Purpose |
 |---|---|---|
+| POST | `/auth/signup` | Create an account and return a bearer token |
 | POST | `/auth/login` | Exchange credentials for a bearer token |
 | POST | `/auth/logout` | Invalidate current token |
 | GET | `/auth/me` | Get current user profile |
+
+**POST `/auth/signup`**
+```json
+// Request
+{ "email": "user@company.com", "password": "...", "displayName": "Jane Doe" }
+// Response  (200)
+{ "token": "eyJ...", "user": { "id": "uuid", "displayName": "Jane Doe", "role": "member" } }
+// Response  (409) — email already registered
+{ "error": { "code": "AUTH_EMAIL_ALREADY_EXISTS", "message": "An account with this email already exists.", "requestId": "..." } }
+```
 
 **POST `/auth/login`**
 ```json
