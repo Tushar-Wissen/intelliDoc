@@ -75,7 +75,7 @@
 | GET | `/workspaces` | List workspaces the user can access |
 | GET | `/workspaces/{workspaceId}` | Get workspace details |
 | PATCH | `/workspaces/{workspaceId}` | Rename / update status |
-| DELETE | `/workspaces/{workspaceId}` | Archive a workspace |
+| DELETE | `/workspaces/{workspaceId}` | Archive a workspace and delete all modules and documents inside it |
 
 **POST `/workspaces`**
 ```json
@@ -96,7 +96,7 @@
 | POST | `/workspaces/{workspaceId}/modules` | Create a module |
 | GET | `/workspaces/{workspaceId}/modules` | List modules in a workspace |
 | PATCH | `/modules/{moduleId}` | Rename a module |
-| DELETE | `/modules/{moduleId}` | Delete a module (documents become unassigned, not deleted) |
+| DELETE | `/modules/{moduleId}` | Delete a module and archive all documents inside it |
 
 **POST `/workspaces/{workspaceId}/modules`**
 ```json
@@ -108,6 +108,46 @@
 
 A request to create a module with a name that already exists **in that same workspace** returns `409 MODULE_NAME_TAKEN`. The same name in a different workspace succeeds — modules never cross workspace boundaries.
 
+**GET `/workspaces/{workspaceId}/modules`**
+```json
+// Response (200)
+[
+  {
+    "id": "uuid",
+    "workspaceId": "uuid",
+    "name": "Security Reviews Folder",
+    "createdAt": "2026-09-23T17:53:20.085249Z",
+    "totalFiles": 2,
+    "files": [
+      {
+        "id": "uuid",
+        "name": "Security_Review_2026.pdf",
+        "type": "PDF",
+        "size": 204800,
+        "createdAt": "2026-09-23T17:53:30.085249Z"
+      },
+      {
+        "id": "uuid",
+        "name": "Vulnerability_Assessment.docx",
+        "type": "DOCX",
+        "size": 102400,
+        "createdAt": "2026-09-23T17:53:40.085249Z"
+      }
+    ]
+  },
+  {
+    "id": "uuid",
+    "workspaceId": "uuid",
+    "name": "Technical Research",
+    "createdAt": "2026-09-23T17:52:26.085035Z",
+    "totalFiles": 0,
+    "files": []
+  }
+]
+```
+
+`type` is the file extension in uppercase (`PDF`, `DOCX`). Archived documents are excluded from `files` and `totalFiles`.
+
 ---
 
 ## 5. Documents
@@ -115,6 +155,7 @@ A request to create a module with a name that already exists **in that same work
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/workspaces/{workspaceId}/documents` | Upload one or more documents, optionally into a module |
+| POST | `/modules/{moduleId}/documents` | Upload one or more documents directly into an existing module |
 | GET | `/workspaces/{workspaceId}/documents?moduleId=` | List documents in a workspace, optionally filtered to one module |
 | GET | `/documents/{documentId}` | Get document detail (overview, summary, status) |
 | GET | `/documents/{documentId}/file` | Stream the original uploaded file as-is (PDF/DOCX) for the UI viewer |
@@ -136,6 +177,10 @@ If the user selects a whole folder in the browser (`webkitdirectory`), each file
   ]
 }
 ```
+
+**POST `/modules/{moduleId}/documents`** (`multipart/form-data`, field `files[]`)
+
+Uploads one or more PDF/DOCX files into an existing module. Every accepted file is stored with that `moduleId`. The module must exist (`404 MODULE_NOT_FOUND`) and the caller must be a member of the module's workspace (`403 WORKSPACE_ACCESS_DENIED`). Per-file type and size checks match the workspace upload: a bad file is listed in `rejections` and does not reject the rest of the batch. Response shape is the same `202` body as the workspace upload, with `moduleId` and `moduleName` set on each accepted document.
 
 **PATCH `/documents/{documentId}/module`**
 ```json

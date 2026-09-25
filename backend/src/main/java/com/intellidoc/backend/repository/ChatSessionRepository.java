@@ -10,4 +10,5 @@ import java.util.UUID;
 public interface ChatSessionRepository extends JpaRepository<ChatSessionEntity, UUID> {
     Optional<ChatSessionEntity> findByIdAndWorkspaceId(UUID id, UUID workspaceId);
     List<ChatSessionEntity> findByWorkspaceIdOrderByCreatedAtDesc(UUID workspaceId);
+    List<ChatSessionEntity> findByScopeModuleId(UUID scopeModuleId);
 }

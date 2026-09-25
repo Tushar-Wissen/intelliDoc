@@ -253,6 +253,24 @@
         },
         {
           "name": "GET /workspaces/{id}/modules",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('ok', () => pm.response.to.have.status(200));",
+                  "const modules = pm.response.json();",
+                  "pm.test('array', () => pm.expect(modules).to.be.an('array'));",
+                  "if (modules.length) {",
+                  "  pm.test('has file fields', () => {",
+                  "    pm.expect(modules[0]).to.have.property('totalFiles');",
+                  "    pm.expect(modules[0]).to.have.property('files');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
           "request": {
             "method": "GET",
             "url": "{{baseUrl}}/workspaces/{{workspaceId}}/modules"
@@ -329,6 +347,37 @@
             },
             "url": "{{baseUrl}}/workspaces/{{workspaceId}}/documents",
             "description": "First file should get moduleName Finance. A loose file with no folder segment stays moduleId null."
+          }
+        },
+        {
+          "name": "POST /modules/{moduleId}/documents",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('accepted', () => pm.response.to.have.status(202));",
+                  "const docs = pm.response.json().documents || [];",
+                  "if (docs.length) pm.environment.set('documentId', docs[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "Select a local .pdf or .docx. It is assigned to {{moduleId}}."
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/modules/{{moduleId}}/documents",
+            "description": "Upload directly into an existing module. Expected 202 with moduleId set. Unknown module → 404 MODULE_NOT_FOUND."
           }
         },
         {
@@ -431,7 +480,7 @@
           }
         },
         {
-          "name": "DELETE /modules/{moduleId} (docs become unassigned)",
+          "name": "DELETE /modules/{moduleId} (archives contained documents)",
           "request": {
             "method": "DELETE",
             "url": "{{baseUrl}}/modules/{{moduleId}}"

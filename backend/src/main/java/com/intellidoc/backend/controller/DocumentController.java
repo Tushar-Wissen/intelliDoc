@@ -52,6 +52,19 @@ public class DocumentController {
                 .body(documentService.upload(principal, workspaceId, incoming, paths));
     }
 
+    @PostMapping(
+            value = {"/modules/{moduleId}/documents", "/api/v1/modules/{moduleId}/documents"},
+            consumes = "multipart/form-data"
+    )
+    public ResponseEntity<DocumentUploadResponseDto> uploadToModule(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @PathVariable UUID moduleId,
+            @RequestParam(value = "files", required = false) List<MultipartFile> files,
+            @RequestParam(value = "files[]", required = false) List<MultipartFile> filesBracket) {
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+                .body(documentService.uploadToModule(principal, moduleId, mergeFiles(files, filesBracket)));
+    }
+
     @GetMapping({"/workspaces/{workspaceId}/documents", "/api/v1/workspaces/{workspaceId}/documents"})
     public ResponseEntity<DocumentListResponseDto> list(
             @AuthenticationPrincipal AuthPrincipal principal,
