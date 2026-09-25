@@ -65,7 +65,6 @@ export function CopilotSidebar({
       id="copilot-sidebar-panel"
       className="absolute top-0 right-0 h-full w-80 sm:w-96 bg-card text-card-foreground border-l border-border shadow-xl z-50 flex flex-col"
     >
-      {/* Header — matches the workspace overview card gradient style */}
       <div
         id="copilot-sidebar-header"
         className="flex items-center gap-3 border-b border-border bg-gradient-to-r from-wissen-navy/5 via-card to-primary/5 px-4 py-3.5"
@@ -88,7 +87,6 @@ export function CopilotSidebar({
         </div>
       </div>
 
-      {/* Messages */}
       <div
         id="copilot-sidebar-messages"
         className="flex-1 overflow-y-auto scrollbar-thin p-4 flex flex-col gap-3"
@@ -96,11 +94,10 @@ export function CopilotSidebar({
         {messages.map((msg, idx) => (
           <div
             key={idx}
-            className={`p-3 rounded-xl max-w-[85%] text-sm leading-relaxed shadow-sm ${
-              msg.isUser
+            className={`p-3 rounded-xl max-w-[85%] text-sm leading-relaxed shadow-sm ${msg.isUser
                 ? 'bg-wissen-navy text-white rounded-tr-sm self-end'
                 : 'bg-muted/50 border border-border/50 rounded-tl-sm self-start text-foreground'
-            }`}
+              }`}
           >
             {msg.text}
           </div>
@@ -109,7 +106,6 @@ export function CopilotSidebar({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input */}
       <div className="p-3.5 border-t border-border bg-muted/10">
         <div className="relative flex items-center">
           <Input
