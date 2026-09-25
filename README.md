@@ -14,7 +14,10 @@ Ingestion runs in the AI service as one pipeline: parse, selective OCR, chunk, c
 | 3 Classification and extraction | In the repo | `ai-service/app/pipeline/classification.py`, `extraction.py`; field review API under `backend/.../field/` |
 | 4 Search indexing | In the repo | `ai-service/app/pipeline/indexing.py`; Flyway `V22` (simple full-text) and `V23` (`pg_trgm`) |
 | 5 Knowledge graph | In the repo | `ai-service/app/pipeline/kg.py`, `kg_schema.py`, `neo4j_client.py` |
-| 6–10 | Not started | Epic 6 retrieval should call `route_text_search()`, not `keyword_search()` directly |
+| 6 Hybrid retrieval | In the repo | `ai-service/app/retrieval/` |
+| 7 Answer generation | In the repo | `ai-service/app/generation/`, `app/verification/` |
+| 8 Chat API + citations | In the repo (stub default; wire with `CHAT_ANSWER_GENERATOR_MODE=http`) | `backend/.../chat/`, Epic 8 plan |
+| 9–10 | Not started | Feedback, evaluation harness, audit logging |
 
 Plans live in `docs/Implementation/`. Requirements and the ERD live in `docs/ReqAndDesign/`. Follow the plan for the epic you pick up. Do not add tables or columns that are not in the ERD.
 
@@ -32,7 +35,9 @@ Still open inside Epic 4:
 
 The frontend still uses its mock login. Core API auth is `POST /auth/login`.
 
-A step-by-step manual test of the full ingestion pipeline (upload through graph) is in `docs/Testing/INGESTION_PIPELINE_MANUAL_TEST.md`. Follow that document. Do not test chat yet; retrieval is not implemented.
+**Chat (backend + Postman):** Set `CHAT_ANSWER_GENERATOR_MODE=http` (default in Docker Compose) so answers come from the AI service. Follow [`docs/Testing/E2E_UPLOAD_TO_CHAT_MANUAL_TEST.md`](docs/Testing/E2E_UPLOAD_TO_CHAT_MANUAL_TEST.md). Documents must reach `READY` before chat session creation.
+
+A step-by-step manual test of the full ingestion pipeline (upload through graph) is in `docs/Testing/INGESTION_PIPELINE_MANUAL_TEST.md`. Follow that document first, then the E2E chat guide above.
 
 The AI service container talks to Neo4j at `bolt://neo4j:7687` (`NEO4J_URI` in `docker-compose.yml`). `localhost` inside that container is the AI service itself, so the graph stage fails if that variable is pointed at localhost. Classification defaults to `LLM_PROVIDER=rules`, which is deterministic and does not call an external model. The first document also downloads the BGE-M3 embedding model, so the first run is much slower than later ones.
 

@@ -130,6 +130,12 @@ public class ChatMessageService {
                                 "section", event.getSection() != null ? event.getSection() : "",
                                 "excerpt", event.getExcerpt() != null ? event.getExcerpt() : ""
                         )));
+                    } else if (event.getType() == AnswerEvent.Type.ERROR) {
+                        emitter.send(SseEmitter.event().name("error").data(Map.of(
+                                "code", event.getErrorCode() != null ? event.getErrorCode() : "UPSTREAM_FAILURE",
+                                "message", event.getErrorMessage() != null ? event.getErrorMessage() : "Answer generation failed."
+                        )));
+                        emitter.complete();
                     } else if (event.getType() == AnswerEvent.Type.FINAL) {
                         String mode = event.getAnswerMode() != null ? event.getAnswerMode() : "retrieval_plus_graph";
                         double conf = event.getConfidence() != null ? event.getConfidence() : 1.0;

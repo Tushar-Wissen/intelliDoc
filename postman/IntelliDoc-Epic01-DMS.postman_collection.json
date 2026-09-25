@@ -1,7 +1,7 @@
 {
   "info": {
-    "name": "IntelliDoc Epic 01 — DMS",
-    "description": "Workspace, module, and document APIs. Run **Login** first. Then run the numbered happy-path folder in order.\n\nSeed user (after Flyway): `scripts/seed_users.sql`\nEmail: jane.doe@company.com / password",
+    "name": "IntelliDoc — Core API",
+    "description": "Core API collection: auth, DMS (workspaces/modules/documents), extracted fields (Epic 3), chat + citations (Epic 8).\n\nRun **Login** first, then the numbered folders in order for the happy path.\n\nSeed user (after Flyway): `scripts/seed_users.sql`\nEmail: `jane.doe@company.com` / `password`\n\n**Fields:** document must be processed (`processingStatus=READY`) with extracted fields.\n\n**Chat:** documents in scope must be `READY` with indexed chunks/embeddings; `ai-service` must be running. `POST .../messages` returns SSE (`text/event-stream`) with `token`, `citation`, and `done` events.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -418,6 +418,460 @@
             "url": "{{baseUrl}}/workspaces/{{workspaceId}}",
             "description": "Soft-archives. It will disappear from GET /workspaces."
           }
+        }
+      ]
+    },
+    {
+      "name": "6. Extracted fields (Epic 3)",
+      "item": [
+        {
+          "name": "GET /documents/{documentId}/fields",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('ok', () => pm.response.to.have.status(200));",
+                  "const fields = pm.response.json().fields || [];",
+                  "if (fields.length) pm.environment.set('fieldId', fields[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/documents/{{documentId}}/fields",
+            "description": "Requires a READY document with extracted fields from the ingestion pipeline."
+          }
+        },
+        {
+          "name": "PATCH /fields/{fieldId} correct value",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fieldValue\": \"45 days\",\n  \"status\": \"CORRECTED\"\n}"
+            },
+            "url": "{{baseUrl}}/fields/{{fieldId}}"
+          }
+        },
+        {
+          "name": "GET /documents/{documentId}/fields/export (csv)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/documents/{{documentId}}/fields/export?format=csv",
+            "description": "Downloads CSV attachment. Supported formats: csv, json."
+          }
+        },
+        {
+          "name": "GET /documents/{documentId}/fields/export (json)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/documents/{{documentId}}/fields/export?format=json"
+          }
+        },
+        {
+          "name": "GET export invalid format → 400 FIELD_INVALID_EXPORT_FORMAT",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/documents/{{documentId}}/fields/export?format=xml"
+          }
+        },
+        {
+          "name": "DELETE /fields/{fieldId} (soft remove)",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/fields/{{fieldId}}",
+            "description": "Sets status to REMOVED; field no longer appears in list/export."
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Chat sessions & messages (Epic 8)",
+      "item": [
+        {
+          "name": "POST /workspaces/{id}/chat-sessions (workspace scope)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('chatSessionId', json.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scope\": { \"type\": \"workspace\" },\n  \"title\": \"Ask about everything in this workspace\"\n}"
+            },
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/chat-sessions",
+            "description": "Resolves scope to all non-archived documents in the workspace. Requires at least one READY document for chat to succeed."
+          }
+        },
+        {
+          "name": "POST /workspaces/{id}/chat-sessions (module scope)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scope\": { \"type\": \"module\", \"moduleId\": \"{{moduleId}}\" },\n  \"title\": \"Ask about the Contracts module\"\n}"
+            },
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/chat-sessions"
+          }
+        },
+        {
+          "name": "POST /workspaces/{id}/chat-sessions (documents scope)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scope\": { \"type\": \"documents\", \"documentIds\": [\"{{documentId}}\"] },\n  \"title\": \"Ask about one document\"\n}"
+            },
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/chat-sessions"
+          }
+        },
+        {
+          "name": "POST cross-workspace document → 400 SCOPE_OUTSIDE_WORKSPACE",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scope\": { \"type\": \"documents\", \"documentIds\": [\"00000000-0000-0000-0000-000000000099\"] }\n}"
+            },
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/chat-sessions",
+            "description": "Use a documentId from another workspace to verify scope enforcement."
+          }
+        },
+        {
+          "name": "GET /chat-sessions/{sessionId}",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/chat-sessions/{{chatSessionId}}",
+            "description": "Returns session metadata, resolvedDocumentIds, and full message history."
+          }
+        },
+        {
+          "name": "POST /chat-sessions/{sessionId}/messages (SSE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('stream 200', () => pm.response.to.have.status(200));",
+                  "pm.test('sse content type', () => pm.response.to.have.header('Content-Type', /text\\/event-stream/i));",
+                  "const body = pm.response.text();",
+                  "pm.test('has done event', () => pm.expect(body).to.include('event:done'));",
+                  "const match = body.match(/event:done\\r?\\n(?:data:|data: )(\\{[^\\r\\n]+\\})/);",
+                  "if (match) {",
+                  "  const done = JSON.parse(match[1]);",
+                  "  if (done.messageId) pm.environment.set('messageId', done.messageId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "text/event-stream" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"What is the termination notice period?\"\n}"
+            },
+            "url": "{{baseUrl}}/chat-sessions/{{chatSessionId}}/messages",
+            "description": "Streams answer via SSE. Events: `token` (partial text), `citation` (source excerpt), `done` (messageId, answerMode, confidence, isNotFound). Requires ai-service running with indexed documents."
+          }
+        },
+        {
+          "name": "POST empty question → error event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "text/event-stream" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"\"\n}"
+            },
+            "url": "{{baseUrl}}/chat-sessions/{{chatSessionId}}/messages"
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. Citations & source (Epic 8)",
+      "item": [
+        {
+          "name": "GET /messages/{messageId}/citations",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('ok', () => pm.response.to.have.status(200));",
+                  "const citations = pm.response.json();",
+                  "if (Array.isArray(citations) && citations.length) {",
+                  "  pm.environment.set('citationId', citations[0].citationId);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/messages/{{messageId}}/citations",
+            "description": "Run after POST .../messages. Returns [] when answer was not-found."
+          }
+        },
+        {
+          "name": "GET /citations/{citationId}/source",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/citations/{{citationId}}/source",
+            "description": "Returns highlighted source passage for a citation (fileName, page, section, passage, highlight.start/end)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. E2E Upload → Chat",
+      "description": "Full happy path: upload → wait READY → chat with real AI answers. Requires CHAT_ANSWER_GENERATOR_MODE=http (Docker default) and ai-service running. Attach a .pdf or .docx to the upload step.",
+      "item": [
+        {
+          "name": "9.1 Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('login 200', () => pm.response.to.have.status(200));",
+                  "pm.environment.set('token', pm.response.json().token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{email}}\",\n  \"password\": \"{{password}}\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "9.2 Create workspace",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('created', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('workspaceId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"E2E Chat Test Workspace\"\n}"
+            },
+            "url": "{{baseUrl}}/workspaces"
+          }
+        },
+        {
+          "name": "9.3 Upload document",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('accepted', () => pm.response.to.have.status(202));",
+                  "const docs = pm.response.json().documents || [];",
+                  "pm.test('has document', () => pm.expect(docs.length).to.be.above(0));",
+                  "if (docs.length) pm.environment.set('documentId', docs[0].id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "files",
+                  "type": "file",
+                  "src": [],
+                  "description": "Attach a local .pdf or .docx"
+                }
+              ]
+            },
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/documents"
+          }
+        },
+        {
+          "name": "9.4 Poll until READY",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "const maxAttempts = 60;",
+                  "const delayMs = 5000;",
+                  "const docId = pm.environment.get('documentId');",
+                  "const token = pm.environment.get('token');",
+                  "const baseUrl = pm.environment.get('baseUrl');",
+                  "if (!docId) { throw new Error('Run 9.3 Upload first'); }",
+                  "let status = 'UPLOADED';",
+                  "for (let i = 0; i < maxAttempts && status !== 'READY' && status !== 'FAILED'; i++) {",
+                  "  if (i > 0) { await new Promise(r => setTimeout(r, delayMs)); }",
+                  "  const res = await pm.sendRequest({",
+                  "    url: baseUrl + '/documents/' + docId,",
+                  "    method: 'GET',",
+                  "    header: { Authorization: 'Bearer ' + token }",
+                  "  });",
+                  "  status = res.json().processingStatus;",
+                  "  console.log('Poll attempt', i + 1, 'status=', status);",
+                  "}",
+                  "if (status === 'FAILED') { throw new Error('Document processing FAILED — check ai-service logs'); }",
+                  "if (status !== 'READY') { throw new Error('Timed out waiting for READY (last status: ' + status + ')'); }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('READY', () => pm.response.to.have.status(200));",
+                  "pm.test('processingStatus READY', () => pm.expect(pm.response.json().processingStatus).to.eql('READY'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/documents/{{documentId}}",
+            "description": "Pre-request script polls until READY (up to ~5 min). First run may be slow (embedding model download)."
+          }
+        },
+        {
+          "name": "9.5 Create chat session (workspace scope)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('created', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('chatSessionId', pm.response.json().id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scope\": { \"type\": \"workspace\" },\n  \"title\": \"E2E upload chat test\"\n}"
+            },
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/chat-sessions"
+          }
+        },
+        {
+          "name": "9.6 Ask question (SSE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('stream 200', () => pm.response.to.have.status(200));",
+                  "const body = pm.response.text();",
+                  "pm.test('has token events', () => pm.expect(body).to.include('event:token'));",
+                  "pm.test('has done event', () => pm.expect(body).to.include('event:done'));",
+                  "const match = body.match(/event:done\\r?\\n(?:data:|data: )(\\{[^\\r\\n]+\\})/);",
+                  "if (match) {",
+                  "  const done = JSON.parse(match[1]);",
+                  "  if (done.messageId) pm.environment.set('messageId', done.messageId);",
+                  "  pm.test('not stub notice period', () => {",
+                  "    if (!done.isNotFound) pm.expect(body).to.not.include('30 days written notice');",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "text/event-stream" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"question\": \"What is this document about?\"\n}"
+            },
+            "url": "{{baseUrl}}/chat-sessions/{{chatSessionId}}/messages"
+          }
+        },
+        {
+          "name": "9.7 GET session (verify assistant message)",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/chat-sessions/{{chatSessionId}}",
+            "description": "Check messages[] for assistant content matching the SSE stream."
+          }
+        },
+        {
+          "name": "9.8 GET citations + source",
+          "item": [
+            {
+              "name": "GET /messages/{messageId}/citations",
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      "const citations = pm.response.json();",
+                      "if (Array.isArray(citations) && citations.length) {",
+                      "  pm.environment.set('citationId', citations[0].citationId);",
+                      "}"
+                    ]
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/messages/{{messageId}}/citations"
+              }
+            },
+            {
+              "name": "GET /citations/{citationId}/source",
+              "request": {
+                "method": "GET",
+                "url": "{{baseUrl}}/citations/{{citationId}}/source"
+              }
+            }
+          ]
         }
       ]
     }

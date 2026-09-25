@@ -113,6 +113,9 @@ services:
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-neo4jpassword}
       - LLM_PROVIDER=${LLM_PROVIDER:-rules}
       - EMBEDDING_MODEL_NAME=${EMBEDDING_MODEL_NAME:-BAAI/bge-m3}
+      - RERANKER_PROVIDER=${RERANKER_PROVIDER:-overlap}
+      - RETRIEVAL_GRAPH_ENABLED=${RETRIEVAL_GRAPH_ENABLED:-true}
+      - RETRIEVAL_GRAPH_FAILURE=${RETRIEVAL_GRAPH_FAILURE:-degrade}
     depends_on:
       postgres:
         condition: service_healthy
@@ -147,6 +150,8 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - AI_SERVICE_URL=http://ai-service:8000
+      - CHAT_ANSWER_GENERATOR_MODE=${CHAT_ANSWER_GENERATOR_MODE:-http}
+      - CHAT_UPSTREAM_TIMEOUT_MS=${CHAT_UPSTREAM_TIMEOUT_MS:-120000}
       - NEO4J_URI=bolt://neo4j:7687
       - NEO4J_USER=${NEO4J_USER:-neo4j}
       - NEO4J_PASSWORD=${NEO4J_PASSWORD:-neo4jpassword}

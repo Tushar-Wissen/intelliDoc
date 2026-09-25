@@ -330,8 +330,37 @@ For reference — this is the contract the Spring Boot Core API uses to call the
   "sessionId": "uuid",
   "workspaceId": "uuid",
   "question": "What's different between the termination clauses?",
-  "documentIds": ["uuid-1", "uuid-2"],
-  "mode": "retrieval_plus_graph"
+  "resolvedDocumentIds": ["uuid-1", "uuid-2"],
+  "scopeType": "documents",
+  "mode": "retrieval_plus_graph",
+  "requestId": "optional-correlation-id"
 }
 ```
+
+```json
+// POST /internal/ai/chat/answer — response (200)
+{
+  "sessionId": "uuid",
+  "question": "...",
+  "answerMode": "retrieval_plus_graph",
+  "answerText": "Grounded answer assembled from verified evidence.",
+  "confidence": 0.88,
+  "isNotFound": false,
+  "reason": null,
+  "citations": [
+    {
+      "chunkId": "uuid",
+      "documentId": "uuid-1",
+      "documentName": "contract-a.pdf",
+      "pageNumber": 12,
+      "sectionHeading": "8.2",
+      "sourceExcerpt": "Either party may terminate for convenience with 30 days' notice."
+    }
+  ],
+  "claims": [],
+  "diagnostics": {}
+}
+```
+
+When evidence is insufficient, `isNotFound` is `true`, `confidence` is `null`, `citations` is `[]`, and `answerText` carries the not-found message.
 `workspaceId` is passed explicitly and re-validated by the AI service on every call — every retrieval and Cypher query is bounded by it, as defense-in-depth on top of the Core API's own scope check.

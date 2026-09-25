@@ -54,6 +54,11 @@ intellidoc:
     access-key: ${MINIO_ACCESS_KEY:minioadmin}
     secret-key: ${MINIO_SECRET_KEY:minioadmin}
     bucket: ${MINIO_BUCKET:intellidoc}
+  chat:
+    answer-generator:
+      mode: ${CHAT_ANSWER_GENERATOR_MODE:http}
+    upstream:
+      timeout-ms: ${CHAT_UPSTREAM_TIMEOUT_MS:120000}
 
 logging:
   level:
