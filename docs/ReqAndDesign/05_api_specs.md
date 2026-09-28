@@ -42,9 +42,20 @@
 
 | Method | Path | Purpose |
 |---|---|---|
+| POST | `/auth/signup` | Create an account and return a bearer token |
 | POST | `/auth/login` | Exchange credentials for a bearer token |
 | POST | `/auth/logout` | Invalidate current token |
 | GET | `/auth/me` | Get current user profile |
+
+**POST `/auth/signup`**
+```json
+// Request
+{ "email": "user@company.com", "password": "...", "displayName": "Jane Doe" }
+// Response  (200)
+{ "token": "eyJ...", "user": { "id": "uuid", "displayName": "Jane Doe", "role": "member" } }
+// Response  (409) — email already registered
+{ "error": { "code": "AUTH_EMAIL_ALREADY_EXISTS", "message": "An account with this email already exists.", "requestId": "..." } }
+```
 
 **POST `/auth/login`**
 ```json
@@ -64,7 +75,7 @@
 | GET | `/workspaces` | List workspaces the user can access |
 | GET | `/workspaces/{workspaceId}` | Get workspace details |
 | PATCH | `/workspaces/{workspaceId}` | Rename / update status |
-| DELETE | `/workspaces/{workspaceId}` | Archive a workspace |
+| DELETE | `/workspaces/{workspaceId}` | Archive a workspace and delete all modules and documents inside it |
 
 **POST `/workspaces`**
 ```json
@@ -85,7 +96,7 @@
 | POST | `/workspaces/{workspaceId}/modules` | Create a module |
 | GET | `/workspaces/{workspaceId}/modules` | List modules in a workspace |
 | PATCH | `/modules/{moduleId}` | Rename a module |
-| DELETE | `/modules/{moduleId}` | Delete a module (documents become unassigned, not deleted) |
+| DELETE | `/modules/{moduleId}` | Delete a module and archive all documents inside it |
 
 **POST `/workspaces/{workspaceId}/modules`**
 ```json
@@ -97,6 +108,46 @@
 
 A request to create a module with a name that already exists **in that same workspace** returns `409 MODULE_NAME_TAKEN`. The same name in a different workspace succeeds — modules never cross workspace boundaries.
 
+**GET `/workspaces/{workspaceId}/modules`**
+```json
+// Response (200)
+[
+  {
+    "id": "uuid",
+    "workspaceId": "uuid",
+    "name": "Security Reviews Folder",
+    "createdAt": "2026-09-23T17:53:20.085249Z",
+    "totalFiles": 2,
+    "files": [
+      {
+        "id": "uuid",
+        "name": "Security_Review_2026.pdf",
+        "type": "PDF",
+        "size": 204800,
+        "createdAt": "2026-09-23T17:53:30.085249Z"
+      },
+      {
+        "id": "uuid",
+        "name": "Vulnerability_Assessment.docx",
+        "type": "DOCX",
+        "size": 102400,
+        "createdAt": "2026-09-23T17:53:40.085249Z"
+      }
+    ]
+  },
+  {
+    "id": "uuid",
+    "workspaceId": "uuid",
+    "name": "Technical Research",
+    "createdAt": "2026-09-23T17:52:26.085035Z",
+    "totalFiles": 0,
+    "files": []
+  }
+]
+```
+
+`type` is the file extension in uppercase (`PDF`, `DOCX`). Archived documents are excluded from `files` and `totalFiles`.
+
 ---
 
 ## 5. Documents
@@ -104,6 +155,7 @@ A request to create a module with a name that already exists **in that same work
 | Method | Path | Purpose |
 |---|---|---|
 | POST | `/workspaces/{workspaceId}/documents` | Upload one or more documents, optionally into a module |
+| POST | `/modules/{moduleId}/documents` | Upload one or more documents directly into an existing module |
 | GET | `/workspaces/{workspaceId}/documents?moduleId=` | List documents in a workspace, optionally filtered to one module |
 | GET | `/documents/{documentId}` | Get document detail (overview, summary, status) |
 | GET | `/documents/{documentId}/file` | Stream the original uploaded file as-is (PDF/DOCX) for the UI viewer |
@@ -125,6 +177,10 @@ If the user selects a whole folder in the browser (`webkitdirectory`), each file
   ]
 }
 ```
+
+**POST `/modules/{moduleId}/documents`** (`multipart/form-data`, field `files[]`)
+
+Uploads one or more PDF/DOCX files into an existing module. Every accepted file is stored with that `moduleId`. The module must exist (`404 MODULE_NOT_FOUND`) and the caller must be a member of the module's workspace (`403 WORKSPACE_ACCESS_DENIED`). Per-file type and size checks match the workspace upload: a bad file is listed in `rejections` and does not reject the rest of the batch. Response shape is the same `202` body as the workspace upload, with `moduleId` and `moduleName` set on each accepted document.
 
 **PATCH `/documents/{documentId}/module`**
 ```json
@@ -330,8 +386,37 @@ For reference — this is the contract the Spring Boot Core API uses to call the
   "sessionId": "uuid",
   "workspaceId": "uuid",
   "question": "What's different between the termination clauses?",
-  "documentIds": ["uuid-1", "uuid-2"],
-  "mode": "retrieval_plus_graph"
+  "resolvedDocumentIds": ["uuid-1", "uuid-2"],
+  "scopeType": "documents",
+  "mode": "retrieval_plus_graph",
+  "requestId": "optional-correlation-id"
 }
 ```
+
+```json
+// POST /internal/ai/chat/answer — response (200)
+{
+  "sessionId": "uuid",
+  "question": "...",
+  "answerMode": "retrieval_plus_graph",
+  "answerText": "Grounded answer assembled from verified evidence.",
+  "confidence": 0.88,
+  "isNotFound": false,
+  "reason": null,
+  "citations": [
+    {
+      "chunkId": "uuid",
+      "documentId": "uuid-1",
+      "documentName": "contract-a.pdf",
+      "pageNumber": 12,
+      "sectionHeading": "8.2",
+      "sourceExcerpt": "Either party may terminate for convenience with 30 days' notice."
+    }
+  ],
+  "claims": [],
+  "diagnostics": {}
+}
+```
+
+When evidence is insufficient, `isNotFound` is `true`, `confidence` is `null`, `citations` is `[]`, and `answerText` carries the not-found message.
 `workspaceId` is passed explicitly and re-validated by the AI service on every call — every retrieval and Cypher query is bounded by it, as defense-in-depth on top of the Core API's own scope check.

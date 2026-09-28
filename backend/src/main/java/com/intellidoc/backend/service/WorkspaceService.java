@@ -7,6 +7,7 @@ import com.intellidoc.backend.dto.WorkspaceResponseDto;
 import com.intellidoc.backend.exception.DmsExceptions;
 import com.intellidoc.backend.model.WorkspaceEntity;
 import com.intellidoc.backend.model.WorkspaceMemberEntity;
+import com.intellidoc.backend.repository.DocumentRepository;
 import com.intellidoc.backend.repository.WorkspaceMemberRepository;
 import com.intellidoc.backend.repository.WorkspaceRepository;
 import com.intellidoc.backend.security.AuthPrincipal;
@@ -26,6 +27,9 @@ public class WorkspaceService {
 
     private final WorkspaceRepository workspaceRepository;
     private final WorkspaceMemberRepository workspaceMemberRepository;
+    private final DocumentRepository documentRepository;
+    private final DocumentWriteService documentWriteService;
+    private final ModuleService moduleService;
     private final WorkspaceAccessService workspaceAccessService;
 
     @Transactional
@@ -79,6 +83,9 @@ public class WorkspaceService {
     @Transactional
     public WorkspaceResponseDto archive(AuthPrincipal principal, UUID workspaceId) {
         WorkspaceEntity workspace = workspaceAccessService.requireMember(workspaceId, principal.userId());
+        documentRepository.findByWorkspaceIdAndDeletedAtIsNull(workspaceId)
+                .forEach(documentWriteService::archive);
+        moduleService.deleteAllForWorkspace(workspaceId);
         workspace.setStatus(WorkspaceStatus.ARCHIVED);
         return toDto(workspaceRepository.save(workspace));
     }

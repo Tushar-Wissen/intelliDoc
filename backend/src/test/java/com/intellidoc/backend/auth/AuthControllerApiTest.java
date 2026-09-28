@@ -83,6 +83,41 @@ class AuthControllerApiTest {
     }
 
     @Test
+    void signupCreatesAccountAndReturnsToken() throws Exception {
+        mockMvc.perform(post("/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"new.user@company.com","password":"password","displayName":"New User"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.token", notNullValue()))
+                .andExpect(jsonPath("$.user.displayName", is("New User")))
+                .andExpect(jsonPath("$.user.role", is("member")));
+    }
+
+    @Test
+    void signupRejectsDuplicateEmail() throws Exception {
+        mockMvc.perform(post("/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"jane.doe@company.com","password":"password","displayName":"Jane Doe"}
+                                """))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.error.code", is("AUTH_EMAIL_ALREADY_EXISTS")));
+    }
+
+    @Test
+    void signupRejectsMalformedBody() throws Exception {
+        mockMvc.perform(post("/auth/signup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"email":"","password":"","displayName":""}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error.code", is("AUTH_INVALID_REQUEST")));
+    }
+
+    @Test
     void loginReturnsTokenForValidCredentials() throws Exception {
         mockMvc.perform(post("/auth/login")
                         .contentType(MediaType.APPLICATION_JSON)

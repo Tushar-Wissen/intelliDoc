@@ -13,6 +13,14 @@ from typing import Any, TypeVar
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from app.llm.hosted_config import (
+    hosted_api_key,
+    hosted_base_url,
+    hosted_completions_url,
+    hosted_model,
+    hosted_timeout_seconds,
+    normalize_hosted_base_url,
+)
 from app.pipeline.schemas.field_schemas import (
     ClassificationResultSchema,
     DocumentType,
@@ -59,32 +67,57 @@ class HostedLlmClient(StructuredLlmClient):
         model: str,
         timeout_seconds: float = 120.0,
     ) -> None:
-        self._base_url = base_url.rstrip("/")
-        self._api_key = api_key
+        self._base_url = normalize_hosted_base_url(base_url)
+        self._api_key = api_key.strip()
         self._model = model
         self._timeout = timeout_seconds
 
     def complete_json(self, prompt: str, schema: type[T], *, temperature: float | None = None) -> T:
-        payload = {
+        if not self._api_key:
+            raise LlmError(
+                "HOSTED_LLM_API_KEY is not set. Add it to .env and restart ai-service."
+            )
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+        base_payload: dict[str, Any] = {
             "model": self._model,
             "messages": [{"role": "user", "content": prompt}],
-            "response_format": {"type": "json_object"},
         }
         if temperature is not None:
-            payload["temperature"] = temperature
-        headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
-        try:
-            response = httpx.post(
-                f"{self._base_url}/chat/completions",
-                json=payload,
-                headers=headers,
-                timeout=self._timeout,
-            )
-            response.raise_for_status()
-            content = response.json()["choices"][0]["message"]["content"]
-            return schema.model_validate(json.loads(content))
-        except (httpx.HTTPError, json.JSONDecodeError, ValidationError, KeyError, IndexError) as exc:
-            raise LlmError(str(exc)) from exc
+            base_payload["temperature"] = temperature
+
+        last_error: Exception | None = None
+        for use_json_mode in (True, False):
+            payload = dict(base_payload)
+            if use_json_mode:
+                payload["response_format"] = {"type": "json_object"}
+            try:
+                response = httpx.post(
+                    hosted_completions_url(self._base_url),
+                    json=payload,
+                    headers=headers,
+                    timeout=self._timeout,
+                )
+                response.raise_for_status()
+                content = response.json()["choices"][0]["message"]["content"]
+                return schema.model_validate(_parse_json_object(content))
+            except httpx.HTTPStatusError as exc:
+                last_error = exc
+                if use_json_mode and exc.response.status_code in {400, 404, 422}:
+                    logger.warning(
+                        "Hosted LLM rejected response_format; retrying without it status=%s",
+                        exc.response.status_code,
+                    )
+                    continue
+                raise LlmError(str(exc)) from exc
+            except (httpx.HTTPError, json.JSONDecodeError, ValidationError, KeyError, IndexError) as exc:
+                last_error = exc
+                if use_json_mode:
+                    logger.warning("Hosted LLM json mode failed; retrying without response_format: %s", exc)
+                    continue
+                raise LlmError(str(exc)) from exc
+
+        assert last_error is not None
+        raise LlmError(str(last_error)) from last_error
 
 
 class OllamaLlmClient(StructuredLlmClient):
@@ -282,13 +315,22 @@ def build_llm_client() -> StructuredLlmClient:
         return OllamaLlmClient(base_url=base, model=model)
     if provider == "hosted":
         return HostedLlmClient(
-            base_url=os.getenv("HOSTED_LLM_BASE_URL", "https://api.openai.com/v1"),
-            api_key=os.getenv("HOSTED_LLM_API_KEY", ""),
-            model=os.getenv("HOSTED_LLM_MODEL", "gpt-4o-mini"),
+            base_url=hosted_base_url(),
+            api_key=hosted_api_key(),
+            model=hosted_model(),
+            timeout_seconds=hosted_timeout_seconds(),
         )
     if provider != "rules":
         logger.warning("Unknown LLM_PROVIDER=%s; using rules", provider)
     return RulesLlmClient()
+
+
+def _parse_json_object(content: str) -> dict[str, Any]:
+    text = content.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    return json.loads(text)
 
 
 def with_retry(fn, *, retries: int = 1):

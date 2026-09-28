@@ -167,6 +167,30 @@ class DocumentServiceTest {
     }
 
     @Test
+    void uploadToModuleAssignsEveryAcceptedFile() {
+        MockMultipartFile pdf = new MockMultipartFile("files", "ok.pdf", "application/pdf", new byte[]{1, 2});
+        when(moduleService.requireModule(MODULE_ID)).thenReturn(
+                DocumentGroupEntity.builder().id(MODULE_ID).workspaceId(WORKSPACE_ID).name("Finance").build());
+        when(documentWriteService.saveUploaded(any())).thenAnswer(invocation -> invocation.getArgument(0));
+        when(documentGroupRepository.findById(MODULE_ID))
+                .thenReturn(java.util.Optional.of(DocumentGroupEntity.builder().id(MODULE_ID).name("Finance").build()));
+
+        DocumentUploadResponseDto result = documentService.uploadToModule(
+                new AuthPrincipal(USER_ID, TENANT_ID),
+                MODULE_ID,
+                List.of(pdf)
+        );
+
+        assertEquals(MODULE_ID, result.getDocuments().get(0).getModuleId());
+        assertEquals("Finance", result.getDocuments().get(0).getModuleName());
+        ArgumentCaptor<DocumentEntity> entity = ArgumentCaptor.forClass(DocumentEntity.class);
+        verify(documentWriteService).saveUploaded(entity.capture());
+        assertEquals(MODULE_ID, entity.getValue().getGroupId());
+        assertEquals(WORKSPACE_ID, entity.getValue().getWorkspaceId());
+        verify(moduleService, never()).findOrCreate(any(), any());
+    }
+
+    @Test
     void retryRejectedWhenNotFailed() {
         UUID documentId = UUID.randomUUID();
         when(documentRepository.findByIdAndDeletedAtIsNull(documentId))

@@ -34,3 +34,8 @@ intellidoc:
     access-key: minioadmin
     secret-key: minioadmin
     bucket: intellidoc
+  chat:
+    answer-generator:
+      mode: stub
+    upstream:
+      timeout-ms: 120000

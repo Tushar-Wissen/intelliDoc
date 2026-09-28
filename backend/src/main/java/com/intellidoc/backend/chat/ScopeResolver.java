@@ -1,5 +1,6 @@
 package com.intellidoc.backend.chat;
 
+import com.intellidoc.backend.dms.ProcessingStatus;
 import com.intellidoc.backend.dto.ScopeRequestDto;
 import com.intellidoc.backend.exception.DmsExceptions;
 import com.intellidoc.backend.model.DocumentEntity;
@@ -44,7 +45,7 @@ public class ScopeResolver {
                     throw DmsExceptions.invalidScope();
                 }
                 List<DocumentEntity> wsDocs = documentRepository.findByWorkspaceIdAndDeletedAtIsNull(workspaceId);
-                List<UUID> wsDocIds = wsDocs.stream().map(DocumentEntity::getId).toList();
+                List<UUID> wsDocIds = readyDocumentIds(wsDocs);
                 if (wsDocIds.isEmpty()) {
                     throw DmsExceptions.emptyScope();
                 }
@@ -65,7 +66,7 @@ public class ScopeResolver {
                     throw DmsExceptions.scopeOutsideWorkspace();
                 }
                 List<DocumentEntity> moduleDocs = documentRepository.findByWorkspaceIdAndGroupIdAndDeletedAtIsNull(workspaceId, moduleId);
-                List<UUID> moduleDocIds = moduleDocs.stream().map(DocumentEntity::getId).toList();
+                List<UUID> moduleDocIds = readyDocumentIds(moduleDocs);
                 if (moduleDocIds.isEmpty()) {
                     throw DmsExceptions.emptyScope();
                 }
@@ -88,13 +89,24 @@ public class ScopeResolver {
                 if (!foundWorkspaceDocIds.containsAll(requestedIds)) {
                     throw DmsExceptions.scopeOutsideWorkspace();
                 }
+                List<UUID> readyDocIds = readyDocumentIds(foundDocs);
+                if (readyDocIds.isEmpty()) {
+                    throw DmsExceptions.emptyScope();
+                }
                 return ResolvedScope.builder()
                         .type("DOCUMENTS")
-                        .documentIds(requestedIds)
+                        .documentIds(readyDocIds)
                         .build();
 
             default:
                 throw DmsExceptions.invalidScope();
         }
+    }
+
+    private static List<UUID> readyDocumentIds(List<DocumentEntity> documents) {
+        return documents.stream()
+                .filter(d -> ProcessingStatus.READY.equals(d.getProcessingStatus()))
+                .map(DocumentEntity::getId)
+                .toList();
     }
 }

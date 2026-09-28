@@ -83,9 +83,45 @@ public class DocumentService {
             MultipartFile file = incoming.get(i);
             String relativePath = relativePaths != null && i < relativePaths.size() ? relativePaths.get(i) : null;
             try {
-                accepted.add(acceptOne(principal, workspaceId, file, relativePath));
+                accepted.add(acceptOne(principal, workspaceId, file, resolveModuleId(workspaceId, relativePath)));
             } catch (ApiException ex) {
                 log.warn("Rejected upload {} code={}", file.getOriginalFilename(), ex.getCode());
+                rejections.add(UploadRejectionDto.builder()
+                        .fileName(file.getOriginalFilename())
+                        .code(ex.getCode())
+                        .message(ex.getMessage())
+                        .build());
+            } catch (MinioStorageService.StorageWriteException ex) {
+                log.warn("Storage write failed for {}", file.getOriginalFilename(), ex);
+                rejections.add(UploadRejectionDto.builder()
+                        .fileName(file.getOriginalFilename())
+                        .code("STORAGE_WRITE_FAILED")
+                        .message("Failed to store file: " + file.getOriginalFilename())
+                        .build());
+            }
+        }
+        return DocumentUploadResponseDto.builder()
+                .documents(accepted)
+                .rejections(rejections)
+                .build();
+    }
+
+    public DocumentUploadResponseDto uploadToModule(
+            AuthPrincipal principal,
+            UUID moduleId,
+            List<MultipartFile> files) {
+        DocumentGroupEntity module = moduleService.requireModule(moduleId);
+        workspaceAccessService.requireMember(module.getWorkspaceId(), principal.userId());
+        List<MultipartFile> incoming = files == null ? List.of() : files.stream()
+                .filter(file -> file != null && !file.isEmpty())
+                .toList();
+        List<DocumentSummaryDto> accepted = new ArrayList<>();
+        List<UploadRejectionDto> rejections = new ArrayList<>();
+        for (MultipartFile file : incoming) {
+            try {
+                accepted.add(acceptOne(principal, module.getWorkspaceId(), file, module.getId()));
+            } catch (ApiException ex) {
+                log.warn("Rejected module upload {} code={}", file.getOriginalFilename(), ex.getCode());
                 rejections.add(UploadRejectionDto.builder()
                         .fileName(file.getOriginalFilename())
                         .code(ex.getCode())
@@ -181,7 +217,7 @@ public class DocumentService {
             AuthPrincipal principal,
             UUID workspaceId,
             MultipartFile file,
-            String relativePath) {
+            UUID moduleId) {
         String fileName = file.getOriginalFilename() == null ? "unnamed" : file.getOriginalFilename();
         String extension = extensionOf(fileName);
         if (!allowedExtensions.contains(extension)) {
@@ -191,7 +227,6 @@ public class DocumentService {
             throw DmsExceptions.fileTooLarge(fileName);
         }
 
-        UUID moduleId = resolveModuleId(workspaceId, relativePath);
         UUID documentId = UUID.randomUUID();
         String storagePath = "workspace/" + workspaceId + "/document/" + documentId + "/original." + extension;
         byte[] bytes;

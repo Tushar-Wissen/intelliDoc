@@ -139,7 +139,7 @@ public final class DmsExceptions {
         return new ApiException(
                 HttpStatus.UNPROCESSABLE_ENTITY.value(),
                 "EMPTY_SCOPE",
-                "No documents available in this scope."
+                "No READY documents available in this scope."
         );
     }
 

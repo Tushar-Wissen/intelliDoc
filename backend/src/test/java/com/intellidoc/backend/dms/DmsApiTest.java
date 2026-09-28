@@ -30,10 +30,13 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.util.UUID;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.greaterThan;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.atLeastOnce;
@@ -318,6 +321,186 @@ class DmsApiTest {
 
         assertEquals(1, documentGroupRepository.findByWorkspaceIdAndName(
                 UUID.fromString(workspaceId), "Finance").stream().count());
+    }
+
+    @Test
+    void uploadIntoExistingModuleAssignsFiles() throws Exception {
+        String workspaceId = createWorkspace(token, "ModuleUpload");
+        MvcResult created = mockMvc.perform(post("/workspaces/" + workspaceId + "/modules")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Finance\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String moduleId = objectMapper.readTree(created.getResponse().getContentAsString()).get("id").asText();
+
+        mockMvc.perform(multipart("/modules/" + moduleId + "/documents")
+                        .file(pdf("Q3report.pdf"))
+                        .file(docx("memo.docx"))
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.documents", hasSize(2)))
+                .andExpect(jsonPath("$.documents[0].moduleId", is(moduleId)))
+                .andExpect(jsonPath("$.documents[0].moduleName", is("Finance")))
+                .andExpect(jsonPath("$.documents[1].moduleId", is(moduleId)));
+
+        assertEquals(2, documentRepository.findAll().stream()
+                .filter(document -> moduleId.equals(String.valueOf(document.getGroupId())))
+                .count());
+    }
+
+    @Test
+    void listModulesReturnsFilesAndCounts() throws Exception {
+        String workspaceId = createWorkspace(token, "ModuleList");
+        MvcResult financeModule = mockMvc.perform(post("/workspaces/" + workspaceId + "/modules")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Finance\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.totalFiles", nullValue()))
+                .andExpect(jsonPath("$.files", nullValue()))
+                .andReturn();
+        String financeModuleId = objectMapper.readTree(financeModule.getResponse().getContentAsString()).get("id").asText();
+
+        mockMvc.perform(post("/workspaces/" + workspaceId + "/modules")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Research\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(multipart("/modules/" + financeModuleId + "/documents")
+                        .file(pdf("Q3report.pdf"))
+                        .file(docx("memo.docx"))
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/modules").header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[0].name", is("Finance")))
+                .andExpect(jsonPath("$[0].totalFiles", is(2)))
+                .andExpect(jsonPath("$[0].files", hasSize(2)))
+                .andExpect(jsonPath("$[0].files[*].name", hasItem("Q3report.pdf")))
+                .andExpect(jsonPath("$[0].files[*].name", hasItem("memo.docx")))
+                .andExpect(jsonPath("$[0].files[*].type", hasItem("PDF")))
+                .andExpect(jsonPath("$[0].files[*].type", hasItem("DOCX")))
+                .andExpect(jsonPath("$[0].files[0].size", greaterThan(0)))
+                .andExpect(jsonPath("$[1].name", is("Research")))
+                .andExpect(jsonPath("$[1].totalFiles", is(0)))
+                .andExpect(jsonPath("$[1].files", hasSize(0)));
+
+        UUID documentId = documentRepository.findAll().stream()
+                .filter(document -> financeModuleId.equals(String.valueOf(document.getGroupId())))
+                .findFirst()
+                .orElseThrow()
+                .getId();
+
+        mockMvc.perform(delete("/documents/" + documentId).header("Authorization", bearer(token)))
+                .andExpect(status().isNoContent());
+
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/modules").header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name", is("Finance")))
+                .andExpect(jsonPath("$[0].totalFiles", is(1)))
+                .andExpect(jsonPath("$[0].files", hasSize(1)));
+    }
+
+    @Test
+    void uploadIntoMissingModuleReturns404() throws Exception {
+        mockMvc.perform(multipart("/modules/" + UUID.randomUUID() + "/documents")
+                        .file(pdf("Q3report.pdf"))
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code", is("MODULE_NOT_FOUND")));
+        assertEquals(0, documentRepository.count());
+    }
+
+    @Test
+    void nonMemberCannotUploadIntoModule() throws Exception {
+        String workspaceId = createWorkspace(token, "PrivateModule");
+        MvcResult created = mockMvc.perform(post("/workspaces/" + workspaceId + "/modules")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Finance\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String moduleId = objectMapper.readTree(created.getResponse().getContentAsString()).get("id").asText();
+
+        mockMvc.perform(multipart("/modules/" + moduleId + "/documents")
+                        .file(pdf("Q3report.pdf"))
+                        .header("Authorization", bearer(otherToken)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("WORKSPACE_ACCESS_DENIED")));
+        assertEquals(0, documentRepository.count());
+    }
+
+    @Test
+    void deleteModuleArchivesContainedDocuments() throws Exception {
+        String workspaceId = createWorkspace(token, "ModuleDelete");
+        MvcResult created = mockMvc.perform(post("/workspaces/" + workspaceId + "/modules")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Finance\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String moduleId = objectMapper.readTree(created.getResponse().getContentAsString()).get("id").asText();
+
+        mockMvc.perform(multipart("/modules/" + moduleId + "/documents")
+                        .file(pdf("Q3report.pdf"))
+                        .file(docx("memo.docx"))
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(delete("/modules/" + moduleId).header("Authorization", bearer(token)))
+                .andExpect(status().isNoContent());
+
+        assertTrue(documentGroupRepository.findById(UUID.fromString(moduleId)).isEmpty());
+        assertEquals(2, documentRepository.count());
+        assertTrue(documentRepository.findAll().stream().allMatch(document -> document.getDeletedAt() != null));
+
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/modules").header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/documents").header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documents", hasSize(0)));
+    }
+
+    @Test
+    void archiveWorkspaceDeletesModulesAndDocuments() throws Exception {
+        String workspaceId = createWorkspace(token, "WorkspaceCascade");
+        MvcResult module = mockMvc.perform(post("/workspaces/" + workspaceId + "/modules")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"name\":\"Finance\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String moduleId = objectMapper.readTree(module.getResponse().getContentAsString()).get("id").asText();
+
+        mockMvc.perform(multipart("/modules/" + moduleId + "/documents")
+                        .file(pdf("in-module.pdf"))
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isAccepted());
+        mockMvc.perform(multipart("/workspaces/" + workspaceId + "/documents")
+                        .file(pdf("loose.pdf"))
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(delete("/workspaces/" + workspaceId).header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status", is("ARCHIVED")));
+
+        assertEquals(0, documentGroupRepository.findByWorkspaceIdOrderByNameAsc(UUID.fromString(workspaceId)).size());
+        assertEquals(2, documentRepository.count());
+        assertTrue(documentRepository.findAll().stream().allMatch(document -> document.getDeletedAt() != null));
+
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/documents").header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documents", hasSize(0)));
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/modules").header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+        assertNotNull(workspaceRepository.findById(UUID.fromString(workspaceId)).orElseThrow().getStatus());
     }
 
     @Test

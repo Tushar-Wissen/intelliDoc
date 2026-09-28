@@ -50,7 +50,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/health", "/api/v1/health").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/auth/login", "/api/v1/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.POST,
+                                "/auth/login", "/api/v1/auth/login",
+                                "/auth/signup", "/api/v1/auth/signup").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex
                         .authenticationEntryPoint(authenticationEntryPoint())

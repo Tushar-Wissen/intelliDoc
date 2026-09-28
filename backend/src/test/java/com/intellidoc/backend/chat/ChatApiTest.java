@@ -140,6 +140,27 @@ public class ChatApiTest {
     }
 
     @Test
+    void story8_1_rejectWorkspaceScopeWhenNoReadyDocuments() throws Exception {
+        String workspaceId = createWorkspace(token, "No Ready Docs");
+        documentRepository.save(DocumentEntity.builder()
+                .workspaceId(UUID.fromString(workspaceId))
+                .fileName("pending.pdf")
+                .fileType("pdf")
+                .fileSizeBytes(1024)
+                .storagePath("workspace/" + workspaceId + "/document/" + UUID.randomUUID() + "/original.pdf")
+                .processingStatus("UPLOADED")
+                .uploadedBy(USER_ID)
+                .build());
+
+        mockMvc.perform(post("/workspaces/" + workspaceId + "/chat-sessions")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scope\": {\"type\": \"workspace\"}}"))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.error.code", is("EMPTY_SCOPE")));
+    }
+
+    @Test
     void story8_1_createWorkspaceScopedSessionAndGetDetail() throws Exception {
         String workspaceId = createWorkspace(token, "Chat Workspace 1");
         DocumentEntity doc1 = createDocument(UUID.fromString(workspaceId), null, "doc1.pdf");
