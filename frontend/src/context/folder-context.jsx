@@ -17,6 +17,8 @@ export function FolderProvider({ children }) {
   const [loading, setLoading] = useState(Boolean(selectedWorkspaceId));
   const [error, setError] = useState(null);
   const [selectedFolderId, setSelectedFolderId] = useState(null);
+  // The document open in the workspace viewer, so the sidebar can highlight it.
+  const [selectedFileId, setSelectedFileId] = useState(null);
 
   const requestIdRef = useRef(0);
   const hasLoadedRef = useRef(false);
@@ -120,6 +122,8 @@ export function FolderProvider({ children }) {
       error,
       selectedFolderId,
       selectFolder: setSelectedFolderId,
+      selectedFileId,
+      selectFile: setSelectedFileId,
       createFolder,
       renameFolder,
       refreshFolders: loadFolders,
@@ -131,6 +135,7 @@ export function FolderProvider({ children }) {
       loading,
       error,
       selectedFolderId,
+      selectedFileId,
       createFolder,
       renameFolder,
       loadFolders,
