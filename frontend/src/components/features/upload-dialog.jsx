@@ -4,6 +4,7 @@ import { UploadCloud, FileText, Loader2, X, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatBytes } from '@/lib/format';
 import { getFileExtension } from '@/lib/file-types';
+import { API_ERROR_CODES } from '@/lib/api-client';
 import { documentsApi, SUPPORTED_UPLOAD_EXTENSIONS } from '@/lib/documents-api';
 import { useWorkspace } from '@/context/workspace-context';
 import { useFolders } from '@/context/folder-context';
@@ -27,15 +28,14 @@ const FORMATS_LABEL = SUPPORTED_UPLOAD_EXTENSIONS.join(' or ');
 const titleFromFileName = (fileName) => fileName.replace(/\.[^/.]+$/, '');
 const isSameFile = (a, b) => a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
 
-export function UploadDialog({ open, onOpenChange, onUploaded }) {
-  const { selectedWorkspaceId, workspaceName } = useWorkspace();
-  const { folders, loading: foldersLoading, error: foldersError } = useFolders();
+// `defaultFolderId` preselects the folder the dialog was opened from (e.g. an open folder view).
+export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId = null }) {
+  const { selectedWorkspaceId } = useWorkspace();
+  const { folders, loading: foldersLoading, error: foldersError, refreshFolders } = useFolders();
   const toast = useToast();
 
   const [files, setFiles] = useState([]);
-  // Held in UI state only for now: the upload API has no folder/module field yet, so every
-  // upload becomes a workspace-level (orphaned) document. Once it does, send this id with
-  // the request in documentsApi.upload and nothing else here needs to change.
+  // Every upload goes into a folder (module); the API has no workspace-level upload here.
   const [selectedFolderId, setSelectedFolderId] = useState(null);
   const [title, setTitle] = useState('');
   // Once the user edits the title themselves, picking another file no longer overwrites it.
@@ -43,11 +43,13 @@ export function UploadDialog({ open, onOpenChange, onUploaded }) {
   const [isDragging, setIsDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [fieldErrors, setFieldErrors] = useState({ title: '', files: '' });
+  const [fieldErrors, setFieldErrors] = useState({ folder: '', title: '', files: '' });
   const [rejections, setRejections] = useState([]);
   const [error, setError] = useState('');
 
   const workspaceMissing = !selectedWorkspaceId;
+  const noFolders = !foldersLoading && folders.length === 0;
+  const selectedFolder = folders.find((f) => f.id === selectedFolderId) ?? null;
   // A title only applies when exactly one file is uploaded; several files keep their own names.
   const singleFile = files.length === 1;
 
@@ -55,20 +57,22 @@ export function UploadDialog({ open, onOpenChange, onUploaded }) {
   useEffect(() => {
     if (!open) return;
     setFiles([]);
-    setSelectedFolderId(null);
+    setSelectedFolderId(defaultFolderId);
     setTitle('');
     setTitleEdited(false);
     setIsDragging(false);
     setProgress(0);
-    setFieldErrors({ title: '', files: '' });
+    setFieldErrors({ folder: '', title: '', files: '' });
     setRejections([]);
     setError('');
-  }, [open]);
+  }, [open, defaultFolderId]);
 
   // Forget a folder selection that no longer exists (e.g. after switching workspace).
+  // Wait for the list to load so a preselected folder isn't dropped before it arrives.
   useEffect(() => {
+    if (foldersLoading) return;
     if (selectedFolderId && !folders.some((f) => f.id === selectedFolderId)) setSelectedFolderId(null);
-  }, [folders, selectedFolderId]);
+  }, [folders, foldersLoading, selectedFolderId]);
 
   // Keep the suggested title in step with the selection while the user hasn't typed their own.
   useEffect(() => {
@@ -121,14 +125,16 @@ export function UploadDialog({ open, onOpenChange, onUploaded }) {
 
     const cleanedTitle = title.trim();
     const nextErrors = {
+      folder: selectedFolderId ? '' : 'Please select a folder to upload into.',
       title: singleFile && !cleanedTitle ? 'Document title is required.' : '',
       files: files.length ? '' : 'Please select at least one file to upload.',
     };
-    if (nextErrors.title || nextErrors.files) {
+    if (nextErrors.folder || nextErrors.title || nextErrors.files) {
       setFieldErrors(nextErrors);
       return;
     }
 
+    const folderName = selectedFolder?.name ?? 'the folder';
     setSubmitting(true);
     setProgress(0);
     setRejections([]);
@@ -136,7 +142,7 @@ export function UploadDialog({ open, onOpenChange, onUploaded }) {
 
     try {
       const result = await documentsApi.upload(
-        selectedWorkspaceId,
+        selectedFolderId,
         { files, title: singleFile ? cleanedTitle : undefined },
         { onProgress: setProgress }
       );
@@ -151,6 +157,8 @@ export function UploadDialog({ open, onOpenChange, onUploaded }) {
         return;
       }
 
+      // Folder contents come with the folder list, so re-fetch it to show the new documents.
+      refreshFolders();
       onUploaded?.(result.documents);
       setSubmitting(false);
       onOpenChange(false);
@@ -160,21 +168,23 @@ export function UploadDialog({ open, onOpenChange, onUploaded }) {
         const reasons = result.rejections.map((r) => r.message).filter(Boolean).join(' ');
         toast.warning(
           'Uploaded with issues',
-          `${uploadedCount} of ${files.length} files uploaded to Orphaned Files. ${reasons}`
+          `${uploadedCount} of ${files.length} files uploaded to "${folderName}". ${reasons}`
         );
       } else if (uploadedCount === 1) {
-        toast.success('Upload complete', `"${result.documents[0].name}" was added to Orphaned Files.`);
+        toast.success('Upload complete', `"${result.documents[0].name}" was added to "${folderName}".`);
       } else {
-        toast.success('Upload complete', `${uploadedCount} files were added to Orphaned Files.`);
+        toast.success('Upload complete', `${uploadedCount} files were added to "${folderName}".`);
       }
     } catch (err) {
+      // The folder may have been deleted meanwhile; refresh so the picker drops it.
+      if (err?.code === API_ERROR_CODES.NOT_FOUND) refreshFolders();
       setError(err?.message || 'Something went wrong. Please try again.');
       toast.error('Upload failed', err?.message || 'Something went wrong. Please try again.');
       setSubmitting(false);
     }
   };
 
-  const locked = submitting || workspaceMissing;
+  const locked = submitting || workspaceMissing || noFolders;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -193,16 +203,31 @@ export function UploadDialog({ open, onOpenChange, onUploaded }) {
             </p>
           )}
 
-          <FolderSelect
-            id="document-folder-select"
-            folders={folders}
-            value={selectedFolderId}
-            onChange={setSelectedFolderId}
-            loading={foldersLoading}
-            error={foldersError}
-            disabled={locked}
-            noneLabel="No folder (Orphaned Files)"
-          />
+          {!workspaceMissing && noFolders && (
+            <p className="text-sm text-destructive" data-testid="document-folder-missing-error">
+              Create a folder before uploading documents.
+            </p>
+          )}
+
+          <div className="space-y-1">
+            <FolderSelect
+              id="document-folder-select"
+              folders={folders}
+              value={selectedFolderId}
+              onChange={(folderId) => {
+                setSelectedFolderId(folderId);
+                if (fieldErrors.folder) setFieldErrors((prev) => ({ ...prev, folder: '' }));
+              }}
+              loading={foldersLoading}
+              error={foldersError}
+              disabled={locked}
+              noneLabel="Select a folder"
+              allowNone={false}
+              required
+              invalid={Boolean(fieldErrors.folder)}
+            />
+            {fieldErrors.folder && <p className="text-xs text-destructive">{fieldErrors.folder}</p>}
+          </div>
 
           {singleFile && (
             <div className="space-y-1.5">
@@ -316,13 +341,12 @@ export function UploadDialog({ open, onOpenChange, onUploaded }) {
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
 
-          <p className="flex items-start gap-2 rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
-            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-            <span>
-              Documents are added to {workspaceName ? `"${workspaceName}"` : 'the workspace'} and appear under
-              Orphaned Files until folder assignment is available.
-            </span>
-          </p>
+          {selectedFolder && (
+            <p className="flex items-start gap-2 rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>Documents will be added to the &ldquo;{selectedFolder.name}&rdquo; folder.</span>
+            </p>
+          )}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={submitting}>

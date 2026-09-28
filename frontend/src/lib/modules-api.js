@@ -10,23 +10,40 @@ const MODULE_ERROR_MESSAGES = {
 
 const modulesUrl = (workspaceId) => `${API_BASE_URL}/workspaces/${encodeURIComponent(workspaceId)}/modules`;
 
+// Adapts one file of a module to the file shape the UI uses. The API has no category or
+// sections for a file yet, so the file type doubles as its tag and sections start empty.
+function toAppFile(apiFile) {
+  return {
+    id: apiFile.id,
+    name: apiFile.name,
+    type: apiFile.type,
+    tag: apiFile.type,
+    size: apiFile.size,
+    createdAt: apiFile.createdAt,
+    updatedAt: apiFile.createdAt,
+    sections: [],
+  };
+}
+
 // The backend calls folders "modules". This adapts one to the folder shape the UI uses.
-// Files and sections have no endpoint yet, so they start empty and are only tracked locally.
+// Create/rename responses carry no files, so those come back with an empty list.
 function toAppFolder(apiModule) {
+  const files = (Array.isArray(apiModule.files) ? apiModule.files : []).map(toAppFile);
   return {
     id: apiModule.id,
     workspaceId: apiModule.workspaceId,
     name: apiModule.name,
     createdAt: apiModule.createdAt,
     updatedAt: apiModule.createdAt,
-    files: [],
-    filesCount: 0,
+    files,
+    filesCount: apiModule.totalFiles ?? files.length,
     sectionsCount: 0,
   };
 }
 
 export const modulesApi = {
   // GET /workspaces/{workspaceId}/modules
+  //   -> [{ id, workspaceId, name, createdAt, totalFiles, files: [{ id, name, type, size, createdAt }] }]
   async list(workspaceId) {
     try {
       const { data } = await axios.get(modulesUrl(workspaceId), { headers: authHeaders() });

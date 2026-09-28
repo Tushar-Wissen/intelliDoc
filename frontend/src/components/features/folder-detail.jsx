@@ -325,7 +325,7 @@ function FolderOverview({ folder, onFileClick, onUploadClick }) {
                   <FileTableRow
                     key={file.id}
                     file={file}
-                    updatedAt={folder.updatedAt}
+                    updatedAt={file.updatedAt ?? folder.updatedAt}
                     onClick={() => onFileClick?.({ ...file, folderId: folder.id, folderName: folder.name })}
                   />
                 ))}

@@ -13,7 +13,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-// Optional folder picker. `value` is a folder id, or null for "no folder".
+// Folder picker. `value` is a folder id, or null for "no folder". With `allowNone` false the
+// "no folder" option is hidden and `noneLabel` only serves as the placeholder.
 export function FolderSelect({
   id,
   label = 'Folder',
@@ -24,6 +25,9 @@ export function FolderSelect({
   error = null,
   disabled = false,
   noneLabel = 'No folder',
+  allowNone = true,
+  required = false,
+  invalid = false,
 }) {
   const [query, setQuery] = useState('');
   const searchInputRef = useRef(null);
@@ -37,7 +41,10 @@ export function FolderSelect({
 
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={id}>{label}</Label>
+      <Label htmlFor={id}>
+        {label}
+        {required && <span className="text-destructive"> *</span>}
+      </Label>
       <DropdownMenu onOpenChange={(next) => { if (!next) setQuery(''); }}>
         <DropdownMenuTrigger asChild>
           <Button
@@ -46,7 +53,8 @@ export function FolderSelect({
             type="button"
             variant="outline"
             disabled={disabled}
-            className="w-full justify-between bg-background font-normal"
+            aria-invalid={invalid || undefined}
+            className={cn('w-full justify-between bg-background font-normal', invalid && 'border-destructive')}
           >
             <span className="flex min-w-0 items-center gap-2">
               {selectedFolder ? (
@@ -87,17 +95,19 @@ export function FolderSelect({
           </div>
           <DropdownMenuSeparator />
 
-          <DropdownMenuItem
-            data-testid={`${id}-option-none`}
-            className="gap-2"
-            onClick={() => onChange(null)}
-          >
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-              <FolderOpen className="h-3 w-3" />
-            </span>
-            <span className="flex-1 truncate">{noneLabel}</span>
-            {value === null && <Check className="h-4 w-4 shrink-0 text-wissen-navy dark:text-wissen-navy-light" />}
-          </DropdownMenuItem>
+          {allowNone && (
+            <DropdownMenuItem
+              data-testid={`${id}-option-none`}
+              className="gap-2"
+              onClick={() => onChange(null)}
+            >
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                <FolderOpen className="h-3 w-3" />
+              </span>
+              <span className="flex-1 truncate">{noneLabel}</span>
+              {value === null && <Check className="h-4 w-4 shrink-0 text-wissen-navy dark:text-wissen-navy-light" />}
+            </DropdownMenuItem>
+          )}
 
           {loading ? (
             <p className="flex items-center justify-center gap-2 px-2 py-3 text-xs text-muted-foreground">
