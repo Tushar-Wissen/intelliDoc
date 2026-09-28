@@ -165,10 +165,12 @@ export function OrphanedFilesPage() {
       .catch(() => {});
   }, [selectedWorkspaceId]);
 
-  // Show freshly uploaded documents straight away, then re-sync.
+  // Uploads go into a folder, so normally none of them belong here; keep only any that the
+  // server returned without one, then re-sync.
   const handleUploaded = useCallback(
     (uploaded) => {
-      setFiles((prev) => [...uploaded, ...prev.filter((f) => !uploaded.some((u) => u.id === f.id))]);
+      const unassigned = keepUnassigned(uploaded);
+      setFiles((prev) => [...unassigned, ...prev.filter((f) => !unassigned.some((u) => u.id === f.id))]);
       refreshFiles();
     },
     [refreshFiles]

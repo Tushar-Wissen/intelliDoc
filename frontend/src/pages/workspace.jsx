@@ -430,7 +430,7 @@ export function WorkspacePage() {
         onConfirm={handleConfirmDeleteFolder}
       />
 
-      <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
+      <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} defaultFolderId={activeFolderId} />
 
       <CopilotSidebar
         activeTabId={activeCopilotId}

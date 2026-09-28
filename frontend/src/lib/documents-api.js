@@ -11,6 +11,7 @@ const DOCUMENT_ERROR_MESSAGES = {
 };
 
 const documentsUrl = (workspaceId) => `${API_BASE_URL}/workspaces/${encodeURIComponent(workspaceId)}/documents`;
+const moduleDocumentsUrl = (moduleId) => `${API_BASE_URL}/modules/${encodeURIComponent(moduleId)}/documents`;
 
 // Adapts an API document to the file shape the UI uses.
 function toAppDocument(apiDocument) {
@@ -37,8 +38,7 @@ function toAppRejection(apiRejection) {
 // Multipart field name for the uploaded files (one part per file).
 const UPLOAD_FILES_FIELD = 'files';
 
-// Builds the multipart body. When the backend starts accepting a folder/module for uploads,
-// append its id here (and take it as a parameter); nothing else in the UI needs to change.
+// Builds the multipart body. The target folder (module) is in the URL, not the body.
 function buildUploadFormData({ files, title }) {
   const formData = new FormData();
   files.forEach((file) => formData.append(UPLOAD_FILES_FIELD, file));
@@ -58,15 +58,17 @@ export const documentsApi = {
     }
   },
 
-  // POST /workspaces/{workspaceId}/documents  (multipart: files[, title])
+  // POST /modules/{moduleId}/documents  (multipart: files[, title])
   //   -> { documents: [...accepted], rejections: [{ fileName, code, message }] }
-  // Uploaded documents belong to the workspace (they show under Orphaned Files) for now.
+  // Every accepted document is stored in the given folder (module); a folder that no longer
+  // exists comes back as 404.
   // `title` is optional and only makes sense for a single file. `onProgress` receives 0-100
   // while the files are being sent.
-  async upload(workspaceId, { files, title }, { onProgress } = {}) {
+  async upload(moduleId, { files, title }, { onProgress } = {}) {
+    if (!moduleId) throw new Error('Select a folder to upload documents into.');
     try {
       // No Content-Type header: the browser adds the multipart boundary itself.
-      const { data } = await axios.post(documentsUrl(workspaceId), buildUploadFormData({ files, title }), {
+      const { data } = await axios.post(moduleDocumentsUrl(moduleId), buildUploadFormData({ files, title }), {
         headers: authHeaders(),
         onUploadProgress: (event) => {
           if (event.total) onProgress?.(Math.round((event.loaded * 100) / event.total));
