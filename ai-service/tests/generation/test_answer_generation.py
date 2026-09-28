@@ -51,7 +51,7 @@ def test_answer_generation_empty_evidence_package_short_circuits():
     result = service.generate_answer("What is notice?", package)
 
     assert result is None
-    mock_provider.generate.assert_not_called()
+    mock_provider.generate_split.assert_not_called()
 
 
 def test_answer_generation_parses_claims_and_chunk_tags():
@@ -69,7 +69,7 @@ def test_answer_generation_parses_claims_and_chunk_tags():
     package = make_package(chunks=[chunk])
 
     mock_provider = MagicMock()
-    mock_provider.generate.return_value = CompletionResponse(
+    mock_provider.generate_split.return_value = CompletionResponse(
         text=f"The termination notice period is 60 days. [chunk:{chunk_id}]"
     )
 
@@ -96,7 +96,7 @@ def test_answer_generation_propagates_provider_error():
     package = make_package(chunks=[chunk])
 
     mock_provider = MagicMock()
-    mock_provider.generate.side_effect = ProviderError("Ollama is offline")
+    mock_provider.generate_split.side_effect = ProviderError("Ollama is offline")
 
     service = AnswerGenerationService(provider=mock_provider)
 

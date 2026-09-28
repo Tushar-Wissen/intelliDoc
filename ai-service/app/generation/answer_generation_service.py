@@ -8,7 +8,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from app.generation.model_provider.base import ModelProviderInterface, ProviderError
-from app.generation.model_provider.factory import get_model_provider
+from app.generation.model_provider.factory import get_model_provider, get_model_provider_name
 from app.generation.prompt_builder import PromptBuilder
 from app.retrieval.schemas import EvidencePackage
 
@@ -51,13 +51,20 @@ class AnswerGenerationService:
             logger.info("Empty evidence package chunks; short-circuiting to not-found")
             return None
 
-        prompt = PromptBuilder.build_prompt(question, evidence_package)
+        system_prompt, user_prompt = PromptBuilder.build_prompt_parts(question, evidence_package)
         provider = self._provider or get_model_provider()
+        chunk_ids = [str(chunk.chunkId) for chunk in evidence_package.chunks]
+        logger.info(
+            "Generating answer provider=%s evidenceChunks=%s chunkIds=%s",
+            get_model_provider_name(),
+            len(evidence_package.chunks),
+            chunk_ids,
+        )
 
         last_error: Exception | None = None
         for attempt in range(max_retries + 1):
             try:
-                response = provider.generate(prompt)
+                response = provider.generate_split(system_prompt, user_prompt)
                 draft = self._parse_draft_answer(response.text, evidence_package)
                 if draft is not None:
                     return draft
