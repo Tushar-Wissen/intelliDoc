@@ -53,7 +53,7 @@ export function DashboardPage() {
           ctaTestId="workspace-empty-create-button"
         />
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-1 py-1">
+        <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto scrollbar-thin pl-1 pr-8 py-1">
 
           {/* Stats row */}
           <DashboardStatCards totalDocuments={totalDocuments} totalFolders={totalFolders} />

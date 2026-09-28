@@ -116,7 +116,7 @@ export function Header({ title, subtitle, badge, testId, healthStatus, onMenuCli
         <DropdownMenuTrigger asChild>
           <Button id="account-menu-trigger" variant="ghost" className="gap-2 px-1.5">
             <Avatar className="h-7 w-7">
-              <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+              <AvatarFallback className="bg-wissen-navy text-xs font-semibold text-white dark:bg-wissen-navy-light">
                 {getInitials(user)}
               </AvatarFallback>
             </Avatar>
