@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+
 from app.pipeline.embedding_model import set_embedding_model
 from app.pipeline.indexing import IndexingError
 from app.pipeline.kg import GraphBuildError, set_graph_store
@@ -97,7 +99,8 @@ def test_orchestrator_parse_failure_sets_failed_and_error_message(monkeypatch):
 
     monkeypatch.setattr("app.pipeline.parsing.CascadingParser", StubParser)
     try:
-        process_document(document_id, repo=repo)
+        with pytest.raises(ParseError):
+            process_document(document_id, repo=repo)
     finally:
         set_repository(None)
         set_minio(None)
@@ -145,7 +148,8 @@ def test_orchestrator_indexing_failure_sets_failed(monkeypatch):
     monkeypatch.setattr("app.pipeline.parsing.CascadingParser", StubParser)
     monkeypatch.setattr("app.pipeline.orchestrator.indexing.generate_embeddings", fail_index)
     try:
-        process_document(document_id, repo=repo)
+        with pytest.raises(IndexingError):
+            process_document(document_id, repo=repo)
     finally:
         set_repository(None)
         set_minio(None)
@@ -196,7 +200,8 @@ def test_orchestrator_graph_failure_sets_failed(monkeypatch):
     monkeypatch.setattr("app.pipeline.parsing.CascadingParser", StubParser)
     set_graph_store(BoomStore())
     try:
-        process_document(document_id, repo=repo)
+        with pytest.raises(GraphBuildError):
+            process_document(document_id, repo=repo)
     finally:
         set_repository(None)
         set_minio(None)

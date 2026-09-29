@@ -21,8 +21,9 @@ from app.db.repository import (
     get_repository,
 )
 from app.pipeline import chunking, indexing, kg, ocr, parsing
-from app.pipeline.classification import classify_and_extract
+from app.pipeline.classification import ClassificationError, classify_and_extract
 from app.pipeline.chunking import ChunkingError
+from app.pipeline.extraction import ExtractionError
 from app.pipeline.indexing import IndexingError
 from app.pipeline.kg import GraphBuildError
 from app.pipeline.parsing import ParseError
@@ -32,6 +33,8 @@ logger = logging.getLogger(__name__)
 _USER_SAFE = {
     ParseError: "The document could not be read. The file may be corrupt or in an unsupported format.",
     ChunkingError: "The document produced no searchable text chunks.",
+    ClassificationError: "The document could not be classified or summarized.",
+    ExtractionError: "Structured fields could not be extracted from the document.",
     IndexingError: "The document could not be indexed for search.",
     GraphBuildError: "The document knowledge graph could not be built.",
 }
@@ -81,6 +84,7 @@ def process_document(
         logger.exception("Pipeline failed documentId=%s", document_id)
         repo.set_processing_status(document_id, FAILED)
         repo.mark_job_failed(document_id, _user_safe_message(exc))
+        raise
 
 
 def _build_graph(document_id: uuid.UUID, workspace_id: uuid.UUID, repo: PipelineRepository) -> None:

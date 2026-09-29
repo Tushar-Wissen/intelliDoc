@@ -33,7 +33,7 @@ def hosted_model() -> str:
 
 
 def hosted_timeout_seconds() -> float:
-    return float_env("HOSTED_LLM_TIMEOUT_SECONDS", 120.0)
+    return float_env("HOSTED_LLM_TIMEOUT_SECONDS", 300.0)
 
 
 def hosted_base_url() -> str:

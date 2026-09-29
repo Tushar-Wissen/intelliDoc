@@ -8,6 +8,8 @@ from dataclasses import dataclass
 
 from app.db.repository import ExtractedFieldRecord, PipelineRepository, get_repository
 from app.llm.client import LlmError, get_llm_client, with_retry
+from pydantic import ValidationError
+from app.pipeline.prompts import type_specific_extraction_prompt, universal_extraction_prompt
 from app.pipeline.schemas.field_schemas import (
     DocumentType,
     ProvenanceField,
@@ -44,22 +46,16 @@ def extract_universal_fields(
     collected: list[ProvenanceField] = []
     for chunk in repo.list_chunks(document_id):
         page = chunk.page_number or 1
-        prompt = (
-            "Extract universal fields as JSON with provenance for each fact.\n"
-            f"documentId={document_id} chunkId={chunk.id} page={page}\n"
-            f"---\n{chunk.chunk_text}"
+        prompt = universal_extraction_prompt(
+            document_id, chunk.id, page, chunk.chunk_text
         )
 
         def _call() -> UniversalExtractionSchema:
-            try:
-                parsed = client.complete_json(prompt, UniversalExtractionSchema)
-            except LlmError as exc:
-                raise ExtractionError(str(exc)) from exc
-            return parsed
+            return client.complete_json(prompt, UniversalExtractionSchema)
 
         try:
             parsed = with_retry(_call, retries=1)
-        except Exception as exc:
+        except (LlmError, ValidationError) as exc:
             raise ExtractionError(str(exc)) from exc
         for field in validate_provenance_fields(parsed.fields):
             if field.source_chunk_id != chunk.id:
@@ -111,22 +107,16 @@ def extract_type_specific_fields(
     collected: list[ProvenanceField] = []
     for chunk in repo.list_chunks(document_id):
         page = chunk.page_number or 1
-        prompt = (
-            "Extract type-specific fields as JSON. Omit fields that do not apply.\n"
-            f"documentId={document_id} documentType={document_type.value} "
-            f"chunkId={chunk.id} page={page}\n"
-            f"---\n{chunk.chunk_text}"
+        prompt = type_specific_extraction_prompt(
+            document_id, document_type, chunk.id, page, chunk.chunk_text
         )
 
         def _call() -> TypeSpecificExtractionSchema:
-            try:
-                return client.complete_json(prompt, TypeSpecificExtractionSchema)
-            except LlmError as exc:
-                raise ExtractionError(str(exc)) from exc
+            return client.complete_json(prompt, TypeSpecificExtractionSchema)
 
         try:
             parsed = with_retry(_call, retries=1)
-        except Exception as exc:
+        except (LlmError, ValidationError) as exc:
             raise ExtractionError(str(exc)) from exc
         for field in validate_provenance_fields(parsed.fields):
             if field.source_chunk_id != chunk.id:

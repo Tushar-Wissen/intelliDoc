@@ -1,15 +1,19 @@
-"""Story 3.1 — document classification and overview/summary."""
+"""Story 3.1 — document classification, topics overview, and summary."""
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from dataclasses import dataclass
+
+from pydantic import ValidationError
 
 from app.config import settings
 from app.db.repository import PipelineRepository, get_repository
 from app.llm.client import LlmError, get_llm_client, with_retry
 from app.pipeline import extraction
+from app.pipeline.prompts import classification_prompt
 from app.pipeline.schemas.field_schemas import ClassificationResultSchema, DocumentType
 
 logger = logging.getLogger(__name__)
@@ -19,7 +23,7 @@ logger = logging.getLogger(__name__)
 class ClassificationResult:
     document_type: DocumentType
     confidence: float
-    overview: str
+    topics: list[str]
     summary: str
     low_confidence: bool
 
@@ -53,22 +57,15 @@ def classify_and_summarize(
         raise ClassificationError("No chunks available for classification")
 
     text = _classification_text(chunks)
-    prompt = (
-        "Classify the document and produce overview and summary as JSON.\n"
-        f"documentId={document_id}\n"
-        f"---\n{text}"
-    )
+    prompt = classification_prompt(document_id, text)
     client = get_llm_client()
 
     def _call() -> ClassificationResultSchema:
-        try:
-            return client.complete_json(prompt, ClassificationResultSchema)
-        except LlmError as exc:
-            raise ClassificationError(str(exc)) from exc
+        return client.complete_json(prompt, ClassificationResultSchema)
 
     try:
         parsed = with_retry(_call, retries=1)
-    except Exception as exc:
+    except (LlmError, ValidationError) as exc:
         raise ClassificationError(str(exc)) from exc
 
     low_confidence = parsed.confidence < settings.classification_confidence_threshold
@@ -84,7 +81,7 @@ def classify_and_summarize(
     result = ClassificationResult(
         document_type=parsed.document_type,
         confidence=parsed.confidence,
-        overview=parsed.overview,
+        topics=parsed.topics,
         summary=parsed.summary,
         low_confidence=low_confidence,
     )
@@ -92,7 +89,7 @@ def classify_and_summarize(
         document_id,
         document_type=result.document_type.value,
         classification_confidence=result.confidence,
-        overview=result.overview,
+        overview=_topics_to_overview(result.topics),
         summary=result.summary,
     )
     logger.info(
@@ -103,6 +100,11 @@ def classify_and_summarize(
         result.low_confidence,
     )
     return result
+
+
+def _topics_to_overview(topics: list[str]) -> str:
+    cleaned = [topic.strip() for topic in topics if topic and topic.strip()]
+    return json.dumps(cleaned)
 
 
 def _classification_text(chunks) -> str:

@@ -57,6 +57,10 @@ class CallableLlmClient(StructuredLlmClient):
         return schema.model_validate(raw)
 
 
+def _httpx_timeout(read_seconds: float) -> httpx.Timeout:
+    return httpx.Timeout(connect=10.0, read=read_seconds, write=30.0, pool=10.0)
+
+
 class HostedLlmClient(StructuredLlmClient):
     """OpenAI-compatible chat completions endpoint (LLM_PROVIDER=hosted)."""
 
@@ -95,7 +99,7 @@ class HostedLlmClient(StructuredLlmClient):
                     hosted_completions_url(self._base_url),
                     json=payload,
                     headers=headers,
-                    timeout=self._timeout,
+                    timeout=_httpx_timeout(self._timeout),
                 )
                 response.raise_for_status()
                 content = response.json()["choices"][0]["message"]["content"]
@@ -144,7 +148,7 @@ class OllamaLlmClient(StructuredLlmClient):
             response = httpx.post(
                 f"{self._base_url}/api/generate",
                 json=payload,
-                timeout=self._timeout,
+                timeout=_httpx_timeout(self._timeout),
             )
             response.raise_for_status()
             body = response.json()
@@ -194,10 +198,11 @@ class RulesLlmClient(StructuredLlmClient):
             doc_type = DocumentType.OTHER
             confidence = 0.55
         title = _first_line(prompt) or "Document"
+        topics = _topics_for_type(doc_type, title, lower)
         return {
             "documentType": doc_type.value,
             "confidence": confidence,
-            "overview": f"Overview of {title[:120]}.",
+            "topics": topics,
             "summary": f"Summary covering key themes in {title[:80]}.",
         }
 
@@ -312,7 +317,8 @@ def build_llm_client() -> StructuredLlmClient:
     if provider == "ollama":
         base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         model = os.getenv("OLLAMA_MODEL", "llama3.2")
-        return OllamaLlmClient(base_url=base, model=model)
+        timeout = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "300"))
+        return OllamaLlmClient(base_url=base, model=model, timeout_seconds=timeout)
     if provider == "hosted":
         return HostedLlmClient(
             base_url=hosted_base_url(),
@@ -462,6 +468,21 @@ def _match_amounts(text: str) -> list[tuple[str, str]]:
 def _match_reference(text: str) -> str | None:
     match = re.search(r"\b(?:ref(?:erence)?|agreement)\s*(?:#|no\.?)?\s*([A-Z0-9-]{4,})\b", text, re.I)
     return match.group(1) if match else None
+
+
+def _topics_for_type(doc_type: DocumentType, title: str, lower: str) -> list[str]:
+    explicit = _match_topics(lower)
+    if explicit:
+        return [part.strip() for part in explicit.split(",") if part.strip()]
+    if doc_type == DocumentType.CONTRACT:
+        return ["Contract terms", "Termination", "Parties"]
+    if doc_type == DocumentType.FINANCIAL_REPORT:
+        return ["Financial performance", "Revenue", "Forecast"]
+    if doc_type == DocumentType.PROPOSAL:
+        return ["Offering", "Pricing", "Customer"]
+    if doc_type == DocumentType.POLICY:
+        return ["Policy scope", "Compliance", "Governance"]
+    return [title[:80] if title else "General content"]
 
 
 def _match_topics(text: str) -> str | None:

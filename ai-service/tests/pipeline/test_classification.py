@@ -6,14 +6,14 @@ import pytest
 
 from app.config import settings
 from app.db.repository import ChunkRecord
-from app.llm.client import CallableLlmClient, set_llm_client
-from app.pipeline.classification import classify_and_summarize
+from app.llm.client import CallableLlmClient, LlmError, set_llm_client
+from app.pipeline.classification import ClassificationError, classify_and_summarize
 from app.pipeline.schemas.field_schemas import ClassificationResultSchema, DocumentType
 from tests.fakes import InMemoryPipelineRepository
 from tests.fixtures import CONTRACT_HEADINGS, contract_paragraph
 
 
-def test_classify_contract_sets_type_confidence_overview_summary():
+def test_classify_contract_sets_type_confidence_topics_and_summary():
     repo = InMemoryPipelineRepository()
     document_id = uuid.uuid4()
     chunk_id = uuid.uuid4()
@@ -37,11 +37,12 @@ def test_classify_contract_sets_type_confidence_overview_summary():
     result = classify_and_summarize(document_id, repo=repo)
     assert result.document_type == DocumentType.CONTRACT
     assert result.confidence == 0.93
-    assert result.overview
+    assert result.topics
     assert result.summary
     stored = repo.classification[document_id]
     assert stored.document_type == "contract"
     assert stored.classification_confidence == 0.93
+    assert stored.overview.startswith("[")
 
 
 def test_low_confidence_flagged_for_ambiguous_document():
@@ -83,13 +84,41 @@ def test_invalid_llm_type_retries_then_fails():
         return {
             "documentType": "invoice",
             "confidence": 0.9,
-            "overview": "x",
+            "topics": ["Billing"],
             "summary": "y",
         }
 
     set_llm_client(CallableLlmClient(broken))
     try:
         with pytest.raises(Exception):
+            classify_and_summarize(document_id, repo=repo)
+        assert calls["count"] == 2
+    finally:
+        set_llm_client(None)
+
+
+def test_llm_timeout_retries_then_fails():
+    repo = InMemoryPipelineRepository()
+    document_id = uuid.uuid4()
+    repo.chunks[document_id] = [
+        ChunkRecord(
+            id=uuid.uuid4(),
+            document_id=document_id,
+            section_id=None,
+            page_number=1,
+            chunk_text="Master Services Agreement",
+            token_count=10,
+        )
+    ]
+    calls = {"count": 0}
+
+    def timeout(_prompt, _schema):
+        calls["count"] += 1
+        raise LlmError("The read operation timed out")
+
+    set_llm_client(CallableLlmClient(timeout))
+    try:
+        with pytest.raises(ClassificationError, match="read operation timed out"):
             classify_and_summarize(document_id, repo=repo)
         assert calls["count"] == 2
     finally:
