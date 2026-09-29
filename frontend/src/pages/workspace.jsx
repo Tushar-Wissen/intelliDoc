@@ -446,6 +446,8 @@ export function WorkspacePage() {
         placeholder={copilotPlaceholder}
         chatHistories={chatHistories}
         onUpdateHistory={handleUpdateChatHistory}
+        workspaceId={selectedWorkspaceId}
+        disabled={!foldersLoading && folders.length === 0}
       />
     </AppShell>
   );

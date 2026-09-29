@@ -44,7 +44,11 @@ export function toApiError(err, messages = {}, { preferServerMessage = false } =
   }
 
   const { status, data } = err.response;
-  const serverMessage = typeof data?.message === 'string' ? data.message : undefined;
+  const serverMessage = typeof data?.message === 'string' 
+    ? data.message 
+    : typeof data?.error?.message === 'string'
+      ? data.error.message
+      : undefined;
   const pick = (code, preferServer = false) =>
     new ApiError(code, ((preferServer || preferServerMessage) && serverMessage) || messages[code]);
 
