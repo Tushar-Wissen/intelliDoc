@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Navigate } from 'react-router-dom';
 
 import { useAuth } from '@/context/auth-context';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { AuthBrandHeader } from '@/components/auth/auth-brand-header';
 import { AuthShowcasePanel } from '@/components/auth/auth-showcase-panel';
 import { SignInForm } from '@/components/auth/sign-in-form';
@@ -32,10 +31,6 @@ export function LoginPage() {
       <AuthShowcasePanel />
 
       <div className="relative flex h-full flex-1 flex-col overflow-y-auto bg-muted/30">
-        <div className="fixed right-4 top-4 z-20">
-          <ThemeToggle />
-        </div>
-
         <div className="relative flex min-h-full flex-1 items-center justify-center px-4 py-10 sm:px-8">
           <div className="w-full max-w-[28rem]">
             <div className="mb-6 lg:hidden">
