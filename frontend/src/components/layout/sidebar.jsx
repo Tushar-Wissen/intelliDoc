@@ -73,23 +73,37 @@ function NavLink({ item, onNavigate }) {
   );
 }
 
-function FileRow({ file, folder, onNavigate }) {
+function FileRow({ file, folder, selected, onNavigate }) {
   const navigate = useNavigate();
   const sectionsCount = file.sections?.length ?? 0;
 
   return (
     <button
       type="button"
+      data-testid={`file-item-${file.id}`}
       onClick={() => {
         navigate('/workspace', { state: { folderId: folder.id, fileId: file.id } });
         onNavigate?.();
       }}
-      className="flex w-full items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-left transition-colors hover:bg-sidebar-accent/50"
+      aria-current={selected ? 'true' : undefined}
+      className={cn(
+        'flex w-full items-center gap-2 rounded-md py-1.5 pl-2 pr-2 text-left transition-colors',
+        selected
+          ? 'bg-wissen-navy/10 text-wissen-navy dark:bg-wissen-navy-light/15 dark:text-wissen-navy-light'
+          : 'hover:bg-sidebar-accent/50'
+      )}
     >
-      <FileText className="h-3.5 w-3.5 shrink-0 text-sidebar-foreground/40" />
+      <FileText className={cn('h-3.5 w-3.5 shrink-0', selected ? 'text-current' : 'text-sidebar-foreground/40')} />
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="min-w-0 flex-1 truncate text-[12.5px] text-sidebar-foreground/75">{file.name}</span>
+          <span
+            className={cn(
+              'min-w-0 flex-1 truncate text-[12.5px]',
+              selected ? 'font-medium text-current' : 'text-sidebar-foreground/75'
+            )}
+          >
+            {file.name}
+          </span>
         </TooltipTrigger>
         <TooltipContent side="right">{file.name}</TooltipContent>
       </Tooltip>
@@ -102,7 +116,7 @@ function FileRow({ file, folder, onNavigate }) {
   );
 }
 
-function FolderNode({ folder, index, expanded, selected, onToggle, onNavigate }) {
+function FolderNode({ folder, index, expanded, selected, selectedFileId, onToggle, onNavigate }) {
   const color = colorForFolder(folder, index);
   const navigate = useNavigate();
   const hasFiles = folder.files?.length > 0;
@@ -155,7 +169,13 @@ function FolderNode({ folder, index, expanded, selected, onToggle, onNavigate })
       {expanded && hasFiles && (
         <div className="ml-[27px] flex flex-col gap-0.5 border-l border-sidebar-border pb-1 pl-2">
           {folder.files.map((file) => (
-            <FileRow key={file.id} file={file} folder={folder} onNavigate={onNavigate} />
+            <FileRow
+              key={file.id}
+              file={file}
+              folder={folder}
+              selected={file.id === selectedFileId}
+              onNavigate={onNavigate}
+            />
           ))}
         </div>
       )}
@@ -164,7 +184,7 @@ function FolderNode({ folder, index, expanded, selected, onToggle, onNavigate })
 }
 
 function FoldersSection({ onNavigate }) {
-  const { folders, loading, error, selectedFolderId, refreshFolders } = useFolders();
+  const { folders, loading, error, selectedFolderId, selectedFileId, refreshFolders } = useFolders();
   const [expandedFolderIds, setExpandedFolderIds] = useState(() => new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const total = folders.length;
@@ -265,6 +285,7 @@ function FoldersSection({ onNavigate }) {
                 index={idx}
                 expanded={expandedFolderIds.has(folder.id)}
                 selected={folder.id === selectedFolderId}
+                selectedFileId={selectedFileId}
                 onToggle={() => toggleFolder(folder.id)}
                 onNavigate={onNavigate}
               />

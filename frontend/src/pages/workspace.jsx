@@ -38,6 +38,7 @@ export function WorkspacePage() {
     loading: foldersLoading,
     error: foldersError,
     selectFolder,
+    selectFile,
     refreshFolders,
     deleteFolder,
   } = useFolders();
@@ -74,6 +75,12 @@ export function WorkspacePage() {
     selectFolder(activeFolderId);
   }, [activeFolderId, selectFolder]);
   useEffect(() => () => selectFolder(null), [selectFolder]);
+
+  // Likewise for the open file, so the sidebar highlights it.
+  useEffect(() => {
+    selectFile(activeFileId);
+  }, [activeFileId, selectFile]);
+  useEffect(() => () => selectFile(null), [selectFile]);
 
   // The shared folder list is already updated by the time this runs, so the sidebar, cards and
   // the page title (all derived from it) show the new name. Open tabs keep their own copy of

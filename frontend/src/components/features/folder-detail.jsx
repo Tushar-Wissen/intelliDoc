@@ -2,12 +2,6 @@ import React, { useMemo, useState } from 'react';
 import {
   Folder,
   FileText,
-  Diamond,
-  CircleDot,
-  Square,
-  Circle,
-  Hexagon,
-  Triangle,
   ChevronDown,
   UploadCloud,
   Search,
@@ -16,7 +10,7 @@ import {
 
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/format';
-import { Badge } from '@/components/ui/badge';
+import { DocumentView } from '@/components/features/document-view';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -50,16 +44,6 @@ const TAG_COLORS = {
 };
 const DEFAULT_TAG_COLOR = { bg: 'bg-muted', fg: 'text-muted-foreground' };
 
-// Order/colors mirror folder-panel.jsx's SECTION_ICONS so a section shows the same icon in the sidebar tree and here.
-const SECTION_STYLES = [
-  { Icon: Diamond, bg: 'bg-rose-500/10', fg: 'text-rose-600 dark:text-rose-400' },
-  { Icon: CircleDot, bg: 'bg-emerald-500/10', fg: 'text-emerald-600 dark:text-emerald-400' },
-  { Icon: Square, bg: 'bg-blue-500/10', fg: 'text-blue-600 dark:text-blue-400' },
-  { Icon: Circle, bg: 'bg-amber-500/10', fg: 'text-amber-600 dark:text-amber-400' },
-  { Icon: Hexagon, bg: 'bg-violet-500/10', fg: 'text-violet-600 dark:text-violet-400' },
-  { Icon: Triangle, bg: 'bg-sky-500/10', fg: 'text-sky-600 dark:text-sky-400' },
-];
-
 function hashKey(key) {
   let hash = 0;
   for (let i = 0; i < key.length; i++) {
@@ -71,70 +55,6 @@ function hashKey(key) {
 function colorForFolder(folder) {
   const key = folder?.id ?? '';
   return FOLDER_COLORS[hashKey(key) % FOLDER_COLORS.length];
-}
-
-function styleForSection(index) {
-  return SECTION_STYLES[index % SECTION_STYLES.length];
-}
-
-function SectionCard({ section, index }) {
-  const { Icon, bg, fg } = styleForSection(index);
-  return (
-    <div className="flex flex-col gap-2 rounded-xl border border-border bg-card p-4">
-      <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-lg', bg)}>
-        <Icon className={cn('h-4 w-4', fg)} />
-      </div>
-      <p className="truncate text-sm font-semibold text-card-foreground">{section.name}</p>
-      {section.pages && <p className="text-xs text-muted-foreground">pp. {section.pages}</p>}
-    </div>
-  );
-}
-
-function FileGroup({ file, onFileClick }) {
-  const tagColor = TAG_COLORS[file.tag] ?? DEFAULT_TAG_COLOR;
-
-  return (
-    <div className="flex flex-col gap-4 rounded-xl border border-border bg-card/50 p-4">
-      <button
-        type="button"
-        onClick={() => onFileClick?.(file)}
-        className="flex items-center justify-between gap-3 text-left"
-      >
-        <div className="flex min-w-0 items-center gap-3">
-          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <p className="truncate text-sm font-semibold text-card-foreground hover:underline">{file.name}</p>
-              {file.tag && (
-                <span
-                  className={cn(
-                    'shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium leading-none',
-                    tagColor.bg,
-                    tagColor.fg
-                  )}
-                >
-                  {file.tag}
-                </span>
-              )}
-            </div>
-            <p className="truncate text-xs text-muted-foreground">Source: {file.name}</p>
-          </div>
-        </div>
-        <Badge variant="success" className="shrink-0 gap-1.5">
-          <span className="h-1.5 w-1.5 rounded-full bg-success" />
-          Indexed
-        </Badge>
-      </button>
-
-      {file.sections?.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {file.sections.map((section, idx) => (
-            <SectionCard key={section.id} section={section} index={idx} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
 }
 
 function FileTableRow({ file, updatedAt, onClick }) {
@@ -352,34 +272,5 @@ export function FolderDetail({ folder, onFileClick, activeFileId, onUploadClick 
     );
   }
 
-  const extractionsCount = activeFile.sections?.length ?? 0;
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted">
-            <FileText className="h-5 w-5 text-muted-foreground" />
-          </div>
-          <div className="min-w-0">
-            <h2 className="truncate text-xl font-semibold tracking-tight text-foreground">{activeFile.name}</h2>
-            <p className="text-sm text-muted-foreground">{folder.name}</p>
-          </div>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-2">
-          <Badge variant="outline" className="shrink-0">
-            {extractionsCount} extractions
-          </Badge>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-4">
-        <FileGroup
-          file={activeFile}
-          onFileClick={(f) => onFileClick?.({ ...f, folderId: folder.id, folderName: folder.name })}
-        />
-      </div>
-    </div>
-  );
+  return <DocumentView file={activeFile} />;
 }

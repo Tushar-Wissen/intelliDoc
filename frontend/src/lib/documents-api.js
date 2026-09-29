@@ -26,6 +26,18 @@ function toAppDocument(apiDocument) {
   };
 }
 
+// Adapts GET /documents/{documentId} to the detail shape the file view uses.
+function toAppDocumentDetail(apiDocument) {
+  return {
+    ...toAppDocument(apiDocument),
+    documentType: apiDocument.documentType ?? null,
+    classificationConfidence: apiDocument.classificationConfidence ?? null,
+    overview: apiDocument.overview ?? '',
+    summary: apiDocument.summary ?? '',
+    pageCount: apiDocument.pageCount ?? 0,
+  };
+}
+
 // The API can accept some files and reject others in the same request.
 function toAppRejection(apiRejection) {
   return {
@@ -79,6 +91,39 @@ export const documentsApi = {
         rejections: (data?.rejections ?? []).map(toAppRejection),
       };
     } catch (err) {
+      throw toApiError(err, DOCUMENT_ERROR_MESSAGES);
+    }
+  },
+
+  // GET /documents/{documentId}
+  //   -> { id, fileName, documentType, classificationConfidence, processingStatus,
+  //        overview, summary, pageCount, moduleId, createdAt }
+  // Pass `signal` to cancel the request when the user switches to another file first.
+  async get(documentId, { signal } = {}) {
+    try {
+      const { data } = await axios.get(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}`, {
+        headers: authHeaders(),
+        signal,
+      });
+      return toAppDocumentDetail(data);
+    } catch (err) {
+      if (axios.isCancel(err)) throw err;
+      throw toApiError(err, DOCUMENT_ERROR_MESSAGES);
+    }
+  },
+
+  // GET /documents/{documentId}/file -> the original uploaded bytes (PDF/DOCX), served inline.
+  // Resolves to a Blob typed with the server's Content-Type.
+  async getFile(documentId, { signal } = {}) {
+    try {
+      const { data } = await axios.get(`${API_BASE_URL}/documents/${encodeURIComponent(documentId)}/file`, {
+        headers: authHeaders(),
+        responseType: 'blob',
+        signal,
+      });
+      return data;
+    } catch (err) {
+      if (axios.isCancel(err)) throw err;
       throw toApiError(err, DOCUMENT_ERROR_MESSAGES);
     }
   },
