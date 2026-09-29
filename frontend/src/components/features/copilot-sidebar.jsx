@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, X, Send } from 'lucide-react';
+import { Sparkles, Send } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import { ShimmerLoader } from '@/components/ui/shimmer-loader';
 
 const DEFAULT_GREETING = (tabName) =>
   `Hello! I'm your AI assistant${tabName ? ` for **${tabName}**` : ''}. How can I help you today?`;
 
 export function CopilotSidebar({
-  open,
-  onOpenChange,
   activeTabId,
   activeTabName,
+  subtitle,
+  placeholder,
   chatHistories,
   onUpdateHistory,
 }) {
@@ -60,35 +60,42 @@ export function CopilotSidebar({
     }
   };
 
-  if (!open) return null;
-
   return (
-    <div className="absolute top-0 right-0 h-full w-80 sm:w-96 bg-card text-card-foreground border-l border-border shadow-xl z-50 flex flex-col animate-in slide-in-from-right-full duration-300">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-muted/30">
-        <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded bg-primary/10 text-primary">
-            <Sparkles className="h-4 w-4" />
-          </div>
-          <div className="flex flex-col">
-            <span className="font-semibold tracking-tight text-sm">IntelliDoc AI</span>
-            {activeTabName && (
-              <span className="text-[11px] text-muted-foreground truncate max-w-[160px]">
-                {activeTabName}
-              </span>
-            )}
-          </div>
+    <div
+      id="copilot-sidebar-panel"
+      className="absolute top-0 right-0 h-full w-80 sm:w-96 bg-card text-card-foreground border-l border-border shadow-xl z-50 flex flex-col"
+    >
+      <div
+        id="copilot-sidebar-header"
+        className="flex items-center gap-3 border-b border-border bg-gradient-to-r from-wissen-navy/5 via-card to-primary/5 px-4 py-3.5"
+      >
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-wissen-navy/10 text-wissen-navy dark:text-wissen-navy-light">
+          <Sparkles className="h-4 w-4" />
         </div>
-        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={() => onOpenChange(false)}>
-          <X className="h-4 w-4" />
-        </Button>
+        <div className="flex min-w-0 flex-col">
+          <span className="font-display font-semibold tracking-tight text-sm text-foreground">
+            IntelliDoc AI
+          </span>
+          {subtitle && (
+            <span
+              id="copilot-sidebar-subtitle"
+              className="truncate text-[11px] text-muted-foreground"
+            >
+              {subtitle}
+            </span>
+          )}
+        </div>
       </div>
 
-      <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
+      <div
+        id="copilot-sidebar-messages"
+        className="flex-1 overflow-y-auto scrollbar-thin p-4 flex flex-col gap-3"
+      >
         {messages.map((msg, idx) => (
           <div
             key={idx}
-            className={`p-3 rounded-xl max-w-[85%] text-sm shadow-sm ${msg.isUser
-                ? 'bg-primary text-primary-foreground rounded-tr-sm self-end'
+            className={`p-3 rounded-xl max-w-[85%] text-sm leading-relaxed shadow-sm ${msg.isUser
+                ? 'bg-wissen-navy text-white rounded-tr-sm self-end'
                 : 'bg-muted/50 border border-border/50 rounded-tl-sm self-start text-foreground'
               }`}
           >
@@ -99,11 +106,12 @@ export function CopilotSidebar({
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="p-4 border-t border-border bg-muted/10">
+      <div className="p-3.5 border-t border-border bg-muted/10">
         <div className="relative flex items-center">
           <Input
-            placeholder="Ask Copilot..."
-            className="pr-10 rounded-full bg-background shadow-sm"
+            id="copilot-sidebar-input"
+            placeholder={placeholder || 'Ask IntelliDoc AI...'}
+            className="pr-10 rounded-full bg-background shadow-sm text-sm"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={(e) => {
@@ -111,9 +119,10 @@ export function CopilotSidebar({
             }}
           />
           <Button
+            id="copilot-sidebar-send-button"
             variant="ghost"
             size="icon"
-            className="absolute right-1 h-7 w-7 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10"
+            className="absolute right-1 h-7 w-7 rounded-full text-muted-foreground hover:text-wissen-navy hover:bg-wissen-navy/10 dark:hover:text-wissen-navy-light"
             onClick={handleSend}
             disabled={isLoading}
           >

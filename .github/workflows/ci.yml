@@ -2,12 +2,9 @@ name: IntelliDoc Continuous Integration Pipeline
 
 on:
   push:
-    branches: [ main, master, 'feature/*' ]
   pull_request:
-    branches: [ main, master ]
 
 jobs:
-  # 1. Python AI Service CI
   ai-service-ci:
     name: Build & Test Python AI Service
     runs-on: ubuntu-latest
@@ -33,11 +30,10 @@ jobs:
           cd ai-service
           pytest -v
 
-      - name: Verify Docker Image Build
+      - name: Build and tag Docker image
         run: |
-          docker build -t intellidoc-ai-service:test ./ai-service
+          docker build -t intellidoc-ai-service:${{ github.sha }} ./ai-service
 
-  # 2. Spring Boot Backend API CI
   backend-ci:
     name: Build & Test Spring Boot Backend
     runs-on: ubuntu-latest
@@ -57,11 +53,10 @@ jobs:
           cd backend
           mvn clean test package -B
 
-      - name: Verify Docker Image Build
+      - name: Build and tag Docker image
         run: |
-          docker build -t intellidoc-backend:test ./backend
+          docker build -t intellidoc-core-api:${{ github.sha }} ./backend
 
-  # 3. React Frontend CI
   frontend-ci:
     name: Build React Frontend
     runs-on: ubuntu-latest
@@ -82,11 +77,10 @@ jobs:
           npm ci || npm install
           npm run build
 
-      - name: Verify Docker Image Build
+      - name: Build and tag Docker image
         run: |
-          docker build -t intellidoc-frontend:test ./frontend
+          docker build -t intellidoc-frontend:${{ github.sha }} ./frontend
 
-  # 4. Docker Compose Integration Verification
   docker-compose-ci:
     name: Verify Docker Compose Pipeline
     needs: [ai-service-ci, backend-ci, frontend-ci]

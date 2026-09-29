@@ -1,1206 +1,343 @@
 package com.intellidoc.backend.service;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-
 import com.intellidoc.backend.client.AiServiceClient;
-
-import com.intellidoc.backend.dto.AiAnalysisRequestDto;
-import com.intellidoc.backend.dto.AiAnalysisResponseDto;
-import com.intellidoc.backend.dto.AiQARequestDto;
-import com.intellidoc.backend.dto.AiQAResponseDto;
-import com.intellidoc.backend.dto.DocumentModuleDto;
-import com.intellidoc.backend.dto.DocumentResponseDto;
-import com.intellidoc.backend.dto.FolderDocumentResponseDto;
-import com.intellidoc.backend.dto.FolderFileResponseDto;
-import com.intellidoc.backend.dto.FolderSectionResponseDto;
-import com.intellidoc.backend.dto.FolderUploadResponseDto;
-import com.intellidoc.backend.dto.GetAllDocumentsResponseDto;
-import com.intellidoc.backend.dto.StructuredDocumentDto;
-
-import com.intellidoc.backend.model.AnalysisResultEntity;
-import com.intellidoc.backend.model.AuditLogEntity;
+import com.intellidoc.backend.dms.ProcessingStatus;
+import com.intellidoc.backend.dto.AssignModuleRequestDto;
+import com.intellidoc.backend.dto.DocumentDetailDto;
+import com.intellidoc.backend.dto.DocumentListResponseDto;
+import com.intellidoc.backend.dto.DocumentOriginalFileDto;
+import com.intellidoc.backend.dto.DocumentSummaryDto;
+import com.intellidoc.backend.dto.DocumentUploadResponseDto;
+import com.intellidoc.backend.dto.UploadRejectionDto;
+import com.intellidoc.backend.exception.ApiException;
+import com.intellidoc.backend.exception.DmsExceptions;
 import com.intellidoc.backend.model.DocumentEntity;
-import com.intellidoc.backend.model.FolderEntity;
-
-import com.intellidoc.backend.repository.AnalysisResultRepository;
-import com.intellidoc.backend.repository.AuditLogRepository;
+import com.intellidoc.backend.model.DocumentGroupEntity;
+import com.intellidoc.backend.repository.DocumentGroupRepository;
 import com.intellidoc.backend.repository.DocumentRepository;
-import com.intellidoc.backend.repository.FolderRepository;
-
-import com.intellidoc.backend.util.DocumentStructureExtractor;
-import com.intellidoc.backend.util.DocumentTextExtractor;
-
-import lombok.RequiredArgsConstructor;
+import com.intellidoc.backend.security.AuthPrincipal;
+import com.intellidoc.backend.storage.MinioStorageService;
 import lombok.extern.slf4j.Slf4j;
-
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
-
+import java.util.stream.Collectors;
 
 @Service
-@RequiredArgsConstructor
 @Slf4j
 public class DocumentService {
 
+    private final WorkspaceAccessService workspaceAccessService;
+    private final ModuleService moduleService;
     private final DocumentRepository documentRepository;
-
-    private final AnalysisResultRepository analysisResultRepository;
-
-    private final AuditLogRepository auditLogRepository;
-
-    private final FolderRepository folderRepository;
-
+    private final DocumentGroupRepository documentGroupRepository;
+    private final DocumentWriteService documentWriteService;
+    private final MinioStorageService minioStorageService;
     private final AiServiceClient aiServiceClient;
+    private final long maxFileSizeBytes;
+    private final Set<String> allowedExtensions;
 
-    private final DocumentTextExtractor documentTextExtractor;
+    public DocumentService(
+            WorkspaceAccessService workspaceAccessService,
+            ModuleService moduleService,
+            DocumentRepository documentRepository,
+            DocumentGroupRepository documentGroupRepository,
+            DocumentWriteService documentWriteService,
+            MinioStorageService minioStorageService,
+            AiServiceClient aiServiceClient,
+            @Value("${intellidoc.upload.max-file-size-bytes:20971520}") long maxFileSizeBytes,
+            @Value("${intellidoc.upload.allowed-extensions:pdf,docx}") String allowedExtensions) {
+        this.workspaceAccessService = workspaceAccessService;
+        this.moduleService = moduleService;
+        this.documentRepository = documentRepository;
+        this.documentGroupRepository = documentGroupRepository;
+        this.documentWriteService = documentWriteService;
+        this.minioStorageService = minioStorageService;
+        this.aiServiceClient = aiServiceClient;
+        this.maxFileSizeBytes = maxFileSizeBytes;
+        this.allowedExtensions = Arrays.stream(allowedExtensions.split(","))
+                .map(value -> value.trim().toLowerCase(Locale.ROOT))
+                .filter(value -> !value.isEmpty())
+                .collect(Collectors.toUnmodifiableSet());
+    }
 
-    private final DocumentStructureExtractor documentStructureExtractor;
+    public DocumentUploadResponseDto upload(
+            AuthPrincipal principal,
+            UUID workspaceId,
+            List<MultipartFile> files,
+            List<String> relativePaths) {
+        workspaceAccessService.requireMember(workspaceId, principal.userId());
+        List<MultipartFile> incoming = files == null ? List.of() : files.stream()
+                .filter(file -> file != null && !file.isEmpty())
+                .toList();
+        List<DocumentSummaryDto> accepted = new ArrayList<>();
+        List<UploadRejectionDto> rejections = new ArrayList<>();
+        for (int i = 0; i < incoming.size(); i++) {
+            MultipartFile file = incoming.get(i);
+            String relativePath = relativePaths != null && i < relativePaths.size() ? relativePaths.get(i) : null;
+            try {
+                accepted.add(acceptOne(principal, workspaceId, file, resolveModuleId(workspaceId, relativePath)));
+            } catch (ApiException ex) {
+                log.warn("Rejected upload {} code={}", file.getOriginalFilename(), ex.getCode());
+                rejections.add(UploadRejectionDto.builder()
+                        .fileName(file.getOriginalFilename())
+                        .code(ex.getCode())
+                        .message(ex.getMessage())
+                        .build());
+            } catch (MinioStorageService.StorageWriteException ex) {
+                log.warn("Storage write failed for {}", file.getOriginalFilename(), ex);
+                rejections.add(UploadRejectionDto.builder()
+                        .fileName(file.getOriginalFilename())
+                        .code("STORAGE_WRITE_FAILED")
+                        .message("Failed to store file: " + file.getOriginalFilename())
+                        .build());
+            }
+        }
+        return DocumentUploadResponseDto.builder()
+                .documents(accepted)
+                .rejections(rejections)
+                .build();
+    }
 
-    private final ObjectMapper objectMapper =
-            new ObjectMapper();
+    public DocumentUploadResponseDto uploadToModule(
+            AuthPrincipal principal,
+            UUID moduleId,
+            List<MultipartFile> files) {
+        DocumentGroupEntity module = moduleService.requireModule(moduleId);
+        workspaceAccessService.requireMember(module.getWorkspaceId(), principal.userId());
+        List<MultipartFile> incoming = files == null ? List.of() : files.stream()
+                .filter(file -> file != null && !file.isEmpty())
+                .toList();
+        List<DocumentSummaryDto> accepted = new ArrayList<>();
+        List<UploadRejectionDto> rejections = new ArrayList<>();
+        for (MultipartFile file : incoming) {
+            try {
+                accepted.add(acceptOne(principal, module.getWorkspaceId(), file, module.getId()));
+            } catch (ApiException ex) {
+                log.warn("Rejected module upload {} code={}", file.getOriginalFilename(), ex.getCode());
+                rejections.add(UploadRejectionDto.builder()
+                        .fileName(file.getOriginalFilename())
+                        .code(ex.getCode())
+                        .message(ex.getMessage())
+                        .build());
+            } catch (MinioStorageService.StorageWriteException ex) {
+                log.warn("Storage write failed for {}", file.getOriginalFilename(), ex);
+                rejections.add(UploadRejectionDto.builder()
+                        .fileName(file.getOriginalFilename())
+                        .code("STORAGE_WRITE_FAILED")
+                        .message("Failed to store file: " + file.getOriginalFilename())
+                        .build());
+            }
+        }
+        return DocumentUploadResponseDto.builder()
+                .documents(accepted)
+                .rejections(rejections)
+                .build();
+    }
 
+    public DocumentListResponseDto list(
+            AuthPrincipal principal,
+            UUID workspaceId,
+            UUID moduleId,
+            String documentType) {
+        workspaceAccessService.requireMember(workspaceId, principal.userId());
+        String typeFilter = documentType == null || documentType.isBlank() ? null : documentType.trim();
+        List<DocumentSummaryDto> documents = documentRepository.searchActive(workspaceId, moduleId, typeFilter)
+                .stream()
+                .map(this::toSummary)
+                .toList();
+        return DocumentListResponseDto.builder().documents(documents).build();
+    }
 
-    // ============================================================
-    // UPLOAD + FOLDER + EXTRACTION + AI ANALYSIS + SAVE
-    // ============================================================
+    public DocumentDetailDto get(AuthPrincipal principal, UUID documentId) {
+        DocumentEntity document = requireActiveDocument(documentId);
+        workspaceAccessService.requireMember(document.getWorkspaceId(), principal.userId());
+        return toDetail(document);
+    }
 
-    @Transactional
-    public FolderUploadResponseDto processAndSaveDocument(
-            String workspaceId,
-            MultipartFile file,
-            String title
-    ) {
-
-        String docId =
-                "doc_" +
-                        UUID.randomUUID()
-                                .toString()
-                                .replace("-", "")
-                                .substring(0, 12);
-
+    public DocumentOriginalFileDto getOriginal(AuthPrincipal principal, UUID documentId) {
+        DocumentEntity document = requireActiveDocument(documentId);
+        workspaceAccessService.requireMember(document.getWorkspaceId(), principal.userId());
         try {
-
-            // ----------------------------------------------------
-            // 1. Validate workspace
-            // ----------------------------------------------------
-
-            if (
-                    workspaceId == null
-                            || workspaceId.isBlank()
-            ) {
-
-                throw new IllegalArgumentException(
-                        "Workspace ID cannot be empty"
-                );
-            }
-
-
-            // ----------------------------------------------------
-            // 2. Validate file
-            // ----------------------------------------------------
-
-            if (
-                    file == null
-                            || file.isEmpty()
-            ) {
-
-                throw new IllegalArgumentException(
-                        "Please upload a valid document"
-                );
-            }
-
-
-            // ----------------------------------------------------
-            // 3. Determine folder name
-            // ----------------------------------------------------
-
-            String folderName =
-                    title;
-
-            if (
-                    folderName == null
-                            || folderName.isBlank()
-            ) {
-
-                folderName =
-                        file.getOriginalFilename();
-
-                if (
-                        folderName == null
-                                || folderName.isBlank()
-                ) {
-
-                    folderName =
-                            "Untitled Document";
-                }
-            }
-
-            folderName =
-                    folderName.trim();
-
-
-            // ----------------------------------------------------
-            // 4. Find existing folder or create new folder
-            // ----------------------------------------------------
-
-            FolderEntity folder =
-                    folderRepository
-                            .findByWorkspaceIdAndName(
-                                    workspaceId,
-                                    folderName
-                            )
-                            .orElse(null);
-
-            boolean newFolder =
-                    false;
-
-
-            if (folder == null) {
-
-                String folderId =
-                        "folder_" +
-                                UUID.randomUUID()
-                                        .toString()
-                                        .replace("-", "")
-                                        .substring(0, 12);
-
-                folder =
-                        FolderEntity.builder()
-
-                                .id(folderId)
-
-                                .workspaceId(
-                                        workspaceId
-                                )
-
-                                .name(
-                                        folderName
-                                )
-
-                                .status(
-                                        "PROCESSING"
-                                )
-
-                                .build();
-
-                folder =
-                        folderRepository.save(
-                                folder
-                        );
-
-                newFolder = true;
-
-                log.info(
-                        "Created new folder '{}' with ID {} "
-                                + "in workspace {}",
-                        folderName,
-                        folder.getId(),
-                        workspaceId
-                );
-
-            } else {
-
-                log.info(
-                        "Using existing folder '{}' with ID {} "
-                                + "in workspace {}",
-                        folderName,
-                        folder.getId(),
-                        workspaceId
-                );
-            }
-
-
-            // ----------------------------------------------------
-            // 5. Extract document text
-            // ----------------------------------------------------
-
-            log.info(
-                    "Extracting text from document: {}",
-                    file.getOriginalFilename()
-            );
-
-
-            String extractedText;
-
-            String fileName =
-                    file.getOriginalFilename();
-
-            boolean structuredFile =
-                    fileName != null
-                            && (
-                            fileName
-                                    .toLowerCase()
-                                    .endsWith(".pdf")
-                                    ||
-                                    fileName
-                                            .toLowerCase()
-                                            .endsWith(".pptx")
-                    );
-
-
-            StructuredDocumentDto structuredDocument =
-                    null;
-
-
-            if (structuredFile) {
-
-                log.info(
-                        "Using structured extraction for: {}",
-                        fileName
-                );
-
-                structuredDocument =
-                        documentStructureExtractor.extract(
-                                file
-                        );
-
-                extractedText =
-                        structuredDocument.getContent();
-
-
-                if (
-                        extractedText == null
-                                || extractedText.isBlank()
-                ) {
-
-                    log.warn(
-                            "Structured extraction returned "
-                                    + "no text. Falling back to "
-                                    + "DocumentTextExtractor."
-                    );
-
-                    extractedText =
-                            documentTextExtractor
-                                    .extractText(file);
-
-                    structuredDocument =
-                            null;
-                }
-
-            } else {
-
-                extractedText =
-                        documentTextExtractor
-                                .extractText(file);
-            }
-
-
-            // ----------------------------------------------------
-            // 6. Validate extracted text
-            // ----------------------------------------------------
-
-            if (
-                    extractedText == null
-                            || extractedText.isBlank()
-            ) {
-
-                throw new IllegalArgumentException(
-                        "No text could be extracted "
-                                + "from the document"
-                );
-            }
-
-
-            log.info(
-                    "Successfully extracted {} characters from {}",
-                    extractedText.length(),
-                    file.getOriginalFilename()
-            );
-
-
-            // ----------------------------------------------------
-            // 7. Create document entity
-            // ----------------------------------------------------
-
-            DocumentEntity document =
-                    DocumentEntity.builder()
-
-                            .id(docId)
-
-                            .workspaceId(
-                                    workspaceId
-                            )
-
-                            .folderId(
-                                    folder.getId()
-                            )
-
-                            /*
-                             * Existing POST behavior:
-                             * title remains the folder name.
-                             */
-                            .title(
-                                    folderName
-                            )
-
-                            /*
-                             * NEW:
-                             * Store actual uploaded file name.
-                             */
-                            .fileName(
-                                    file.getOriginalFilename()
-                            )
-
-                            .content(
-                                    extractedText
-                            )
-
-                            .contentType(
-                                    file.getContentType()
-                                            != null
-                                            ? file.getContentType()
-                                            : "application/octet-stream"
-                            )
-
-                            .status(
-                                    "PROCESSING"
-                            )
-
-                            .build();
-
-
-            documentRepository.save(
-                    document
-            );
-
-
-            logAudit(
-                    "DOCUMENT_CREATED",
-                    "Created document record: "
-                            + docId
-                            + " in folder: "
-                            + folder.getId()
-                            + " in workspace: "
-                            + workspaceId
-            );
-
-
-            // ----------------------------------------------------
-            // 8. Create AI request
-            // ----------------------------------------------------
-
-            AiAnalysisRequestDto aiRequest =
-                    AiAnalysisRequestDto.builder()
-
-                            .documentId(
-                                    docId
-                            )
-
-                            .title(
-                                    folderName
-                            )
-
-                            .content(
-                                    extractedText
-                            )
-
-                            .maxSummaryLength(
-                                    200
-                            )
-
-                            .blocks(
-                                    structuredDocument != null
-                                            ? structuredDocument
-                                            .getBlocks()
-                                            : Collections.emptyList()
-                            )
-
-                            .build();
-
-
-            log.info(
-                    "Sending {} structured blocks to AI Service",
-                    aiRequest.getBlocks().size()
-            );
-
-
-            // ----------------------------------------------------
-            // 9. Call AI service
-            // ----------------------------------------------------
-
-            AiAnalysisResponseDto aiResponse =
-                    aiServiceClient.analyzeDocument(
-                            aiRequest
-                    );
-
-
-            if (aiResponse == null) {
-
-                throw new RuntimeException(
-                        "AI Service returned an empty response"
-                );
-            }
-
-
-            log.info(
-                    "AI analysis completed for document {}",
-                    docId
-            );
-
-
-            // ----------------------------------------------------
-            // 10. Get modules
-            // ----------------------------------------------------
-
-            List<DocumentModuleDto> modules =
-                    aiResponse.getModules();
-
-
-            if (modules == null) {
-
-                modules =
-                        Collections.emptyList();
-            }
-
-
-            log.info(
-                    "AI Service returned {} top-level "
-                            + "modules for document {}",
-                    modules.size(),
-                    docId
-            );
-
-
-            // ----------------------------------------------------
-            // 11. Save analysis result
-            // ----------------------------------------------------
-
-            AnalysisResultEntity analysisResult =
-                    AnalysisResultEntity.builder()
-
-                            .id(
-                                    "analysis_" +
-                                            UUID.randomUUID()
-                                                    .toString()
-                                                    .replace("-", "")
-                                                    .substring(0, 12)
-                            )
-
-                            .documentId(
-                                    docId
-                            )
-
-                            .modulesJson(
-                                    serializeJson(
-                                            modules
-                                    )
-                            )
-
-                            .build();
-
-
-            analysisResultRepository.save(
-                    analysisResult
-            );
-
-
-            // ----------------------------------------------------
-            // 12. Mark document completed
-            // ----------------------------------------------------
-
-            document.setStatus(
-                    "COMPLETED"
-            );
-
-            documentRepository.save(
-                    document
-            );
-
-
-            // ----------------------------------------------------
-            // 13. Mark folder completed
-            // ----------------------------------------------------
-
-            folder.setStatus(
-                    "COMPLETED"
-            );
-
-            folderRepository.save(
-                    folder
-            );
-
-
-            logAudit(
-                    "DOCUMENT_ANALYZED",
-                    "Document processing completed: "
-                            + docId
-                            + ", folder: "
-                            + folder.getId()
-                            + ", workspace: "
-                            + workspaceId
-            );
-
-
-            // ----------------------------------------------------
-            // 14. Get file count
-            // ----------------------------------------------------
-
-            long fileCount =
-                    documentRepository
-                            .countByFolderId(
-                                    folder.getId()
-                            );
-
-
-            // ----------------------------------------------------
-            // 15. Build POST response
-            // ----------------------------------------------------
-
-            String message;
-
-            if (newFolder) {
-
-                message =
-                        "Folder "
-                                + folder.getName()
-                                + " created and document uploaded successfully";
-
-            } else {
-
-                message =
-                        "Document uploaded into existing folder "
-                                + folder.getName()
-                                + " successfully";
-            }
-
-
-            FolderUploadResponseDto.FolderData data =
-                    FolderUploadResponseDto.FolderData.builder()
-
-                            .id(
-                                    folder.getId()
-                            )
-
-                            .title(
-                                    folder.getName()
-                            )
-
-                            .status(
-                                    folder.getStatus()
-                            )
-
-                            .createdAt(
-                                    folder.getCreatedAt()
-                            )
-
-                            .filesCount(
-                                    String.valueOf(
-                                            fileCount
-                                    )
-                            )
-
-                            .build();
-
-
-            return FolderUploadResponseDto.builder()
-
-                    .message(
-                            message
-                    )
-
-                    .data(
-                            data
-                    )
-
-                    .isError(
-                            false
-                    )
-
+            MinioStorageService.StoredObject stored = minioStorageService.load(document.getStoragePath());
+            return DocumentOriginalFileDto.builder()
+                    .bytes(stored.bytes())
+                    .contentType(mediaTypeFor(document.getFileType(), stored.contentType()))
+                    .fileName(document.getFileName())
                     .build();
-
-
-        } catch (Exception e) {
-
-            log.error(
-                    "Failed to process document {}: {}",
-                    docId,
-                    e.getMessage(),
-                    e
-            );
-
-
-            DocumentEntity failedDocument =
-                    documentRepository
-                            .findById(docId)
-                            .orElse(null);
-
-
-            if (failedDocument != null) {
-
-                failedDocument.setStatus(
-                        "FAILED"
-                );
-
-                documentRepository.save(
-                        failedDocument
-                );
-            }
-
-
-            logAudit(
-                    "DOCUMENT_PROCESSING_FAILED",
-                    "Document processing failed: "
-                            + docId
-                            + ", workspace: "
-                            + workspaceId
-                            + ", error: "
-                            + e.getMessage()
-            );
-
-
-            throw new RuntimeException(
-                    "Document processing failed: "
-                            + e.getMessage(),
-                    e
-            );
+        } catch (MinioStorageService.StorageReadException ex) {
+            throw DmsExceptions.storageReadFailed(document.getFileName());
         }
     }
 
+    public DocumentDetailDto assignModule(AuthPrincipal principal, UUID documentId, AssignModuleRequestDto request) {
+        DocumentEntity document = requireActiveDocument(documentId);
+        workspaceAccessService.requireMember(document.getWorkspaceId(), principal.userId());
+        UUID moduleId = request == null ? null : request.getModuleId();
+        if (moduleId == null) {
+            document.setGroupId(null);
+            return toDetail(documentWriteService.save(document));
+        }
+        DocumentGroupEntity module = moduleService.requireModule(moduleId);
+        if (!module.getWorkspaceId().equals(document.getWorkspaceId())) {
+            throw DmsExceptions.invalidModuleScope();
+        }
+        workspaceAccessService.requireMember(module.getWorkspaceId(), principal.userId());
+        document.setGroupId(module.getId());
+        return toDetail(documentWriteService.save(document));
+    }
 
-    // ============================================================
-    // GET ALL FOLDERS + FILES + MODULES
-    // ============================================================
+    public DocumentDetailDto retry(AuthPrincipal principal, UUID documentId) {
+        DocumentEntity document = requireActiveDocument(documentId);
+        workspaceAccessService.requireMember(document.getWorkspaceId(), principal.userId());
+        if (!ProcessingStatus.FAILED.equals(document.getProcessingStatus())) {
+            throw DmsExceptions.invalidStateTransition();
+        }
+        DocumentEntity updated = documentWriteService.markParsing(document);
+        aiServiceClient.triggerProcessing(updated.getId());
+        log.info("Retry queued for document {}", updated.getId());
+        return toDetail(updated);
+    }
 
-    public GetAllDocumentsResponseDto getAllDocuments(
-            String workspaceId
-    ) {
+    public void archive(AuthPrincipal principal, UUID documentId) {
+        DocumentEntity document = requireActiveDocument(documentId);
+        workspaceAccessService.requireMember(document.getWorkspaceId(), principal.userId());
+        documentWriteService.archive(document);
+        log.info("Archived document {}", documentId);
+    }
 
-        if (
-                workspaceId == null
-                        || workspaceId.isBlank()
-        ) {
-
-            throw new IllegalArgumentException(
-                    "Workspace ID cannot be empty"
-            );
+    private DocumentSummaryDto acceptOne(
+            AuthPrincipal principal,
+            UUID workspaceId,
+            MultipartFile file,
+            UUID moduleId) {
+        String fileName = file.getOriginalFilename() == null ? "unnamed" : file.getOriginalFilename();
+        String extension = extensionOf(fileName);
+        if (!allowedExtensions.contains(extension)) {
+            throw DmsExceptions.unsupportedFileType(fileName);
+        }
+        if (file.getSize() > maxFileSizeBytes) {
+            throw DmsExceptions.fileTooLarge(fileName);
         }
 
+        UUID documentId = UUID.randomUUID();
+        String storagePath = "workspace/" + workspaceId + "/document/" + documentId + "/original." + extension;
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (Exception ex) {
+            throw DmsExceptions.storageWriteFailed(fileName);
+        }
+        minioStorageService.store(storagePath, bytes, file.getContentType());
 
-        /*
-         * Get folders instead of documents.
-         *
-         * This is the main change from the previous GET API.
-         */
-        List<FolderEntity> folders =
-                folderRepository
-                        .findByWorkspaceIdOrderByCreatedAtDesc(
-                                workspaceId
-                        );
+        DocumentEntity saved = documentWriteService.saveUploaded(DocumentEntity.builder()
+                .id(documentId)
+                .workspaceId(workspaceId)
+                .groupId(moduleId)
+                .fileName(fileName)
+                .fileType(extension)
+                .fileSizeBytes(file.getSize())
+                .storagePath(storagePath)
+                .processingStatus(ProcessingStatus.UPLOADED)
+                .uploadedBy(principal.userId())
+                .build());
+        aiServiceClient.triggerProcessing(saved.getId());
+        log.info("DOCUMENT_UPLOADED documentId={} workspaceId={} path={}", saved.getId(), workspaceId, storagePath);
+        return toSummary(saved);
+    }
 
+    private UUID resolveModuleId(UUID workspaceId, String relativePath) {
+        String topLevel = topLevelFolder(relativePath);
+        if (topLevel == null) {
+            return null;
+        }
+        return moduleService.findOrCreate(workspaceId, topLevel).getId();
+    }
 
-        List<FolderDocumentResponseDto> folderResponses =
-                folders.stream()
-                        .map(this::mapFolderToResponse)
-                        .toList();
+    static String topLevelFolder(String relativePath) {
+        if (relativePath == null || relativePath.isBlank()) {
+            return null;
+        }
+        String normalized = relativePath.replace('\\', '/').trim();
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        String[] parts = normalized.split("/");
+        if (parts.length < 2) {
+            return null;
+        }
+        String folder = parts[0].trim();
+        if (folder.isEmpty() || ".".equals(folder) || "..".equals(folder)) {
+            return null;
+        }
+        return folder;
+    }
 
+    static String extensionOf(String fileName) {
+        int slash = Math.max(fileName.lastIndexOf('/'), fileName.lastIndexOf('\\'));
+        String base = slash >= 0 ? fileName.substring(slash + 1) : fileName;
+        int dot = base.lastIndexOf('.');
+        if (dot < 0 || dot == base.length() - 1) {
+            return "";
+        }
+        return base.substring(dot + 1).toLowerCase(Locale.ROOT);
+    }
 
-        return GetAllDocumentsResponseDto.builder()
+    private DocumentEntity requireActiveDocument(UUID documentId) {
+        return documentRepository.findByIdAndDeletedAtIsNull(documentId)
+                .orElseThrow(DmsExceptions::documentNotFound);
+    }
 
-                .message(
-                        "Document details retrieved successfully"
-                )
-
-                .data(
-                        folderResponses
-                )
-
-                .isError(
-                        false
-                )
-
+    private DocumentSummaryDto toSummary(DocumentEntity document) {
+        String moduleName = null;
+        if (document.getGroupId() != null) {
+            moduleName = documentGroupRepository.findById(document.getGroupId())
+                    .map(DocumentGroupEntity::getName)
+                    .orElse(null);
+        }
+        return DocumentSummaryDto.builder()
+                .id(document.getId())
+                .fileName(document.getFileName())
+                .moduleId(document.getGroupId())
+                .moduleName(moduleName)
+                .documentType(document.getDocumentType())
+                .processingStatus(document.getProcessingStatus())
+                .createdAt(document.getCreatedAt())
                 .build();
     }
 
-
-    // ============================================================
-    // MAP FOLDER TO GET-ALL RESPONSE
-    // ============================================================
-
-    private FolderDocumentResponseDto mapFolderToResponse(
-            FolderEntity folder
-    ) {
-
-        /*
-         * Get all uploaded files/documents inside this folder.
-         */
-        List<DocumentEntity> documents =
-                documentRepository
-                        .findByFolderIdOrderByCreatedAtAsc(
-                                folder.getId()
-                        );
-
-
-        List<FolderFileResponseDto> files =
-                new ArrayList<>();
-
-
-        int fileNumber = 1;
-
-        int totalSections = 0;
-
-
-        for (DocumentEntity document :
-                documents) {
-
-            /*
-             * Get modules/sections for this file.
-             */
-            AnalysisResultEntity analysis =
-                    analysisResultRepository
-                            .findByDocumentId(
-                                    document.getId()
-                            )
-                            .orElse(null);
-
-
-            List<DocumentModuleDto> modules =
-                    Collections.emptyList();
-
-
-            if (analysis != null) {
-
-                modules =
-                        deserializeModules(
-                                analysis.getModulesJson()
-                        );
-            }
-
-
-            /*
-             * Only top-level modules are returned.
-             *
-             * Subsections/children are intentionally ignored.
-             */
-            List<FolderSectionResponseDto> sections =
-                    new ArrayList<>();
-
-
-            int sectionNumber = 1;
-
-
-            for (DocumentModuleDto module :
-                    modules) {
-
-                if (
-                        module == null
-                                || module.getModuleName() == null
-                                || module.getModuleName().isBlank()
-                ) {
-                    continue;
-                }
-
-
-                String sectionsNumber =
-                        fileNumber
-                                + "."
-                                + sectionNumber;
-
-
-                sections.add(
-                        FolderSectionResponseDto.builder()
-
-                                .sectionsNumber(
-                                        sectionsNumber
-                                )
-
-                                .sectionsName(
-                                        module.getModuleName()
-                                )
-
-                                .build()
-                );
-
-
-                sectionNumber++;
-                totalSections++;
-            }
-
-
-            /*
-             * Actual uploaded file name.
-             */
-            String actualFileName =
-                    document.getFileName();
-
-
-            /*
-             * Backward compatibility for old records
-             * that were created before file_name existed.
-             */
-            if (
-                    actualFileName == null
-                            || actualFileName.isBlank()
-            ) {
-
-                actualFileName =
-                        document.getTitle();
-            }
-
-
-            files.add(
-                    FolderFileResponseDto.builder()
-
-                            .filesNumber(
-                                    String.valueOf(
-                                            fileNumber
-                                    )
-                            )
-
-                            .filesName(
-                                    actualFileName
-                            )
-
-                            .children(
-                                    sections
-                            )
-
-                            .build()
-            );
-
-
-            fileNumber++;
-        }
-
-
-        return FolderDocumentResponseDto.builder()
-
-                /*
-                 * Folder ID.
-                 */
-                .id(
-                        folder.getId()
-                )
-
-                /*
-                 * Folder name.
-                 */
-                .title(
-                        folder.getName()
-                )
-
-                .status(
-                        folder.getStatus()
-                )
-
-                /*
-                 * Folder creation date.
-                 */
-                .uploadedDate(
-                        folder.getCreatedAt()
-                )
-
-                /*
-                 * Number of documents/files in folder.
-                 */
-                .filesCount(
-                        String.valueOf(
-                                documents.size()
-                        )
-                )
-
-                /*
-                 * Total number of top-level modules
-                 * across all files in this folder.
-                 */
-                .sectionsCount(
-                        String.valueOf(
-                                totalSections
-                        )
-                )
-
-                .files(
-                        files
-                )
-
+    private DocumentDetailDto toDetail(DocumentEntity document) {
+        return DocumentDetailDto.builder()
+                .id(document.getId())
+                .fileName(document.getFileName())
+                .documentType(document.getDocumentType())
+                .classificationConfidence(document.getClassificationConfidence())
+                .processingStatus(document.getProcessingStatus())
+                .overview(document.getOverview())
+                .summary(document.getSummary())
+                .pageCount(0)
+                .moduleId(document.getGroupId())
+                .createdAt(document.getCreatedAt())
                 .build();
     }
 
-
-    // ============================================================
-    // GET DOCUMENT BY ID
-    // ============================================================
-
-    public DocumentResponseDto getDocumentById(
-            String workspaceId,
-            String documentId
-    ) {
-
-        if (
-                workspaceId == null
-                        || workspaceId.isBlank()
-        ) {
-
-            throw new IllegalArgumentException(
-                    "Workspace ID cannot be empty"
-            );
+    static String mediaTypeFor(String fileType, String storedType) {
+        if (storedType != null && !storedType.isBlank() && !"application/octet-stream".equalsIgnoreCase(storedType)) {
+            return storedType;
         }
-
-
-        DocumentEntity doc =
-                documentRepository
-                        .findByIdAndWorkspaceId(
-                                documentId,
-                                workspaceId
-                        )
-                        .orElseThrow(
-                                () ->
-                                        new RuntimeException(
-                                                "Document not found "
-                                                        + "with ID: "
-                                                        + documentId
-                                                        + " in workspace: "
-                                                        + workspaceId
-                                        )
-                        );
-
-
-        AnalysisResultEntity result =
-                analysisResultRepository
-                        .findByDocumentId(
-                                documentId
-                        )
-                        .orElse(null);
-
-
-        return mapToResponseDto(
-                doc,
-                result
-        );
-    }
-
-
-    // ============================================================
-    // ASK QUESTION
-    // ============================================================
-
-    public AiQAResponseDto askDocumentQuestion(
-            String workspaceId,
-            String documentId,
-            String question
-    ) {
-
-        DocumentEntity doc =
-                documentRepository
-                        .findByIdAndWorkspaceId(
-                                documentId,
-                                workspaceId
-                        )
-                        .orElseThrow(
-                                () ->
-                                        new RuntimeException(
-                                                "Document not found "
-                                                        + "with ID: "
-                                                        + documentId
-                                                        + " in workspace: "
-                                                        + workspaceId
-                                        )
-                        );
-
-
-        AiQARequestDto request =
-                AiQARequestDto.builder()
-
-                        .documentId(
-                                documentId
-                        )
-
-                        .context(
-                                doc.getContent()
-                        )
-
-                        .question(
-                                question
-                        )
-
-                        .build();
-
-
-        AiQAResponseDto response =
-                aiServiceClient.askQuestion(
-                        request
-                );
-
-
-        logAudit(
-                "DOCUMENT_QA",
-                "Answered question for document: "
-                        + documentId
-                        + " in workspace: "
-                        + workspaceId
-        );
-
-
-        return response;
-    }
-
-
-    // ============================================================
-    // SERIALIZE JSON
-    // ============================================================
-
-    private String serializeJson(
-            Object obj
-    ) {
-
-        try {
-
-            return objectMapper.writeValueAsString(
-                    obj != null
-                            ? obj
-                            : Collections.emptyList()
-            );
-
-        } catch (JsonProcessingException e) {
-
-            log.warn(
-                    "Could not serialize JSON: {}",
-                    e.getMessage()
-            );
-
-            return "[]";
+        if ("pdf".equalsIgnoreCase(fileType)) {
+            return "application/pdf";
         }
-    }
-
-
-    // ============================================================
-    // DESERIALIZE MODULES
-    // ============================================================
-
-    private List<DocumentModuleDto> deserializeModules(
-            String json
-    ) {
-
-        if (
-                json == null
-                        || json.isBlank()
-        ) {
-
-            return Collections.emptyList();
+        if ("docx".equalsIgnoreCase(fileType)) {
+            return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
         }
-
-
-        try {
-
-            return objectMapper.readValue(
-                    json,
-                    new TypeReference<
-                            List<DocumentModuleDto>
-                            >() {
-                    }
-            );
-
-        } catch (Exception e) {
-
-            log.warn(
-                    "Could not deserialize modules JSON: {}",
-                    e.getMessage()
-            );
-
-            return Collections.emptyList();
-        }
-    }
-
-
-    // ============================================================
-    // MAP DOCUMENT RESPONSE
-    // ============================================================
-
-    private DocumentResponseDto mapToResponseDto(
-            DocumentEntity doc,
-            AnalysisResultEntity analysis
-    ) {
-
-        List<DocumentModuleDto> modules =
-                Collections.emptyList();
-
-
-        if (analysis != null) {
-
-            modules =
-                    deserializeModules(
-                            analysis.getModulesJson()
-                    );
-        }
-
-
-        return DocumentResponseDto.builder()
-
-                .id(
-                        doc.getId()
-                )
-
-                .title(
-                        doc.getTitle()
-                )
-
-                .status(
-                        doc.getStatus()
-                )
-
-                .modules(
-                        modules
-                )
-
-                .build();
-    }
-
-
-    // ============================================================
-    // AUDIT LOG
-    // ============================================================
-
-    private void logAudit(
-            String eventType,
-            String details
-    ) {
-
-        try {
-
-            AuditLogEntity logEntity =
-                    AuditLogEntity.builder()
-
-                            .id(
-                                    "audit_" +
-                                            UUID.randomUUID()
-                                                    .toString()
-                                                    .replace("-", "")
-                                                    .substring(0, 12)
-                            )
-
-                            .eventType(
-                                    eventType
-                            )
-
-                            .serviceName(
-                                    "Spring Boot Backend"
-                            )
-
-                            .details(
-                                    details
-                            )
-
-                            .build();
-
-
-            auditLogRepository.save(
-                    logEntity
-            );
-
-
-        } catch (Exception e) {
-
-            log.warn(
-                    "Could not save audit log: {}",
-                    e.getMessage()
-            );
-        }
+        return storedType == null || storedType.isBlank() ? "application/octet-stream" : storedType;
     }
 }

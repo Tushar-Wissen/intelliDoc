@@ -21,7 +21,7 @@ export function AuthProvider({ children }) {
       },
 
       signUp: async (details) => {
-        const { user: newUser, error } = await mockAuth.signUp(details);
+        const { user: newUser, error } = await authApi.signup(details);
         if (newUser) setUser(newUser);
         return { error };
       },

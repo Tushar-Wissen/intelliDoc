@@ -47,6 +47,25 @@ export const authApi = {
     }
   },
 
+  async signup({ email, password, fullName }) {
+    const normalizedEmail = email.trim().toLowerCase();
+    try {
+      const { data } = await axios.post(`${API_BASE_URL}/auth/signup`, {
+        email: normalizedEmail,
+        password,
+        displayName: fullName.trim(),
+      });
+      const user = toAppUser(data.user, normalizedEmail);
+      setToken(data.token);
+      writeSession(user);
+      return { user, error: null };
+    } catch (err) {
+      const code =
+        err.response?.status === 409 ? AUTH_ERROR_CODES.EMAIL_IN_USE : AUTH_ERROR_CODES.UNEXPECTED;
+      return { user: null, error: new AuthError(code) };
+    }
+  },
+
   signOut() {
     setToken(null);
   },

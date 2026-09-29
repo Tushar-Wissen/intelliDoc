@@ -1,15 +1,20 @@
 package com.intellidoc.backend.model;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
+import java.util.UUID;
 
 @Entity
-@Table(name = "documents")
+@Table(name = "document")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -17,118 +22,58 @@ import java.time.OffsetDateTime;
 public class DocumentEntity {
 
     @Id
-    @Column(name = "id", length = 64)
-    private String id;
+    @Column(name = "id")
+    private UUID id;
 
+    @Column(name = "workspace_id", nullable = false)
+    private UUID workspaceId;
 
-    // ============================================================
-    // WORKSPACE
-    // ============================================================
+    @Column(name = "group_id")
+    private UUID groupId;
 
-    @Column(
-            name = "workspace_id",
-            length = 100,
-            nullable = false
-    )
-    private String workspaceId;
-
-
-    // ============================================================
-    // FOLDER
-    // ============================================================
-
-    @Column(
-            name = "folder_id",
-            length = 64
-    )
-    private String folderId;
-
-
-    // ============================================================
-    // DOCUMENT DETAILS
-    // ============================================================
-
-    /*
-     * This is currently kept as the folder title
-     * to preserve the existing POST behavior.
-     */
-    @Column(
-            name = "title",
-            nullable = false
-    )
-    private String title;
-
-
-    /*
-     * Actual uploaded file name.
-     *
-     * Example:
-     * Employee_details.pdf
-     */
-    @Column(
-            name = "file_name",
-            length = 255
-    )
+    @Column(name = "file_name", nullable = false, length = 512)
     private String fileName;
 
+    @Column(name = "file_type", nullable = false, length = 64)
+    private String fileType;
 
-    @Column(
-            name = "content",
-            nullable = false,
-            columnDefinition = "TEXT"
-    )
-    private String content;
+    @Column(name = "file_size_bytes", nullable = false)
+    private long fileSizeBytes;
 
+    @Column(name = "storage_path", nullable = false, length = 1024)
+    private String storagePath;
 
-    @Column(name = "content_type")
-    private String contentType;
+    @Column(name = "document_type", length = 128)
+    private String documentType;
 
+    @Column(name = "classification_confidence")
+    private Double classificationConfidence;
 
-    @Column(
-            name = "status",
-            nullable = false
-    )
-    private String status;
+    @Column(name = "processing_status", nullable = false, length = 64)
+    private String processingStatus;
 
+    @Column(name = "overview", columnDefinition = "TEXT")
+    private String overview;
 
-    // ============================================================
-    // TIMESTAMPS
-    // ============================================================
+    @Column(name = "summary", columnDefinition = "TEXT")
+    private String summary;
 
-    @Column(
-            name = "created_at",
-            nullable = false,
-            updatable = false
-    )
+    @Column(name = "uploaded_by", nullable = false)
+    private UUID uploadedBy;
+
+    @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
-
-    @Column(name = "updated_at")
-    private OffsetDateTime updatedAt;
-
-
-    // ============================================================
-    // JPA CALLBACKS
-    // ============================================================
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
 
     @PrePersist
     protected void onCreate() {
-
+        if (this.id == null) {
+            this.id = UUID.randomUUID();
+        }
         if (this.createdAt == null) {
             this.createdAt = OffsetDateTime.now();
         }
-
-        if (this.status == null) {
-            this.status = "PENDING";
-        }
-
-        this.updatedAt = OffsetDateTime.now();
-    }
-
-
-    @PreUpdate
-    protected void onUpdate() {
-
-        this.updatedAt = OffsetDateTime.now();
     }
 }

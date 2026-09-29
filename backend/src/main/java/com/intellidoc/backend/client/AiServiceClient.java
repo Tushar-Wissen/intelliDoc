@@ -2,10 +2,13 @@ package com.intellidoc.backend.client;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.intellidoc.backend.dto.AiChatAnswerRequestDto;
+import com.intellidoc.backend.dto.AiChatAnswerResponseDto;
 import com.intellidoc.backend.dto.AiAnalysisRequestDto;
 import com.intellidoc.backend.dto.AiAnalysisResponseDto;
 import com.intellidoc.backend.dto.AiQARequestDto;
 import com.intellidoc.backend.dto.AiQAResponseDto;
+import com.intellidoc.backend.dto.DocumentProcessRequestDto;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -14,6 +17,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.Map;
@@ -29,16 +33,22 @@ public class AiServiceClient {
     public AiServiceClient(
             @Value("${intellidoc.ai-service.url:http://ai-service:8000}")
             String baseUrl,
+            @Value("${intellidoc.chat.upstream.timeout-ms:120000}")
+            int upstreamTimeoutMs,
             ObjectMapper objectMapper) {
 
         this.baseUrl = baseUrl;
         this.objectMapper = objectMapper;
 
-        this.restTemplate = new RestTemplate();
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(upstreamTimeoutMs);
+        requestFactory.setReadTimeout(upstreamTimeoutMs);
+        this.restTemplate = new RestTemplate(requestFactory);
 
         log.info(
-                "Initializing AiServiceClient targeting: {}",
-                baseUrl
+                "Initializing AiServiceClient targeting: {} (timeoutMs={})",
+                baseUrl,
+                upstreamTimeoutMs
         );
     }
 
@@ -207,6 +217,64 @@ public class AiServiceClient {
             throw new RuntimeException(
                     "AI Service Q&A processing error: "
                             + e.getMessage(),
+                    e
+            );
+        }
+    }
+
+    public AiChatAnswerResponseDto generateChatAnswer(AiChatAnswerRequestDto request) {
+        log.info(
+                "Dispatching chat answer request sessionId={} workspaceId={} documentCount={}",
+                request.getSessionId(),
+                request.getWorkspaceId(),
+                request.getResolvedDocumentIds() != null ? request.getResolvedDocumentIds().size() : 0
+        );
+
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setAccept(java.util.List.of(MediaType.APPLICATION_JSON));
+
+            HttpEntity<AiChatAnswerRequestDto> entity = new HttpEntity<>(request, headers);
+
+            ResponseEntity<AiChatAnswerResponseDto> response = restTemplate.exchange(
+                    baseUrl + "/internal/ai/chat/answer",
+                    HttpMethod.POST,
+                    entity,
+                    AiChatAnswerResponseDto.class
+            );
+
+            return response.getBody();
+        } catch (Exception e) {
+            log.error("Error invoking AI Service /internal/ai/chat/answer", e);
+            throw new RuntimeException(
+                    "AI Service chat answer error: " + e.getMessage(),
+                    e
+            );
+        }
+    }
+
+    public void triggerProcessing(java.util.UUID documentId) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<DocumentProcessRequestDto> entity = new HttpEntity<>(
+                    DocumentProcessRequestDto.builder().documentId(documentId).build(),
+                    headers
+            );
+            restTemplate.exchange(
+                    baseUrl + "/internal/ai/documents/process",
+                    HttpMethod.POST,
+                    entity,
+                    Void.class
+            );
+            log.info("Triggered AI processing for document {}", documentId);
+        } catch (Exception e) {
+            log.error(
+                    "PROCESSING_TRIGGER_FAILED documentId={} aiServiceUrl={} — document remains UPLOADED; "
+                            + "check ai-service health and Celery worker logs",
+                    documentId,
+                    baseUrl,
                     e
             );
         }

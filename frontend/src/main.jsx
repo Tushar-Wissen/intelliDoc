@@ -4,6 +4,9 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App.jsx';
 import { ThemeProvider } from './components/theme-provider.jsx';
 import { AuthProvider } from './context/auth-context.jsx';
+import { WorkspaceProvider } from './context/workspace-context.jsx';
+import { FolderProvider } from './context/folder-context.jsx';
+import { ToastProvider } from './context/toast-context.jsx';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -11,7 +14,13 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     <ThemeProvider defaultTheme="system">
       <BrowserRouter>
         <AuthProvider>
-          <App />
+          <ToastProvider>
+            <WorkspaceProvider>
+              <FolderProvider>
+                <App />
+              </FolderProvider>
+            </WorkspaceProvider>
+          </ToastProvider>
         </AuthProvider>
       </BrowserRouter>
     </ThemeProvider>
