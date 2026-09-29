@@ -17,6 +17,7 @@ import { RenameFolderDialog } from '@/components/features/rename-folder-dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 
 import { useHealthStatus } from '@/hooks/use-health-status';
+import { useDocumentProcessingStatus } from '@/hooks/use-document-processing-status';
 import { useAuth } from '@/context/auth-context';
 import { useWorkspace } from '@/context/workspace-context';
 import { useFolders } from '@/context/folder-context';
@@ -68,6 +69,7 @@ export function WorkspacePage() {
     setActiveFileId(null);
     setOpenTabs([]);
     setActiveTabId(null);
+    setChatHistories({});
   }, [selectedWorkspaceId]);
 
   // Mirror the open folder into the shared folder state so the sidebar can highlight it.
@@ -209,8 +211,24 @@ export function WorkspacePage() {
       : null;
   const activeCopilotName = activeTabId ? activeTabName : activeFolder?.name ?? null;
 
+  // Documents the copilot answers from: the open file, else the open folder, else the whole workspace.
+  // File tabs are keyed by document id; folder tabs by `folder:<id>`.
+  const activeDocumentId = activeTabId && !activeTabId.startsWith('folder:') ? activeTabId : null;
+  // Document-level chat stays locked until this document is READY; polled so it unlocks on its own.
+  const activeDocumentStatus = useDocumentProcessingStatus(activeDocumentId);
+
+  const copilotScope = useMemo(() => {
+    if (activeDocumentId) return { type: 'DOCUMENTS', documentIds: [activeDocumentId] };
+    const folderId = activeTabId ? activeTabId.slice('folder:'.length) : activeFolder?.id;
+    return folderId ? { type: 'MODULE', moduleId: folderId } : { type: 'WORKSPACE' };
+  }, [activeDocumentId, activeTabId, activeFolder]);
+
+  // `messages` may be an updater function so streamed tokens always build on the latest history.
   const handleUpdateChatHistory = useCallback((key, messages) => {
-    setChatHistories((prev) => ({ ...prev, [key]: messages }));
+    setChatHistories((prev) => ({
+      ...prev,
+      [key]: typeof messages === 'function' ? messages(prev[key] ?? []) : messages,
+    }));
   }, []);
 
   const filteredFolders = useMemo(() => {
@@ -447,7 +465,9 @@ export function WorkspacePage() {
         chatHistories={chatHistories}
         onUpdateHistory={handleUpdateChatHistory}
         workspaceId={selectedWorkspaceId}
+        scope={copilotScope}
         disabled={!foldersLoading && folders.length === 0}
+        documentStatus={activeDocumentStatus}
       />
     </AppShell>
   );

@@ -1,11 +1,11 @@
 import axios from 'axios';
 
-import { API_BASE_URL, API_ERROR_CODES, authHeaders, toApiError } from '@/lib/api-client';
-import { getToken } from '@/lib/auth-api';
+import { API_BASE_URL, API_ERROR_CODES, ApiError, authHeaders, toApiError } from '@/lib/api-client';
 
 const CHAT_ERROR_MESSAGES = {
-  [API_ERROR_CODES.NOT_FOUND]: 'This chat session no longer exists.',
-  [API_ERROR_CODES.INVALID]: 'The request was not valid.',
+  [API_ERROR_CODES.INVALID]: 'This question could not be sent. Check the selected documents and try again.',
+  [API_ERROR_CODES.NOT_FOUND]: 'This conversation no longer exists. Start a new one and try again.',
+  [API_ERROR_CODES.SERVER]: 'IntelliDoc AI could not answer right now. Please try again in a moment.',
 };
 
 // Maps an API message object to the shape used by the UI.
@@ -29,140 +29,108 @@ function toAppSession(apiSession) {
   };
 }
 
+// Splits a Server-Sent Events buffer into complete events; the unfinished tail is returned
+// so the next chunk can complete it.
+function parseSseEvents(buffer) {
+  const blocks = buffer.split(/\r?\n\r?\n/);
+  const rest = blocks.pop();
+  const events = blocks
+    .map((block) => {
+      let name = 'message';
+      const dataLines = [];
+      block.split(/\r?\n/).forEach((line) => {
+        if (line.startsWith('event:')) name = line.slice(6).trim();
+        else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
+      });
+      if (dataLines.length === 0) return null;
+      const raw = dataLines.join('\n');
+      try {
+        return { name, data: JSON.parse(raw) };
+      } catch {
+        return { name, data: raw };
+      }
+    })
+    .filter(Boolean);
+  return { events, rest };
+}
+
 export const chatApi = {
-  /**
-   * 9.5 — POST /workspaces/{workspaceId}/chat-sessions
-   * Creates a new workspace-scoped chat session and returns its id.
-   *
-   * @param {string} workspaceId
-   * @param {string} [title]
-   * @returns {Promise<{ id: string, title: string, scope: object }>}
-   */
-  async createSession(workspaceId, title = 'Chat session') {
+  // POST /workspaces/{workspaceId}/chat-sessions  { scope: { type, moduleId?, documentIds? }, title? }
+  //   -> { id, workspaceId, title, scope, resolvedDocumentIds, createdAt }
+  // `scope.type` is WORKSPACE, MODULE (with moduleId) or DOCUMENTS (with documentIds).
+  async createSession(workspaceId, { scope, title }) {
     try {
       const { data } = await axios.post(
         `${API_BASE_URL}/workspaces/${encodeURIComponent(workspaceId)}/chat-sessions`,
-        { scope: { type: 'workspace' }, title },
-        { headers: { ...authHeaders(), 'Content-Type': 'application/json' } }
+        { scope, title },
+        { headers: authHeaders() }
       );
-      return { id: data.id, title: data.title ?? title, scope: data.scope };
+      return { id: data.id, resolvedDocumentIds: data.resolvedDocumentIds ?? [] };
     } catch (err) {
-      console.error('[chat-api] createSession 422 error detail:', err.response?.data);
-      throw toApiError(err, CHAT_ERROR_MESSAGES);
+      throw toApiError(err, CHAT_ERROR_MESSAGES, { preferServerMessage: true });
     }
   },
 
-  /**
-   * 9.6 — POST /chat-sessions/{chatSessionId}/messages  (SSE stream)
-   * Sends a question and streams back token events.
-   *
-   * The caller must pass:
-   *   onToken(token: string)  — called for every SSE `event:token` chunk
-   *   onDone(messageId?: string) — called when the `event:done` event arrives
-   *   onError(err: Error)     — called on network / parse failure
-   *
-   * Returns an AbortController so the caller can cancel the stream.
-   */
-  askQuestion(chatSessionId, question, { onToken, onDone, onError } = {}) {
-    const controller = new AbortController();
-    const token = getToken();
+  // POST /chat-sessions/{sessionId}/messages  { question, provider, model }  (text/event-stream)
+  //   event: token     { text }
+  //   event: citation  { citationId, documentId, page, section, excerpt }
+  //   event: done      { messageId, answerMode, isNotFound, confidence }
+  //   event: error     { code, message }
+  // Streams the answer through `onToken`/`onCitation` and resolves with the `done` payload.
+  // Uses fetch rather than axios because the answer arrives as a stream.
+  async sendMessage(sessionId, { question, provider, model }, { onToken, onCitation, signal } = {}) {
+    let response;
+    try {
+      response = await fetch(`${API_BASE_URL}/chat-sessions/${encodeURIComponent(sessionId)}/messages`, {
+        method: 'POST',
+        headers: { ...authHeaders(), 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+        body: JSON.stringify({ question, provider, model }),
+        signal,
+      });
+    } catch (err) {
+      if (err?.name === 'AbortError') throw err;
+      throw toApiError(err, CHAT_ERROR_MESSAGES);
+    }
 
-    (async () => {
-      try {
-        const response = await fetch(
-          `${API_BASE_URL}/chat-sessions/${encodeURIComponent(chatSessionId)}/messages`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Accept: 'text/event-stream',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({ question }),
-            signal: controller.signal,
-          }
-        );
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      throw toApiError({ response: { status: response.status, data } }, CHAT_ERROR_MESSAGES, {
+        preferServerMessage: true,
+      });
+    }
 
-        if (!response.ok) {
-          throw new Error(`Server returned ${response.status}`);
-        }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder('utf-8');
-        let buffer = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+      const { events, rest } = parseSseEvents(buffer);
+      buffer = rest;
 
-          buffer += decoder.decode(value, { stream: true });
-
-          // Process complete SSE events (separated by double newlines)
-          const parts = buffer.split(/\r?\n\r?\n/);
-          buffer = parts.pop(); // last part may be incomplete
-
-          for (const part of parts) {
-            if (!part.trim()) continue;
-
-            // Parse event type and data from the SSE block
-            let eventType = 'message';
-            let dataLine = '';
-
-            for (const line of part.split(/\r?\n/)) {
-              if (line.startsWith('event:')) {
-                eventType = line.slice(6).trim();
-              } else if (line.startsWith('data:')) {
-                dataLine = line.slice(5).trim();
-              }
-            }
-
-            if (eventType === 'token') {
-              try {
-                const parsed = JSON.parse(dataLine);
-                onToken?.(parsed.token ?? parsed.content ?? dataLine);
-              } catch {
-                onToken?.(dataLine);
-              }
-            } else if (eventType === 'done') {
-              try {
-                const parsed = JSON.parse(dataLine);
-                onDone?.(parsed.messageId ?? null);
-              } catch {
-                onDone?.(null);
-              }
-            } else if (eventType === 'error') {
-              try {
-                const parsed = JSON.parse(dataLine);
-                onError?.(new Error(parsed.message ?? 'Stream error'));
-              } catch {
-                onError?.(new Error(dataLine || 'Stream error'));
-              }
-            }
-          }
-        }
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          onError?.(err);
+      for (const { name, data } of events) {
+        if (name === 'token') onToken?.(data?.text ?? '');
+        else if (name === 'citation') onCitation?.(data);
+        else if (name === 'done') return data;
+        else if (name === 'error') {
+          throw new ApiError(API_ERROR_CODES.SERVER, data?.message || CHAT_ERROR_MESSAGES[API_ERROR_CODES.SERVER]);
         }
       }
-    })();
+    }
 
-    return controller;
+    // The stream closed without a `done` event, so the answer is incomplete.
+    throw new ApiError(API_ERROR_CODES.SERVER, CHAT_ERROR_MESSAGES[API_ERROR_CODES.SERVER]);
   },
 
-  /**
-   * 9.7 — GET /chat-sessions/{chatSessionId}
-   * Returns the full session including all messages.
-   *
-   * @param {string} chatSessionId
-   * @returns {Promise<{ id, title, scope, messages: Array }>}
-   */
-  async getSession(chatSessionId) {
+  // GET /chat-sessions/{sessionId} -> { id, title, scope, messages: [{ id, role, content, createdAt }], createdAt }
+  async getSession(sessionId) {
     try {
-      const { data } = await axios.get(
-        `${API_BASE_URL}/chat-sessions/${encodeURIComponent(chatSessionId)}`,
-        { headers: authHeaders() }
-      );
+      const { data } = await axios.get(`${API_BASE_URL}/chat-sessions/${encodeURIComponent(sessionId)}`, {
+        headers: authHeaders(),
+      });
       return toAppSession(data);
     } catch (err) {
       throw toApiError(err, CHAT_ERROR_MESSAGES);
