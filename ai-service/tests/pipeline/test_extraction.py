@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from app.db.repository import ChunkRecord
-from app.llm.client import set_llm_client
+from app.llm.client import set_rules_llm_client
 from app.pipeline.extraction import extract_type_specific_fields, extract_universal_fields
 from app.pipeline.schemas.field_schemas import DocumentType
 from tests.fakes import InMemoryPipelineRepository
@@ -30,7 +30,7 @@ def test_universal_extraction_service_agreement_fields():
             token_count=80,
         )
     ]
-    set_llm_client(None)
+    set_rules_llm_client(None)
     results = extract_universal_fields(document_id, repo=repo)
     names = {item.field_name for item in results}
     assert "Effective Date" in names
@@ -63,7 +63,7 @@ def test_financial_report_type_specific_without_termination_terms():
             token_count=60,
         )
     ]
-    set_llm_client(None)
+    set_rules_llm_client(None)
     results = extract_type_specific_fields(
         document_id, DocumentType.FINANCIAL_REPORT, repo=repo
     )

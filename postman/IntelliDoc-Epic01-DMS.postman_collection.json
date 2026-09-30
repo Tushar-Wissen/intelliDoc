@@ -629,6 +629,14 @@
           }
         },
         {
+          "name": "GET /workspaces/{id}/chat-sessions",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/workspaces/{{workspaceId}}/chat-sessions",
+            "description": "Lists all chat sessions in the workspace (newest first), each with full message history."
+          }
+        },
+        {
           "name": "GET /chat-sessions/{sessionId}",
           "request": {
             "method": "GET",

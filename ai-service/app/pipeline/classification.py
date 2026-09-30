@@ -1,16 +1,24 @@
-"""Story 3.1 — document classification and overview/summary."""
+"""Story 3.1 — document classification, topics overview, and summary."""
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from dataclasses import dataclass
 
+from pydantic import ValidationError
+
 from app.config import settings
 from app.db.repository import PipelineRepository, get_repository
-from app.llm.client import LlmError, get_llm_client, with_retry
+from app.llm.client import LlmError, get_rules_llm_client, get_summary_llm_client, with_retry
 from app.pipeline import extraction
-from app.pipeline.schemas.field_schemas import ClassificationResultSchema, DocumentType
+from app.pipeline.prompts import rules_classification_prompt, summary_prompt
+from app.pipeline.schemas.field_schemas import (
+    ClassificationResultSchema,
+    DocumentType,
+    SummaryResultSchema,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +27,7 @@ logger = logging.getLogger(__name__)
 class ClassificationResult:
     document_type: DocumentType
     confidence: float
-    overview: str
+    topics: list[str]
     summary: str
     low_confidence: bool
 
@@ -53,46 +61,50 @@ def classify_and_summarize(
         raise ClassificationError("No chunks available for classification")
 
     text = _classification_text(chunks)
-    prompt = (
-        "Classify the document and produce overview and summary as JSON.\n"
-        f"documentId={document_id}\n"
-        f"---\n{text}"
-    )
-    client = get_llm_client()
+    rules_client = get_rules_llm_client()
+    classification_prompt = rules_classification_prompt(document_id, text)
 
-    def _call() -> ClassificationResultSchema:
-        try:
-            return client.complete_json(prompt, ClassificationResultSchema)
-        except LlmError as exc:
-            raise ClassificationError(str(exc)) from exc
+    def _classify() -> ClassificationResultSchema:
+        return rules_client.complete_json(classification_prompt, ClassificationResultSchema)
 
     try:
-        parsed = with_retry(_call, retries=1)
-    except Exception as exc:
+        classified = _classify()
+    except (LlmError, ValidationError) as exc:
         raise ClassificationError(str(exc)) from exc
 
-    low_confidence = parsed.confidence < settings.classification_confidence_threshold
+    summary_client = get_summary_llm_client()
+    summary_prompt_text = summary_prompt(document_id, text)
+
+    def _summarize() -> SummaryResultSchema:
+        return summary_client.complete_json(summary_prompt_text, SummaryResultSchema)
+
+    try:
+        summarized = with_retry(_summarize, retries=1)
+    except (LlmError, ValidationError) as exc:
+        raise ClassificationError(str(exc)) from exc
+
+    low_confidence = classified.confidence < settings.classification_confidence_threshold
     if low_confidence:
         logger.warning(
             "Low classification confidence documentId=%s type=%s confidence=%s threshold=%s",
             document_id,
-            parsed.document_type.value,
-            parsed.confidence,
+            classified.document_type.value,
+            classified.confidence,
             settings.classification_confidence_threshold,
         )
 
     result = ClassificationResult(
-        document_type=parsed.document_type,
-        confidence=parsed.confidence,
-        overview=parsed.overview,
-        summary=parsed.summary,
+        document_type=classified.document_type,
+        confidence=classified.confidence,
+        topics=classified.topics,
+        summary=summarized.summary,
         low_confidence=low_confidence,
     )
     repo.update_classification(
         document_id,
         document_type=result.document_type.value,
         classification_confidence=result.confidence,
-        overview=result.overview,
+        overview=_topics_to_overview(result.topics),
         summary=result.summary,
     )
     logger.info(
@@ -103,6 +115,11 @@ def classify_and_summarize(
         result.low_confidence,
     )
     return result
+
+
+def _topics_to_overview(topics: list[str]) -> str:
+    cleaned = [topic.strip() for topic in topics if topic and topic.strip()]
+    return json.dumps(cleaned)
 
 
 def _classification_text(chunks) -> str:

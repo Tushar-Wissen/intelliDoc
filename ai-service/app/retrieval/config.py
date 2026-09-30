@@ -43,10 +43,10 @@ class RetrievalConfig:
     balance_fanout_max_docs: int = 6
     classifier_context_turns: int = 3
     classifier_max_question_chars: int = 2000
-    db_timeout_ms: int = 2000
-    graph_timeout_ms: int = 2000
-    llm_timeout_ms: int = 8000
-    rerank_timeout_ms: int = 3000
+    db_timeout_ms: int = 60000
+    graph_timeout_ms: int = 30000
+    llm_timeout_ms: int = 30000
+    rerank_timeout_ms: int = 10000
     # F6 default: live chat degrades and flags. Set fail for evaluation runs.
     graph_failure: str = "degrade"
     graph_channel_enabled: bool = True
@@ -73,10 +73,10 @@ class RetrievalConfig:
             balance_fanout_max_docs=_int("BALANCE_FANOUT_MAX_DOCS", 6),
             classifier_context_turns=_int("CLASSIFIER_CONTEXT_TURNS", 3),
             classifier_max_question_chars=_int("CLASSIFIER_MAX_QUESTION_CHARS", 2000),
-            db_timeout_ms=_int("RETRIEVAL_DB_TIMEOUT_MS", 2000),
-            graph_timeout_ms=_int("RETRIEVAL_GRAPH_TIMEOUT_MS", 2000),
-            llm_timeout_ms=_int("RETRIEVAL_LLM_TIMEOUT_MS", 8000),
-            rerank_timeout_ms=_int("RETRIEVAL_RERANK_TIMEOUT_MS", 3000),
+            db_timeout_ms=_int("RETRIEVAL_DB_TIMEOUT_MS", 60000),
+            graph_timeout_ms=_int("RETRIEVAL_GRAPH_TIMEOUT_MS", 30000),
+            llm_timeout_ms=_int("RETRIEVAL_LLM_TIMEOUT_MS", 30000),
+            rerank_timeout_ms=_int("RETRIEVAL_RERANK_TIMEOUT_MS", 10000),
             graph_failure=failure,
             graph_channel_enabled=_bool("RETRIEVAL_GRAPH_ENABLED", True),
             reranker_provider=os.getenv("RERANKER_PROVIDER", "overlap").strip().lower(),

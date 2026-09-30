@@ -10,17 +10,23 @@ Prerequisites: complete [`INGESTION_PIPELINE_MANUAL_TEST.md`](INGESTION_PIPELINE
 
 ## Configuration for real answers
 
-In `.env` or `docker-compose.yml`, Core API must call the AI service for chat:
+In `.env`, Core API must call the AI service for chat:
 
 ```bash
 CHAT_ANSWER_GENERATOR_MODE=http
 ```
 
-Default AI provider for POC (no external API key):
+For synthesized grounded answers (recommended), use a hosted OpenAI-compatible LLM:
 
 ```bash
-LLM_PROVIDER=rules
+LLM_PROVIDER=hosted
+HOSTED_LLM_BASE_URL=https://api.openai.com/v1
+HOSTED_LLM_API_KEY=sk-your-key-here
+HOSTED_LLM_MODEL=gpt-4o-mini
+HOSTED_LLM_TEMPERATURE=0.1
 ```
+
+`LLM_PROVIDER=rules` is for CI/tests only — it echoes retrieved chunk text instead of answering.
 
 Restart after changing env:
 

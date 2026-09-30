@@ -3,10 +3,12 @@ package com.intellidoc.backend.dms;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intellidoc.backend.client.AiServiceClient;
 import com.intellidoc.backend.model.DocumentEntity;
+import com.intellidoc.backend.model.DocumentSummaryEntity;
 import com.intellidoc.backend.model.TenantEntity;
 import com.intellidoc.backend.model.UserAccountEntity;
 import com.intellidoc.backend.repository.DocumentGroupRepository;
 import com.intellidoc.backend.repository.DocumentRepository;
+import com.intellidoc.backend.repository.DocumentSummaryRepository;
 import com.intellidoc.backend.repository.ProcessingJobRepository;
 import com.intellidoc.backend.repository.TenantRepository;
 import com.intellidoc.backend.repository.UserAccountRepository;
@@ -80,6 +82,8 @@ class DmsApiTest {
     @Autowired
     private DocumentRepository documentRepository;
     @Autowired
+    private DocumentSummaryRepository documentSummaryRepository;
+    @Autowired
     private ProcessingJobRepository processingJobRepository;
 
     @MockBean
@@ -93,6 +97,7 @@ class DmsApiTest {
     @BeforeEach
     void seed() throws Exception {
         processingJobRepository.deleteAll();
+        documentSummaryRepository.deleteAll();
         documentRepository.deleteAll();
         documentGroupRepository.deleteAll();
         workspaceMemberRepository.deleteAll();
@@ -207,9 +212,14 @@ class DmsApiTest {
         DocumentEntity document = documentRepository.findAll().get(0);
         document.setProcessingStatus(ProcessingStatus.READY);
         document.setDocumentType("contract");
-        document.setOverview("overview");
-        document.setSummary("summary");
+        document.setOverview("[\"Termination\",\"Parties\",\"Payment terms\"]");
+        document.setSummary("legacy summary");
+        document.setFileSizeBytes(2_097_152L);
         documentRepository.save(document);
+        documentSummaryRepository.save(DocumentSummaryEntity.builder()
+                .documentId(document.getId())
+                .summary("Executive summary of the contract.")
+                .build());
 
         mockMvc.perform(get("/workspaces/" + workspaceId + "/documents")
                         .header("Authorization", bearer(token)))
@@ -230,8 +240,15 @@ class DmsApiTest {
 
         mockMvc.perform(get("/documents/" + document.getId()).header("Authorization", bearer(token)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.overview", is("overview")))
-                .andExpect(jsonPath("$.processingStatus", is("READY")));
+                .andExpect(jsonPath("$.summary", is("Executive summary of the contract.")))
+                .andExpect(jsonPath("$.overview", hasSize(3)))
+                .andExpect(jsonPath("$.overview[0]", is("Termination")))
+                .andExpect(jsonPath("$.uploadedByName", is("Jane Doe")))
+                .andExpect(jsonPath("$.extension", is("pdf")))
+                .andExpect(jsonPath("$.fileType", is("application/pdf")))
+                .andExpect(jsonPath("$.fileSizeMb", is(2.0)))
+                .andExpect(jsonPath("$.processingStatus", is("READY")))
+                .andExpect(jsonPath("$.documentType", is("contract")));
     }
 
     @Test

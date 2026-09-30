@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     _init_neo4j_schema()
+    _warm_embedding_model()
     yield
 
 
@@ -35,6 +36,17 @@ def _init_neo4j_schema() -> None:
         ensure_neo4j_schema()
     except Exception:
         logger.exception("Neo4j schema init skipped")
+
+
+def _warm_embedding_model() -> None:
+    """Load the retrieval embedding model at startup so first chat is not blocked."""
+    try:
+        from app.pipeline.embedding_model import get_embedding_model
+
+        get_embedding_model().encode(["warmup"])
+        logger.info("Embedding model warm-up complete")
+    except Exception:
+        logger.exception("Embedding model warm-up skipped")
 
 
 app = FastAPI(

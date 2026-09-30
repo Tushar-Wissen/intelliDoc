@@ -9,6 +9,8 @@ import com.intellidoc.backend.model.DocumentGroupEntity;
 import com.intellidoc.backend.model.WorkspaceEntity;
 import com.intellidoc.backend.repository.DocumentGroupRepository;
 import com.intellidoc.backend.repository.DocumentRepository;
+import com.intellidoc.backend.repository.DocumentSummaryRepository;
+import com.intellidoc.backend.repository.UserAccountRepository;
 import com.intellidoc.backend.security.AuthPrincipal;
 import com.intellidoc.backend.storage.MinioStorageService;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,6 +54,10 @@ class DocumentServiceTest {
     @Mock
     private DocumentGroupRepository documentGroupRepository;
     @Mock
+    private DocumentSummaryRepository documentSummaryRepository;
+    @Mock
+    private UserAccountRepository userAccountRepository;
+    @Mock
     private DocumentWriteService documentWriteService;
     @Mock
     private MinioStorageService minioStorageService;
@@ -67,6 +73,8 @@ class DocumentServiceTest {
                 moduleService,
                 documentRepository,
                 documentGroupRepository,
+                documentSummaryRepository,
+                userAccountRepository,
                 documentWriteService,
                 minioStorageService,
                 aiServiceClient,
