@@ -34,7 +34,7 @@ export function DashboardStatCards({ totalDocuments, totalFolders }) {
       <StatCard
         icon={FileText}
         label="Total documents"
-        value={totalDocuments || 128}
+        value={totalDocuments || 0}
         comparisonValue="+10%"
         comparisonText="vs last month"
         iconBg="bg-wissen-navy/10"
@@ -43,7 +43,7 @@ export function DashboardStatCards({ totalDocuments, totalFolders }) {
       <StatCard
         icon={Upload}
         label="Added this week"
-        value="12"
+        value={totalDocuments || 0}
         comparisonValue="+4"
         comparisonText="vs last week"
         iconBg="bg-blue-500/10"
@@ -52,7 +52,7 @@ export function DashboardStatCards({ totalDocuments, totalFolders }) {
       <StatCard
         icon={Folder}
         label="Folders"
-        value={totalFolders || 9}
+        value={totalFolders || 0}
         comparisonValue=""
         comparisonText="Last created 2 days ago"
         iconBg="bg-gray-100 dark:bg-gray-800"

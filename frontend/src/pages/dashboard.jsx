@@ -16,6 +16,57 @@ import { MostAccessedCard } from '@/components/dashboard/most-accessed-card';
 import { AiSuccessRateCard } from '@/components/dashboard/ai-success-rate-card';
 import { RecentDocumentsTable } from '@/components/dashboard/recent-documents-table';
 
+const formatTimeElapsed = (dateString) => {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffInSeconds = Math.floor((now - date) / 1000);
+  
+  if (diffInSeconds < 60) return 'Just now';
+  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} mins ago`;
+  if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+  if (diffInSeconds < 172800) return 'Yesterday';
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
+const getFileColors = (type) => {
+  const upperType = (type || '').toUpperCase();
+  if (upperType.includes('PDF')) {
+    return {
+      iconBg: 'bg-wissen-navy/10',
+      iconFg: 'text-wissen-navy',
+      typeBg: 'bg-wissen-navy/10 text-wissen-navy',
+    };
+  }
+  if (upperType.includes('DOC')) {
+    return {
+      iconBg: 'bg-blue-500/10',
+      iconFg: 'text-blue-600',
+      typeBg: 'bg-blue-500/10 text-blue-700',
+    };
+  }
+  if (upperType.includes('XLS')) {
+    return {
+      iconBg: 'bg-orange-500/10',
+      iconFg: 'text-orange-600',
+      typeBg: 'bg-orange-500/10 text-orange-700',
+    };
+  }
+  return {
+    iconBg: 'bg-gray-500/10',
+    iconFg: 'text-gray-600',
+    typeBg: 'bg-gray-500/10 text-gray-700',
+  };
+};
+
+const USER_COLORS = [
+  'bg-violet-100 text-violet-700',
+  'bg-blue-100 text-blue-700',
+  'bg-amber-100 text-amber-700',
+  'bg-emerald-100 text-emerald-700',
+  'bg-pink-100 text-pink-700',
+];
+
 export function DashboardPage() {
   const healthStatus = useHealthStatus();
   const navigate = useNavigate();
@@ -30,6 +81,30 @@ export function DashboardPage() {
     () => folders.reduce((sum, folder) => sum + (folder.filesCount || 0), 0),
     [folders]
   );
+
+  const recentDocuments = useMemo(() => {
+    const allFiles = folders.flatMap((folder) =>
+      (folder.files || []).map((file) => {
+        const colors = getFileColors(file.type);
+        // Deterministic user color based on file id or something, we'll just use length of id
+        const colorIndex = (file.id?.length || 0) % USER_COLORS.length;
+        
+        return {
+          ...file,
+          folderId: folder.id,
+          folder: folder.name,
+          time: formatTimeElapsed(file.createdAt),
+          userInitials: 'JD', // You can replace this if you have real user info
+          userBg: USER_COLORS[colorIndex],
+          ...colors,
+        };
+      })
+    );
+    
+    return allFiles
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+      .slice(0, 5);
+  }, [folders]);
 
   const handleWorkspaceCreated = () => {
     setTimeout(() => setUploadOpen(true), 250);
@@ -60,12 +135,13 @@ export function DashboardPage() {
 
           {/* Middle row: most accessed + AI success rate */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
-            <MostAccessedCard />
+            <MostAccessedCard documents={recentDocuments} />
             <AiSuccessRateCard />
           </div>
 
           {/* Recent documents table */}
           <RecentDocumentsTable
+            files={recentDocuments}
             onOpenFile={(file) =>
               navigate('/workspace', { state: { folderId: file.folderId, fileId: file.id } })
             }
