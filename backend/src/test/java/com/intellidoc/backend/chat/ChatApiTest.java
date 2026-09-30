@@ -5,6 +5,7 @@ import com.intellidoc.backend.client.AiServiceClient;
 import com.intellidoc.backend.dto.AnswerOutcome;
 import com.intellidoc.backend.dto.CitationDto;
 import com.intellidoc.backend.dto.SourcePassageDto;
+import com.intellidoc.backend.model.ChatMessageEntity;
 import com.intellidoc.backend.model.DocumentChunkEntity;
 import com.intellidoc.backend.model.DocumentEntity;
 import com.intellidoc.backend.model.DocumentGroupEntity;
@@ -182,6 +183,69 @@ public class ChatApiTest {
                 .andExpect(jsonPath("$.id", is(sessionId)))
                 .andExpect(jsonPath("$.scope.type", is("WORKSPACE")))
                 .andExpect(jsonPath("$.messages", hasSize(0)));
+    }
+
+    @Test
+    void story8_1_listWorkspaceSessionsIncludesMessageHistory() throws Exception {
+        String workspaceId = createWorkspace(token, "List Sessions WS");
+        createDocument(UUID.fromString(workspaceId), null, "doc-list.pdf");
+
+        MvcResult first = mockMvc.perform(post("/workspaces/" + workspaceId + "/chat-sessions")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scope\": {\"type\": \"workspace\"}, \"title\": \"Older chat\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String firstSessionId = objectMapper.readTree(first.getResponse().getContentAsString()).get("id").asText();
+
+        MvcResult second = mockMvc.perform(post("/workspaces/" + workspaceId + "/chat-sessions")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scope\": {\"type\": \"workspace\"}, \"title\": \"Newer chat\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String secondSessionId = objectMapper.readTree(second.getResponse().getContentAsString()).get("id").asText();
+
+        chatMessageRepository.save(ChatMessageEntity.builder()
+                .sessionId(UUID.fromString(firstSessionId))
+                .role("USER")
+                .content("What is the notice period?")
+                .build());
+        chatMessageRepository.save(ChatMessageEntity.builder()
+                .sessionId(UUID.fromString(firstSessionId))
+                .role("ASSISTANT")
+                .content("Thirty days written notice is required.")
+                .answerMode("retrieval_plus_graph")
+                .confidence(0.91)
+                .isNotFound(false)
+                .build());
+
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/chat-sessions").header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.workspaceId", is(workspaceId)))
+                .andExpect(jsonPath("$.sessions", hasSize(2)))
+                .andExpect(jsonPath("$.sessions[0].id", is(secondSessionId)))
+                .andExpect(jsonPath("$.sessions[0].title", is("Newer chat")))
+                .andExpect(jsonPath("$.sessions[0].messages", hasSize(0)))
+                .andExpect(jsonPath("$.sessions[1].id", is(firstSessionId)))
+                .andExpect(jsonPath("$.sessions[1].messages", hasSize(2)))
+                .andExpect(jsonPath("$.sessions[1].messages[0].role", is("USER")))
+                .andExpect(jsonPath("$.sessions[1].messages[1].content", containsString("Thirty days")));
+    }
+
+    @Test
+    void story8_1_listWorkspaceSessionsDeniedForNonMember() throws Exception {
+        String workspaceId = createWorkspace(token, "Members Only WS");
+        createDocument(UUID.fromString(workspaceId), null, "doc-private.pdf");
+        mockMvc.perform(post("/workspaces/" + workspaceId + "/chat-sessions")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scope\": {\"type\": \"workspace\"}}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/chat-sessions").header("Authorization", bearer(otherToken)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("WORKSPACE_ACCESS_DENIED")));
     }
 
     @Test

@@ -7,7 +7,7 @@ import uuid
 from dataclasses import dataclass
 
 from app.db.repository import ExtractedFieldRecord, PipelineRepository, get_repository
-from app.llm.client import LlmError, get_llm_client, with_retry
+from app.llm.client import LlmError, get_rules_llm_client, with_retry
 from pydantic import ValidationError
 from app.pipeline.prompts import type_specific_extraction_prompt, universal_extraction_prompt
 from app.pipeline.schemas.field_schemas import (
@@ -42,7 +42,7 @@ def extract_universal_fields(
     repo: PipelineRepository | None = None,
 ) -> list[FieldResult]:
     repo = repo or get_repository()
-    client = get_llm_client()
+    client = get_rules_llm_client()
     collected: list[ProvenanceField] = []
     for chunk in repo.list_chunks(document_id):
         page = chunk.page_number or 1
@@ -103,7 +103,7 @@ def extract_type_specific_fields(
             document_type = DocumentType.OTHER
 
     category = type_specific_category(document_type)
-    client = get_llm_client()
+    client = get_rules_llm_client()
     collected: list[ProvenanceField] = []
     for chunk in repo.list_chunks(document_id):
         page = chunk.page_number or 1

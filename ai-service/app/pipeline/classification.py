@@ -11,10 +11,14 @@ from pydantic import ValidationError
 
 from app.config import settings
 from app.db.repository import PipelineRepository, get_repository
-from app.llm.client import LlmError, get_llm_client, with_retry
+from app.llm.client import LlmError, get_rules_llm_client, get_summary_llm_client, with_retry
 from app.pipeline import extraction
-from app.pipeline.prompts import classification_prompt
-from app.pipeline.schemas.field_schemas import ClassificationResultSchema, DocumentType
+from app.pipeline.prompts import rules_classification_prompt, summary_prompt
+from app.pipeline.schemas.field_schemas import (
+    ClassificationResultSchema,
+    DocumentType,
+    SummaryResultSchema,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,32 +61,43 @@ def classify_and_summarize(
         raise ClassificationError("No chunks available for classification")
 
     text = _classification_text(chunks)
-    prompt = classification_prompt(document_id, text)
-    client = get_llm_client()
+    rules_client = get_rules_llm_client()
+    classification_prompt = rules_classification_prompt(document_id, text)
 
-    def _call() -> ClassificationResultSchema:
-        return client.complete_json(prompt, ClassificationResultSchema)
+    def _classify() -> ClassificationResultSchema:
+        return rules_client.complete_json(classification_prompt, ClassificationResultSchema)
 
     try:
-        parsed = with_retry(_call, retries=1)
+        classified = _classify()
     except (LlmError, ValidationError) as exc:
         raise ClassificationError(str(exc)) from exc
 
-    low_confidence = parsed.confidence < settings.classification_confidence_threshold
+    summary_client = get_summary_llm_client()
+    summary_prompt_text = summary_prompt(document_id, text)
+
+    def _summarize() -> SummaryResultSchema:
+        return summary_client.complete_json(summary_prompt_text, SummaryResultSchema)
+
+    try:
+        summarized = with_retry(_summarize, retries=1)
+    except (LlmError, ValidationError) as exc:
+        raise ClassificationError(str(exc)) from exc
+
+    low_confidence = classified.confidence < settings.classification_confidence_threshold
     if low_confidence:
         logger.warning(
             "Low classification confidence documentId=%s type=%s confidence=%s threshold=%s",
             document_id,
-            parsed.document_type.value,
-            parsed.confidence,
+            classified.document_type.value,
+            classified.confidence,
             settings.classification_confidence_threshold,
         )
 
     result = ClassificationResult(
-        document_type=parsed.document_type,
-        confidence=parsed.confidence,
-        topics=parsed.topics,
-        summary=parsed.summary,
+        document_type=classified.document_type,
+        confidence=classified.confidence,
+        topics=classified.topics,
+        summary=summarized.summary,
         low_confidence=low_confidence,
     )
     repo.update_classification(

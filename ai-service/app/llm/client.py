@@ -25,6 +25,7 @@ from app.pipeline.schemas.field_schemas import (
     ClassificationResultSchema,
     DocumentType,
     ProvenanceField,
+    SummaryResultSchema,
     TYPE_SPECIFIC_FIELD_NAMES,
     TypeSpecificExtractionSchema,
     UniversalExtractionSchema,
@@ -169,6 +170,8 @@ class RulesLlmClient(StructuredLlmClient):
             return schema.model_validate(self._rewrite_question(prompt))
         if schema is ClassificationResultSchema:
             return schema.model_validate(self._classify(prompt))
+        if schema is SummaryResultSchema:
+            return schema.model_validate(self._summarize(prompt))
         if schema is UniversalExtractionSchema:
             fields = self._extract_universal(prompt)
             return UniversalExtractionSchema(fields=fields)
@@ -203,8 +206,16 @@ class RulesLlmClient(StructuredLlmClient):
             "documentType": doc_type.value,
             "confidence": confidence,
             "topics": topics,
-            "summary": f"Summary covering key themes in {title[:80]}.",
+            "summary": self._summarize_text(title),
         }
+
+    def _summarize(self, prompt: str) -> dict[str, Any]:
+        _, _, text = _parse_chunk_prompt(prompt)
+        title = _first_line(text) or "Document"
+        return {"summary": self._summarize_text(title)}
+
+    def _summarize_text(self, title: str) -> str:
+        return f"Summary covering key themes in {title[:80]}."
 
     def _extract_universal(self, prompt: str) -> list[ProvenanceField]:
         chunk_id, page, text = _parse_chunk_prompt(prompt)
@@ -298,6 +309,8 @@ class RulesLlmClient(StructuredLlmClient):
 
 
 _default_client: StructuredLlmClient | None = None
+_rules_client: StructuredLlmClient | None = None
+_summary_client: StructuredLlmClient | None = None
 
 
 def get_llm_client() -> StructuredLlmClient:
@@ -312,8 +325,43 @@ def set_llm_client(client: StructuredLlmClient | None) -> None:
     _default_client = client
 
 
+def get_rules_llm_client() -> StructuredLlmClient:
+    """Deterministic rules engine for classification metadata and field extraction."""
+    global _rules_client
+    if _rules_client is None:
+        _rules_client = RulesLlmClient()
+    return _rules_client
+
+
+def set_rules_llm_client(client: StructuredLlmClient | None) -> None:
+    global _rules_client
+    _rules_client = client
+
+
+def get_summary_llm_client() -> StructuredLlmClient:
+    global _summary_client
+    if _summary_client is None:
+        _summary_client = build_summary_llm_client()
+    return _summary_client
+
+
+def set_summary_llm_client(client: StructuredLlmClient | None) -> None:
+    global _summary_client
+    _summary_client = client
+
+
 def build_llm_client() -> StructuredLlmClient:
-    provider = os.getenv("LLM_PROVIDER", "rules").strip().lower()
+    return _build_provider_client(os.getenv("LLM_PROVIDER", "rules").strip().lower())
+
+
+def build_summary_llm_client() -> StructuredLlmClient:
+    provider = os.getenv("SUMMARY_LLM_PROVIDER", "").strip().lower()
+    if not provider:
+        provider = "hosted" if hosted_api_key() else "rules"
+    return _build_provider_client(provider)
+
+
+def _build_provider_client(provider: str) -> StructuredLlmClient:
     if provider == "ollama":
         base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         model = os.getenv("OLLAMA_MODEL", "llama3.2")
@@ -327,7 +375,7 @@ def build_llm_client() -> StructuredLlmClient:
             timeout_seconds=hosted_timeout_seconds(),
         )
     if provider != "rules":
-        logger.warning("Unknown LLM_PROVIDER=%s; using rules", provider)
+        logger.warning("Unknown LLM provider=%s; using rules", provider)
     return RulesLlmClient()
 
 

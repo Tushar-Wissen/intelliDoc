@@ -26,6 +26,10 @@ class ClassificationResultSchema(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class SummaryResultSchema(BaseModel):
+    summary: str = Field(min_length=1)
+
+
 class ProvenanceField(BaseModel):
     field_name: str = Field(alias="fieldName", min_length=1)
     field_value: str = Field(alias="fieldValue", min_length=1)

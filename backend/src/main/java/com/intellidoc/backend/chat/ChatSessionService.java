@@ -2,6 +2,7 @@ package com.intellidoc.backend.chat;
 
 import com.intellidoc.backend.dto.ChatMessageDto;
 import com.intellidoc.backend.dto.ChatSessionDetailResponseDto;
+import com.intellidoc.backend.dto.ChatSessionListResponseDto;
 import com.intellidoc.backend.dto.ChatSessionResponseDto;
 import com.intellidoc.backend.dto.CreateChatSessionRequestDto;
 import com.intellidoc.backend.dto.ScopeRequestDto;
@@ -75,25 +76,38 @@ public class ChatSessionService {
     }
 
     @Transactional(readOnly = true)
+    public ChatSessionListResponseDto listSessions(AuthPrincipal principal, UUID workspaceId) {
+        workspaceAccessService.requireMember(workspaceId, principal.userId());
+
+        List<ChatSessionDetailResponseDto> sessions = chatSessionRepository
+                .findByWorkspaceIdOrderByCreatedAtDesc(workspaceId)
+                .stream()
+                .map(this::toSessionDetail)
+                .toList();
+
+        return ChatSessionListResponseDto.builder()
+                .workspaceId(workspaceId)
+                .sessions(sessions)
+                .build();
+    }
+
+    @Transactional(readOnly = true)
     public ChatSessionDetailResponseDto getSession(AuthPrincipal principal, UUID sessionId) {
         ChatSessionEntity session = chatSessionRepository.findById(sessionId)
                 .orElseThrow(DmsExceptions::sessionNotFound);
 
         workspaceAccessService.requireMember(session.getWorkspaceId(), principal.userId());
 
+        return toSessionDetail(session);
+    }
+
+    private ChatSessionDetailResponseDto toSessionDetail(ChatSessionEntity session) {
+        UUID sessionId = session.getId();
         List<UUID> resolvedDocIds = chatSessionDocumentRepository.findDocumentIdsBySessionId(sessionId);
         List<ChatMessageEntity> messages = chatMessageRepository.findBySessionIdOrderByCreatedAtAsc(sessionId);
 
         List<ChatMessageDto> messageDtos = messages.stream()
-                .map(m -> ChatMessageDto.builder()
-                        .id(m.getId())
-                        .role(m.getRole())
-                        .content(m.getContent())
-                        .answerMode(m.getAnswerMode())
-                        .confidence(m.getConfidence())
-                        .isNotFound(m.isNotFound())
-                        .createdAt(m.getCreatedAt())
-                        .build())
+                .map(this::toMessageDto)
                 .toList();
 
         ScopeRequestDto scopeDto = ScopeRequestDto.builder()
@@ -110,6 +124,18 @@ public class ChatSessionService {
                 .resolvedDocumentIds(resolvedDocIds)
                 .messages(messageDtos)
                 .createdAt(session.getCreatedAt())
+                .build();
+    }
+
+    private ChatMessageDto toMessageDto(ChatMessageEntity message) {
+        return ChatMessageDto.builder()
+                .id(message.getId())
+                .role(message.getRole())
+                .content(message.getContent())
+                .answerMode(message.getAnswerMode())
+                .confidence(message.getConfidence())
+                .isNotFound(message.isNotFound())
+                .createdAt(message.getCreatedAt())
                 .build();
     }
 }

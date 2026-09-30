@@ -7,15 +7,20 @@ import uuid
 from app.pipeline.schemas.field_schemas import DocumentType
 
 
-def classification_prompt(document_id: uuid.UUID, text: str) -> str:
-    doc_types = ", ".join(item.value for item in DocumentType)
+def rules_classification_prompt(document_id: uuid.UUID, text: str) -> str:
     return (
-        "Classify the document and produce summary and topics as JSON.\n"
-        'Return JSON with exactly these keys: "documentType", "confidence", "topics", "summary".\n'
-        f"documentType must be one of: {doc_types}.\n"
-        "confidence must be a number between 0.0 and 1.0.\n"
-        "topics must be a non-empty array of strings ordered by importance (most important first).\n"
-        "summary must be a non-empty string describing the document.\n"
+        "Classify the document and produce topics.\n"
+        "topics must be ordered by importance (most important first).\n"
+        f"documentId={document_id}\n"
+        f"---\n{text}"
+    )
+
+
+def summary_prompt(document_id: uuid.UUID, text: str) -> str:
+    return (
+        "Summarize the document in 2-4 sentences as JSON.\n"
+        'Return JSON with exactly one key: "summary".\n'
+        "summary must be a non-empty string describing the document purpose and key points.\n"
         "Do not echo documentId or include any other keys.\n"
         f"documentId={document_id}\n"
         f"---\n{text}"
