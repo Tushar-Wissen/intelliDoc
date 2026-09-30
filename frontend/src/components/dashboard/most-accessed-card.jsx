@@ -1,6 +1,6 @@
 import React from 'react';
 import { ChevronRight } from 'lucide-react';
-// import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis } from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 const MOCK_DOCUMENTS = [
@@ -26,7 +26,7 @@ export function MostAccessedCard({ documents = MOCK_DOCUMENTS }) {
       <CardContent className="pt-2">
         <div className="flex flex-col gap-1">
           {documents.map((item, index) => {
-            // const barData = [{ name: item.name, views: item.views, rest: item.maxViews - item.views }];
+            const barData = [{ name: item.name, views: item.views, rest: item.maxViews - item.views }];
             return (
               <div key={item.id} className="flex items-center gap-4 py-2">
                 <div className="w-4 text-xs font-medium text-muted-foreground text-center">{index + 1}</div>
@@ -34,7 +34,7 @@ export function MostAccessedCard({ documents = MOCK_DOCUMENTS }) {
                   <p className="truncate text-sm font-medium text-foreground">{item.name}</p>
                   <p className="text-[11px] text-muted-foreground">{item.folder || item.category}</p>
                 </div>
-                {/*
+
                 <div className="w-36 hidden sm:block" style={{ height: 10 }}>
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart
@@ -51,10 +51,10 @@ export function MostAccessedCard({ documents = MOCK_DOCUMENTS }) {
                   </ResponsiveContainer>
                 </div>
                 <div className="w-6 text-right text-sm font-medium text-muted-foreground">{item.views}</div>
-                */}
-                <div className="w-36 hidden sm:block text-xs font-medium text-muted-foreground italic text-right">
+
+                {/* <div className="w-36 hidden sm:block text-xs font-medium text-muted-foreground italic text-right">
                   Coming soon
-                </div>
+                </div> */}
               </div>
             );
           })}

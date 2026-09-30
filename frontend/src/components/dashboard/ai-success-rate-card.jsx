@@ -47,8 +47,8 @@ function DonutChart({ percentage }) {
 
 export function AiSuccessRateCard({
   percentage = 88,
-  answeredCount = 412,
-  totalCount = 468,
+  answeredCount = 23,
+  totalCount = 28,
   weeklyChange = '+6%',
   unansweredTopic = '"Leave policy for contractors" — no matching document found. Consider uploading one.',
 }) {
@@ -59,10 +59,10 @@ export function AiSuccessRateCard({
         <p className="text-xs text-muted-foreground mt-1">Last 7 days</p>
       </CardHeader>
       <CardContent className="pt-4 flex flex-col justify-between">
-        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-sm italic">
+        {/* <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-sm italic">
           Coming soon
-        </div>
-        {/*
+        </div> */}
+
         <div className="flex items-center gap-6 mb-6">
           <DonutChart percentage={percentage} />
           <div className="flex flex-col justify-center">
@@ -74,11 +74,11 @@ export function AiSuccessRateCard({
             </p>
           </div>
         </div>
-        <div className="pt-4 border-t border-border">
+        {/* <div className="pt-4 border-t border-border">
           <p className="text-xs font-semibold mb-1 text-foreground">Top unanswered topic</p>
           <p className="text-xs text-muted-foreground leading-relaxed">{unansweredTopic}</p>
-        </div>
-        */}
+        </div> */}
+
       </CardContent>
     </Card>
   );
