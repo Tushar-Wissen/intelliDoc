@@ -59,6 +59,10 @@ export function AiSuccessRateCard({
         <p className="text-xs text-muted-foreground mt-1">Last 7 days</p>
       </CardHeader>
       <CardContent className="pt-4 flex flex-col justify-between">
+        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground text-sm italic">
+          Coming soon
+        </div>
+        {/*
         <div className="flex items-center gap-6 mb-6">
           <DonutChart percentage={percentage} />
           <div className="flex flex-col justify-center">
@@ -74,6 +78,7 @@ export function AiSuccessRateCard({
           <p className="text-xs font-semibold mb-1 text-foreground">Top unanswered topic</p>
           <p className="text-xs text-muted-foreground leading-relaxed">{unansweredTopic}</p>
         </div>
+        */}
       </CardContent>
     </Card>
   );
