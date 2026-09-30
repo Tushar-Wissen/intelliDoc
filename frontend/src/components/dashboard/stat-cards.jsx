@@ -46,8 +46,8 @@ export function DashboardStatCards({ totalDocuments, totalFolders }) {
         value={totalDocuments || 0}
         comparisonValue="+4"
         comparisonText="vs last week"
-        iconBg="bg-blue-500/10"
-        iconFg="text-blue-600 dark:text-blue-400"
+        iconBg="bg-wissen-navy/10"
+        iconFg="text-wissen-navy dark:text-wissen-navy-light"
       />
       <StatCard
         icon={Folder}

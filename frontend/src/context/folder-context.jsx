@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useWorkspace } from '@/context/workspace-context';
+import { documentsApi } from '@/lib/documents-api';
 import { modulesApi } from '@/lib/modules-api';
 
 const FolderContext = createContext(undefined);
@@ -115,6 +116,26 @@ export function FolderProvider({ children }) {
     [loadFolders]
   );
 
+  // Deletes a document via the API, drops it from its folder right away and re-syncs the list.
+  // Rejects with an ApiError when the request fails (state is left untouched in that case).
+  const deleteDocument = useCallback(
+    async (documentId) => {
+      await documentsApi.remove(documentId);
+
+      setFolders((prev) =>
+        prev.map((f) =>
+          f.files?.some((file) => file.id === documentId)
+            ? { ...f, files: f.files.filter((file) => file.id !== documentId) }
+            : f
+        )
+      );
+      setSelectedFileId((prev) => (prev === documentId ? null : prev));
+
+      loadFolders().catch(() => {});
+    },
+    [loadFolders]
+  );
+
   const value = useMemo(
     () => ({
       folders,
@@ -128,6 +149,7 @@ export function FolderProvider({ children }) {
       renameFolder,
       refreshFolders: loadFolders,
       deleteFolder,
+      deleteDocument,
     }),
     [
       folders,
@@ -140,6 +162,7 @@ export function FolderProvider({ children }) {
       renameFolder,
       loadFolders,
       deleteFolder,
+      deleteDocument,
     ]
   );
 

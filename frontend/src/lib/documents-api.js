@@ -109,6 +109,29 @@ export const documentsApi = {
     }
   },
 
+  // POST /workspaces/{workspaceId}/documents  (multipart: files[, title])
+  //   -> { documents: [...accepted], rejections: [{ fileName, code, message }] }
+  // Workspace-level upload: the documents are not put in any folder, so they show up as
+  // orphaned files. Same body and options as `upload`.
+  async uploadToWorkspace(workspaceId, { files, title }, { onProgress } = {}) {
+    if (!workspaceId) throw new Error('Select a workspace to upload documents into.');
+    try {
+      const { data } = await axios.post(documentsUrl(workspaceId), buildUploadFormData({ files, title }), {
+        headers: authHeaders(),
+        onUploadProgress: (event) => {
+          if (event.total) onProgress?.(Math.round((event.loaded * 100) / event.total));
+        },
+      });
+      const accepted = Array.isArray(data) ? data : data?.documents;
+      return {
+        documents: (Array.isArray(accepted) ? accepted : []).map(toAppDocument),
+        rejections: (data?.rejections ?? []).map(toAppRejection),
+      };
+    } catch (err) {
+      throw toApiError(err, DOCUMENT_ERROR_MESSAGES);
+    }
+  },
+
   // GET /documents/{documentId}
   //   -> { id, fileName, documentType, classificationConfidence, processingStatus,
   //        overview: string[], summary, uploadedByName, fileType, extension, fileSizeMb,
