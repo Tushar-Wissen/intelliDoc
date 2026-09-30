@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Search, Plus, UploadCloud, FileText, FolderKanban, FolderOpen } from 'lucide-react';
+import { Search, Plus, UploadCloud, FileText, FolderOpen } from 'lucide-react';
 
 import { AppShell } from '@/components/layout/app-shell';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Card, CardContent } from '@/components/ui/card';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { FolderCard } from '@/components/features/folder-card';
 import { FolderDetail } from '@/components/features/folder-detail';
 import { UploadDialog } from '@/components/features/upload-dialog';
@@ -248,23 +248,24 @@ export function WorkspacePage() {
         label: 'Total folders',
         value: String(folders.length),
         detail: folders.length > 0 ? `${totalFilesCount} files across workspace` : 'Create your first folder',
-        icon: FolderKanban,
       },
       {
         label: 'Files',
         value: String(totalFilesCount),
         detail: 'Across all folders',
-        icon: FileText,
-      },
-      {
-        label: 'Owner',
-        value: user?.fullName || 'You',
-        detail: 'Workspace admin',
-        icon: FolderOpen,
       },
     ],
-    [folders, totalFilesCount, user]
+    [folders, totalFilesCount]
   );
+
+  const ownerName = user?.fullName || 'You';
+  const ownerInitials =
+    ownerName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() || '')
+      .join('') || 'Y';
 
   // IntelliDoc AI's chat panel is always visible; its subtitle/placeholder switch between
   // workspace-wide and single-folder context depending on whether a folder is open.
@@ -299,12 +300,12 @@ export function WorkspacePage() {
       <div className="flex min-h-0 flex-1 flex-col gap-6">
         {!activeFolder && !(!foldersLoading && folders.length === 0) && (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="relative w-full sm:max-w-xs">
+            <div className="relative w-full sm:max-w-sm">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 id="folder-search-input"
                 placeholder="Filter folders..."
-                className="pl-9"
+                className="bg-card pl-9"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -313,8 +314,8 @@ export function WorkspacePage() {
               <Button
                 id="create-folder-button"
                 data-testid="create-folder-button"
-                variant="default"
-                className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
+                variant="outline"
+                className="gap-2 bg-card font-semibold"
                 onClick={() => setCreateFolderOpen(true)}
               >
                 <Plus className="h-4 w-4" />
@@ -323,7 +324,7 @@ export function WorkspacePage() {
               <Button
                 id="document-upload-button"
                 data-testid="document-upload-button"
-                className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
+                className="gap-2 bg-wissen-navy font-semibold text-white hover:bg-wissen-navy/90"
                 onClick={() => setUploadOpen(true)}
               >
                 <UploadCloud className="h-4 w-4" />
@@ -348,9 +349,10 @@ export function WorkspacePage() {
           <ScrollArea className="-mx-1 min-h-0 flex-1">
             <div className="px-1 pb-1 mr-80 sm:mr-96">
               {foldersLoading && folders.length === 0 ? (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                  {Array.from({ length: 6 }).map((_, idx) => (
-                    <div key={idx} className="h-40 animate-pulse rounded-2xl border border-border bg-muted/40" />
+                <div className="flex flex-col gap-3">
+                  <div className="h-36 animate-pulse rounded-xl border border-border bg-muted/40" />
+                  {Array.from({ length: 4 }).map((_, idx) => (
+                    <div key={idx} className="h-12 animate-pulse rounded-lg border border-border bg-muted/40" />
                   ))}
                 </div>
               ) : foldersError && folders.length === 0 ? (
@@ -385,48 +387,60 @@ export function WorkspacePage() {
                 </p>
               ) : (
                 <>
-                  <div className="mb-6 overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
-                    <div className="border-b border-border bg-gradient-to-r from-wissen-navy/5 via-card to-primary/5 p-5">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                        Workspace Overview
-                      </p>
-                      <h2 className="text-2xl font-semibold tracking-tight text-foreground">{workspaceName || 'Workspace'}</h2>
-                    </div>
+                  {/* Overview strip: folder/file counts and the owner in one card, split by dividers. */}
+                  <div
+                    data-testid="workspace-overview"
+                    className="grid grid-cols-1 divide-y divide-border rounded-xl border border-border bg-card shadow-sm sm:grid-cols-3 sm:divide-x sm:divide-y-0"
+                  >
+                    {workspaceSummary.map(({ label, value, detail }) => (
+                      <div key={label} className="min-w-0 px-5 py-5 xl:px-6">
+                        <p className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                          {label}
+                        </p>
+                        <p className="mt-1.5 text-2xl font-bold tabular-nums text-foreground">{value}</p>
+                        <p className="mt-1 text-sm text-muted-foreground">{detail}</p>
+                      </div>
+                    ))}
 
-                    <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
-                      {workspaceSummary.map(({ label, value, detail, icon: Icon }) => (
-                        <Card key={label} className="border-border bg-muted/20 shadow-none">
-                          <CardContent className="flex items-center justify-between gap-3 p-4">
-                            <div>
-                              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                                {label}
-                              </p>
-                              <p className="mt-2 text-2xl font-semibold tracking-tight text-foreground">{value}</p>
-                              <p className="mt-1 text-xs text-muted-foreground">{detail}</p>
-                            </div>
-                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-wissen-navy/10 text-wissen-navy dark:text-wissen-navy-light">
-                              <Icon className="h-4 w-4" />
-                            </div>
-                          </CardContent>
-                        </Card>
+                    <div className="min-w-0 px-5 py-5 xl:px-6">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                        Owner
+                      </p>
+                      <div className="mt-2 flex min-w-0 items-center gap-2.5">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-wissen-navy text-xs font-semibold text-white">
+                          {ownerInitials}
+                        </span>
+                        <span
+                          className="line-clamp-2 min-w-0 break-words text-sm font-semibold leading-snug text-foreground xl:text-base"
+                          title={ownerName}
+                        >
+                          {ownerName}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">Workspace admin</p>
+                    </div>
+                  </div>
+
+                  <div className="mb-2 mt-5 flex items-center gap-1.5">
+                    <h3 className="text-sm font-semibold text-foreground">Folders</h3>
+                    <span className="text-xs font-medium text-muted-foreground">{filteredFolders.length}</span>
+                  </div>
+
+                  <TooltipProvider delayDuration={200}>
+                    <div className="flex flex-col gap-2">
+                      {filteredFolders.map((folder) => (
+                        <FolderCard
+                          key={folder.id}
+                          folder={folder}
+                          selected={activeFolder?.id === folder.id}
+                          createdBy={user?.fullName || 'You'}
+                          onClick={() => handleSelectFolder(folder)}
+                          onRename={setRenamingFolder}
+                          onDelete={handleDeleteFolder}
+                        />
                       ))}
                     </div>
-                  </div>
-
-                  <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-                    {filteredFolders.map((folder, idx) => (
-                      <FolderCard
-                        key={folder.id}
-                        folder={folder}
-                        index={idx}
-                        selected={activeFolder?.id === folder.id}
-                        createdBy={user?.fullName || 'You'}
-                        onClick={() => handleSelectFolder(folder)}
-                        onRename={setRenamingFolder}
-                        onDelete={handleDeleteFolder}
-                      />
-                    ))}
-                  </div>
+                  </TooltipProvider>
                 </>
               )}
             </div>

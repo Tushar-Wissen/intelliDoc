@@ -1,9 +1,9 @@
 import React, { useRef } from 'react';
-import { Folder, FileText, Layers, Calendar, MoreVertical, Eye, Pencil, Trash2 } from 'lucide-react';
+import { Folder, FileText, Calendar, MoreVertical, Eye, Pencil, Trash2 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/format';
-import { colorForFolder } from '@/lib/folder-colors';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,14 +14,12 @@ import {
 
 export function FolderCard({
   folder,
-  index = 0,
   selected = false,
   onClick,
   onRename,
   onDelete,
   createdBy = 'You',
 }) {
-  const color = colorForFolder(folder, index);
   const initials = (createdBy || 'You')
     .split(/\s+/)
     .filter(Boolean)
@@ -54,6 +52,9 @@ export function FolderCard({
     onClick?.();
   };
 
+  const filesLabel = `${folder.filesCount ?? 0} ${folder.filesCount === 1 ? 'file' : 'files'}`;
+
+  // One row per folder: icon and name on the left, counts, creator, date and actions on the right.
   return (
     <div
       role="button"
@@ -62,20 +63,53 @@ export function FolderCard({
       onKeyDown={handleKeyDown}
       data-testid={`folder-card-${folder.id}`}
       className={cn(
-        'group relative flex w-full cursor-pointer flex-col items-stretch gap-3.5 overflow-hidden rounded-2xl border bg-card p-5 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-wissen-navy/40 hover:bg-accent/20 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wissen-navy/40',
+        'group flex w-full cursor-pointer items-center gap-3 rounded-lg border bg-card px-3 py-2 text-left shadow-sm transition-colors duration-200 hover:border-wissen-navy/40 hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wissen-navy/40',
         selected ? 'border-wissen-navy/60 bg-wissen-navy/5 ring-1 ring-wissen-navy/10' : 'border-border'
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div
-          className={cn(
-            'flex h-11 w-11 items-center justify-center rounded-xl border border-white/20 transition-transform duration-200 group-hover:scale-105',
-            color.bg
-          )}
-        >
-          <Folder className={cn('h-5 w-5', color.fg)} />
-        </div>
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-wissen-navy/10">
+        <Folder className="h-4 w-4 text-wissen-navy dark:text-wissen-navy-light" />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13px] font-semibold text-card-foreground" title={folder.name}>
+          {folder.name}
+        </p>
+        {/* Narrow screens: the right-hand details collapse into one line under the name. */}
+        <p className="truncate text-[11px] text-muted-foreground lg:hidden">
+          {filesLabel} · {formatDate(folder.createdAt)}
+        </p>
+      </div>
+
+      <div className="hidden shrink-0 items-center gap-3 text-[11px] text-muted-foreground lg:flex">
+        <span className="inline-flex items-center gap-1 rounded-full bg-muted/70 px-2 py-0.5 font-medium">
+          <FileText className="h-3 w-3" />
+          {filesLabel}
+        </span>
+
+        {/* Only the creator's initials are shown; the full name appears on hover. */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              tabIndex={0}
+              aria-label={`Created by ${createdBy}`}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              className="flex h-6 w-6 shrink-0 cursor-default items-center justify-center rounded-full bg-wissen-navy/10 text-[9px] font-semibold text-wissen-navy focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wissen-navy/40 dark:text-wissen-navy-light"
+            >
+              {initials}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent side="top">Created by {createdBy}</TooltipContent>
+        </Tooltip>
+
         <div className="flex items-center gap-1">
+          <Calendar className="h-3 w-3" />
+          <span className="whitespace-nowrap">{formatDate(folder.createdAt)}</span>
+        </div>
+      </div>
+
+      <div className="shrink-0">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -84,7 +118,7 @@ export function FolderCard({
                 aria-label={`More actions for ${folder.name}`}
                 className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wissen-navy/40"
               >
-                <MoreVertical className="h-4 w-4" />
+                <MoreVertical className="h-3.5 w-3.5" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -112,37 +146,6 @@ export function FolderCard({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-      </div>
-
-      <div className="space-y-2.5">
-        <p className="line-clamp-1 text-base font-semibold leading-snug text-card-foreground">
-          {folder.name}
-        </p>
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-            <FileText className="h-3 w-3" />
-            {folder.filesCount} {folder.filesCount === 1 ? 'file' : 'files'}
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-muted/70 px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-            <Layers className="h-3 w-3" />
-            {folder.sectionsCount} {folder.sectionsCount === 1 ? 'section' : 'sections'}
-          </span>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between border-t border-border pt-3.5 text-[11px] text-muted-foreground">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">
-            {initials}
-          </span>
-          <span className="truncate">Created by {createdBy}</span>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <Calendar className="h-3.5 w-3.5" />
-          <span>{formatDate(folder.createdAt)}</span>
-        </div>
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { UploadCloud, FileText, Loader2, X, Info } from 'lucide-react';
+import { UploadCloud, FileText, Loader2, X, Info, Briefcase, Lock } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { formatBytes } from '@/lib/format';
@@ -29,8 +29,11 @@ const titleFromFileName = (fileName) => fileName.replace(/\.[^/.]+$/, '');
 const isSameFile = (a, b) => a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
 
 // `defaultFolderId` preselects the folder the dialog was opened from (e.g. an open folder view).
-export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId = null }) {
-  const { selectedWorkspaceId } = useWorkspace();
+// `target="workspace"` uploads to the selected workspace without a folder (orphaned files): the
+// workspace is shown preselected and locked instead of the folder picker.
+export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId = null, target = 'folder' }) {
+  const { selectedWorkspaceId, workspaceName } = useWorkspace();
+  const workspaceTarget = target === 'workspace';
   const { folders, loading: foldersLoading, error: foldersError, refreshFolders } = useFolders();
   const toast = useToast();
 
@@ -48,7 +51,8 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
   const [error, setError] = useState('');
 
   const workspaceMissing = !selectedWorkspaceId;
-  const noFolders = !foldersLoading && folders.length === 0;
+  // Folders only matter when uploading into one.
+  const noFolders = !workspaceTarget && !foldersLoading && folders.length === 0;
   const selectedFolder = folders.find((f) => f.id === selectedFolderId) ?? null;
   // A title only applies when exactly one file is uploaded; several files keep their own names.
   const singleFile = files.length === 1;
@@ -125,7 +129,7 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
 
     const cleanedTitle = title.trim();
     const nextErrors = {
-      folder: selectedFolderId ? '' : 'Please select a folder to upload into.',
+      folder: workspaceTarget || selectedFolderId ? '' : 'Please select a folder to upload into.',
       title: singleFile && !cleanedTitle ? 'Document title is required.' : '',
       files: files.length ? '' : 'Please select at least one file to upload.',
     };
@@ -134,18 +138,17 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
       return;
     }
 
-    const folderName = selectedFolder?.name ?? 'the folder';
+    const folderName = workspaceTarget ? workspaceName || 'the workspace' : selectedFolder?.name ?? 'the folder';
     setSubmitting(true);
     setProgress(0);
     setRejections([]);
     setError('');
 
     try {
-      const result = await documentsApi.upload(
-        selectedFolderId,
-        { files, title: singleFile ? cleanedTitle : undefined },
-        { onProgress: setProgress }
-      );
+      const body = { files, title: singleFile ? cleanedTitle : undefined };
+      const result = workspaceTarget
+        ? await documentsApi.uploadToWorkspace(selectedWorkspaceId, body, { onProgress: setProgress })
+        : await documentsApi.upload(selectedFolderId, body, { onProgress: setProgress });
       const uploadedCount = result.documents.length;
 
       if (uploadedCount === 0) {
@@ -158,7 +161,7 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
       }
 
       // Folder contents come with the folder list, so re-fetch it to show the new documents.
-      refreshFolders();
+      if (!workspaceTarget) refreshFolders();
       onUploaded?.(result.documents);
       setSubmitting(false);
       onOpenChange(false);
@@ -177,7 +180,7 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
       }
     } catch (err) {
       // The folder may have been deleted meanwhile; refresh so the picker drops it.
-      if (err?.code === API_ERROR_CODES.NOT_FOUND) refreshFolders();
+      if (!workspaceTarget && err?.code === API_ERROR_CODES.NOT_FOUND) refreshFolders();
       setError(err?.message || 'Something went wrong. Please try again.');
       toast.error('Upload failed', err?.message || 'Something went wrong. Please try again.');
       setSubmitting(false);
@@ -209,6 +212,33 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
             </p>
           )}
 
+          {workspaceTarget ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="document-workspace-select">
+                Workspace <span className="text-destructive">*</span>
+              </Label>
+              {/* Always the current workspace; shown for context but not changeable here. */}
+              <Button
+                id="document-workspace-select"
+                data-testid="document-workspace-select"
+                type="button"
+                variant="outline"
+                disabled
+                aria-readonly="true"
+                className="w-full justify-between bg-muted/50 font-normal disabled:opacity-100"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-wissen-navy/10">
+                    <Briefcase className="h-3 w-3 text-wissen-navy dark:text-wissen-navy-light" />
+                  </span>
+                  <span className={cn('truncate', !workspaceName && 'text-muted-foreground')}>
+                    {workspaceName || 'No workspace selected'}
+                  </span>
+                </span>
+                <Lock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+              </Button>
+            </div>
+          ) : (
           <div className="space-y-1">
             <FolderSelect
               id="document-folder-select"
@@ -228,6 +258,7 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
             />
             {fieldErrors.folder && <p className="text-xs text-destructive">{fieldErrors.folder}</p>}
           </div>
+          )}
 
           {singleFile && (
             <div className="space-y-1.5">
@@ -286,16 +317,18 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
                 <p className="mt-1 text-xs text-muted-foreground">{FORMATS_LABEL} only &mdash; select as many as you need</p>
               </div>
             </label>
-            {fieldErrors.files && <p className="text-xs text-destructive">{fieldErrors.files}</p>}
+            {fieldErrors.files && <p className="break-words text-xs text-destructive">{fieldErrors.files}</p>}
           </div>
 
           {files.length > 0 && (
             <ul data-testid="document-files-list" className="max-h-40 space-y-1.5 overflow-y-auto">
               {files.map((file, index) => (
-                <li key={`${file.name}-${file.size}-${file.lastModified}`} className="flex items-center justify-between rounded-md border p-2 text-sm">
-                  <div className="flex items-center gap-2 overflow-hidden">
+                <li key={`${file.name}-${file.size}-${file.lastModified}`} className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm">
+                  <div className="flex min-w-0 flex-1 items-center gap-2">
                     <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate font-medium">{file.name}</span>
+                    <span className="min-w-0 truncate font-medium" title={file.name}>
+                      {file.name}
+                    </span>
                     <span className="shrink-0 text-xs text-muted-foreground">({formatBytes(file.size)})</span>
                   </div>
                   <button
@@ -333,7 +366,7 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
           )}
 
           {rejections.length > 0 && (
-            <ul className="space-y-1 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+            <ul className="space-y-1 break-words rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
               {rejections.map((rejection, idx) => (
                 <li key={`${rejection.fileName}-${idx}`}>{rejection.message}</li>
               ))}
@@ -341,12 +374,20 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
           )}
           {error && <p className="text-sm text-destructive">{error}</p>}
 
-          {selectedFolder && (
+          {workspaceTarget && workspaceName ? (
             <p className="flex items-start gap-2 rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
               <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              <span>Documents will be added to the &ldquo;{selectedFolder.name}&rdquo; folder.</span>
+              <span className="min-w-0 break-words">
+                Documents will be added to the &ldquo;{workspaceName}&rdquo; workspace without a folder. You can move
+                them to a folder later.
+              </span>
             </p>
-          )}
+          ) : !workspaceTarget && selectedFolder ? (
+            <p className="flex items-start gap-2 rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span className="min-w-0 break-words">Documents will be added to the &ldquo;{selectedFolder.name}&rdquo; folder.</span>
+            </p>
+          ) : null}
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={submitting}>

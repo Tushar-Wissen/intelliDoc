@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   Folder,
   FileText,
@@ -6,13 +6,18 @@ import {
   UploadCloud,
   Search,
   Sparkles,
+  Trash2,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { formatDate } from '@/lib/format';
+import { useFolders } from '@/context/folder-context';
+import { useToast } from '@/context/toast-context';
 import { DocumentView } from '@/components/features/document-view';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -57,7 +62,32 @@ function colorForFolder(folder) {
   return FOLDER_COLORS[hashKey(key) % FOLDER_COLORS.length];
 }
 
-function FileTableRow({ file, updatedAt, onClick }) {
+// File name that truncates to its cell and shows the full name in a tooltip, but only when
+// the name is actually cut off.
+function TruncatedName({ name }) {
+  const ref = useRef(null);
+  const [open, setOpen] = useState(false);
+
+  const handleOpenChange = (next) => {
+    const el = ref.current;
+    setOpen(next && Boolean(el) && el.scrollWidth > el.clientWidth);
+  };
+
+  return (
+    <Tooltip open={open} onOpenChange={handleOpenChange}>
+      <TooltipTrigger asChild>
+        <p ref={ref} className="truncate text-sm font-medium text-card-foreground">
+          {name}
+        </p>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="start" className="max-w-sm break-all">
+        {name}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function FileTableRow({ file, updatedAt, onClick, onDelete }) {
   const tagColor = TAG_COLORS[file.tag] ?? DEFAULT_TAG_COLOR;
   const sectionsCount = file.sections?.length ?? 0;
 
@@ -74,21 +104,21 @@ function FileTableRow({ file, updatedAt, onClick }) {
       }}
       className="cursor-pointer transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none"
     >
-      <td className="px-4 py-3">
+      <td className="px-4 py-3 align-middle">
         <div className="flex min-w-0 items-center gap-3">
           <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', tagColor.bg)}>
             <FileText className={cn('h-4 w-4', tagColor.fg)} />
           </span>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-card-foreground">{file.name}</p>
+          <div className="min-w-0 flex-1">
+            <TruncatedName name={file.name} />
             <p className="truncate text-xs text-muted-foreground sm:hidden">{file.tag}</p>
           </div>
         </div>
       </td>
-      <td className="hidden px-4 py-3 sm:table-cell">
+      <td className="hidden px-4 py-3 align-middle sm:table-cell">
         <span
           className={cn(
-            'inline-flex w-fit shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium capitalize',
+            'inline-flex max-w-full truncate rounded-full px-2 py-0.5 text-[11px] font-medium capitalize',
             tagColor.bg,
             tagColor.fg
           )}
@@ -96,11 +126,27 @@ function FileTableRow({ file, updatedAt, onClick }) {
           {file.tag}
         </span>
       </td>
-      <td className="hidden whitespace-nowrap px-4 py-3 text-xs text-muted-foreground md:table-cell">
-        {sectionsCount} {sectionsCount === 1 ? 'section' : 'sections'}
-      </td>
-      <td className="whitespace-nowrap px-4 py-3 text-right text-xs text-muted-foreground">
+      <td className="whitespace-nowrap px-4 py-3 text-right align-middle text-xs tabular-nums text-muted-foreground">
         {formatDate(updatedAt)}
+      </td>
+      <td className="py-3 pl-1 pr-3 text-right align-middle">
+        {/* The row itself opens the file, so keep clicks and keys on this button from reaching it. */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+          aria-label={`Delete ${file.name}`}
+          title="Delete document"
+          data-testid={`folder-file-delete-${file.id}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete?.(file);
+          }}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </td>
     </tr>
   );
@@ -109,7 +155,26 @@ function FileTableRow({ file, updatedAt, onClick }) {
 function FolderOverview({ folder, onFileClick, onUploadClick }) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
+  const [deletingFile, setDeletingFile] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const { deleteDocument } = useFolders();
+  const toast = useToast();
   const color = colorForFolder(folder);
+
+  const handleConfirmDelete = async () => {
+    if (!deletingFile || deleting) return;
+
+    setDeleting(true);
+    try {
+      await deleteDocument(deletingFile.id);
+      toast.success('Document deleted', `"${deletingFile.name}" was deleted.`);
+      setDeletingFile(null);
+    } catch (err) {
+      toast.error('Could not delete document', err?.message || 'Something went wrong. Please try again.');
+    } finally {
+      setDeleting(false);
+    }
+  };
   const allFiles = folder.files ?? [];
 
   const availableTags = useMemo(
@@ -230,14 +295,19 @@ function FolderOverview({ folder, onFileClick, onUploadClick }) {
         </p>
       ) : (
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border">
-          <div className="min-h-0 flex-1 overflow-y-auto">
-            <table className="w-full border-collapse text-left">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+            {/* Fixed layout: the side columns get set widths and Name takes the rest, so long
+                file names truncate instead of widening the table. */}
+            <TooltipProvider delayDuration={300}>
+            <table className="w-full table-fixed border-collapse text-left">
               <thead className="sticky top-0 z-10 bg-muted">
                 <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <th className="w-full px-4 py-2.5 font-semibold">Name</th>
-                  <th className="hidden px-4 py-2.5 font-semibold sm:table-cell">Type</th>
-                  <th className="hidden px-4 py-2.5 font-semibold md:table-cell">Sections</th>
-                  <th className="px-4 py-2.5 text-right font-semibold">Updated</th>
+                  <th className="px-4 py-2.5 font-semibold">Name</th>
+                  <th className="hidden w-28 px-4 py-2.5 font-semibold sm:table-cell">Type</th>
+                  <th className="w-32 px-4 py-2.5 text-right font-semibold">Updated</th>
+                  <th className="w-14 py-2.5 pl-1 pr-3">
+                    <span className="sr-only">Actions</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border bg-card">
@@ -247,13 +317,33 @@ function FolderOverview({ folder, onFileClick, onUploadClick }) {
                     file={file}
                     updatedAt={file.updatedAt ?? folder.updatedAt}
                     onClick={() => onFileClick?.({ ...file, folderId: folder.id, folderName: folder.name })}
+                    onDelete={setDeletingFile}
                   />
                 ))}
               </tbody>
             </table>
+            </TooltipProvider>
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(deletingFile)}
+        onOpenChange={(open) => !deleting && !open && setDeletingFile(null)}
+        title="Delete document?"
+        description={
+          deletingFile ? (
+            <span className="break-words">
+              &ldquo;{deletingFile.name}&rdquo; will be permanently deleted. This can&rsquo;t be undone.
+            </span>
+          ) : null
+        }
+        confirmLabel="Delete"
+        destructive
+        loading={deleting}
+        testIdPrefix="delete-document"
+        onConfirm={handleConfirmDelete}
+      />
     </div>
   );
 }

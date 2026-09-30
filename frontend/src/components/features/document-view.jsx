@@ -282,11 +282,11 @@ function SummarySection({ text }) {
 
 function DetailItem({ Icon, iconClassName, label, children }) {
   return (
-    <div className="flex items-start gap-3">
-      <Icon className={cn('mt-0.5 h-5 w-5 shrink-0 text-wissen-navy dark:text-wissen-navy-light', iconClassName)} />
+    <div className="flex items-start gap-2">
+      <Icon className={cn('mt-0.5 h-4 w-4 shrink-0 text-wissen-navy dark:text-wissen-navy-light', iconClassName)} />
       <div className="min-w-0">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <div className="mt-0.5 break-words text-sm font-medium text-foreground">{children}</div>
+        <p className="text-[11px] leading-tight text-muted-foreground">{label}</p>
+        <div className="mt-0.5 break-words text-[13px] font-medium leading-snug text-foreground">{children}</div>
       </div>
     </div>
   );
@@ -307,7 +307,7 @@ function DetailsSection({ document }) {
       Icon: CheckCircle2,
       iconClassName: style.icon,
       value: status ? (
-        <Badge className={cn('mt-0.5 rounded-md border-transparent px-2.5 py-0.5 text-xs font-bold uppercase', style.badge)}>
+        <Badge className={cn('mt-0.5 rounded-md border-transparent px-2 py-px text-[10px] font-bold uppercase', style.badge)}>
           {status}
         </Badge>
       ) : null,
@@ -325,11 +325,11 @@ function DetailsSection({ document }) {
   ];
 
   return (
-    <section className="rounded-xl border border-border bg-muted/40 p-5" data-testid="document-details">
-      <div className="mb-4">
+    <section className="rounded-xl border border-border bg-muted/40 p-4" data-testid="document-details">
+      <div className="mb-3">
         <SectionTitle>Document Details</SectionTitle>
       </div>
-      <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-x-4 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-3">
         {items.map(({ label, Icon, iconClassName, value, className }) => (
           <DetailItem key={label} Icon={Icon} iconClassName={iconClassName} label={label}>
             {value == null || value === '' ? (

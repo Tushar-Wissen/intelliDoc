@@ -165,8 +165,8 @@ export function OrphanedFilesPage() {
       .catch(() => {});
   }, [selectedWorkspaceId]);
 
-  // Uploads go into a folder, so normally none of them belong here; keep only any that the
-  // server returned without one, then re-sync.
+  // Uploads from this page go to the workspace without a folder, so they belong here: show them
+  // right away (skipping any the server did put in a folder), then re-sync.
   const handleUploaded = useCallback(
     (uploaded) => {
       const unassigned = keepUnassigned(uploaded);
@@ -312,6 +312,17 @@ export function OrphanedFilesPage() {
 
                 <div className="flex shrink-0 items-center gap-2">
                   <Button
+                    id="orphaned-files-upload-button"
+                    data-testid="orphaned-files-upload-button"
+                    type="button"
+                    className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
+                    disabled={!selectedWorkspaceId}
+                    onClick={() => setUploadOpen(true)}
+                  >
+                    <UploadCloud className="h-4 w-4" />
+                    Upload
+                  </Button>
+                  <Button
                     type="button"
                     variant="outline"
                     className="gap-2"
@@ -414,7 +425,7 @@ export function OrphanedFilesPage() {
             </>
           )}
         </div>
-      <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} onUploaded={handleUploaded} />
+      <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} onUploaded={handleUploaded} target="workspace" />
       <MoveToFolderDialog
         open={moveOpen}
         onOpenChange={setMoveOpen}
