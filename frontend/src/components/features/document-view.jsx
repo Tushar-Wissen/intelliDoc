@@ -1,11 +1,27 @@
-import React, { useState } from 'react';
-import { AlertTriangle, AlignLeft, File, FileText, RotateCw } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import {
+  AlertTriangle,
+  AlignLeft,
+  Calendar,
+  Check,
+  CheckCircle2,
+  Copy,
+  File,
+  FileText,
+  FileType,
+  HardDrive,
+  Hash,
+  Info,
+  RotateCw,
+  User,
+} from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { formatBytes, formatDate } from '@/lib/format';
+import { formatDate, formatDateTime, formatMegabytes } from '@/lib/format';
 import { getFileTypeMeta } from '@/lib/file-types';
 import { useDocumentDetail } from '@/hooks/use-document-detail';
 import { useDocumentFile } from '@/hooks/use-document-file';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DocumentPreview } from '@/components/features/document-preview';
 
@@ -13,6 +29,8 @@ const TABS = [
   { id: 'summary', label: 'Summary', Icon: AlignLeft },
   { id: 'document', label: 'Document', Icon: File },
 ];
+
+const FALLBACK = '—';
 
 // Confidence bar color: green when the classifier is sure, amber when it's a guess.
 function confidenceColor(value) {
@@ -27,24 +45,83 @@ function confidenceTextColor(value) {
   return 'text-destructive';
 }
 
+function toPercent(value) {
+  return value == null || Number.isNaN(Number(value)) ? null : Math.round(Number(value) * 100);
+}
+
+// READY is done, FAILED is terminal, anything else is still somewhere in the pipeline.
+function statusStyle(status) {
+  if (status === 'READY') return { badge: 'bg-success/10 text-success', icon: 'text-success' };
+  if (status === 'FAILED') return { badge: 'bg-destructive/10 text-destructive', icon: 'text-destructive' };
+  return {
+    badge: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+    icon: 'text-amber-600 dark:text-amber-400',
+  };
+}
+
 function Skeleton({ className }) {
   return <div className={cn('animate-pulse rounded-md bg-muted', className)} />;
 }
 
-function TextBlock({ title, text, emptyText }) {
+function SectionTitle({ children }) {
   return (
-    <div className="rounded-xl border border-border bg-muted/40 p-5">
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{title}</p>
-      <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">
-        {text || <span className="text-muted-foreground">{emptyText}</span>}
-      </p>
-    </div>
+    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{children}</p>
+  );
+}
+
+function CopyButton({ text, label }) {
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return undefined;
+    const timer = setTimeout(() => setCopied(false), 1500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch {
+      // Clipboard can be blocked (insecure context, permissions); nothing useful to show.
+    }
+  };
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon"
+      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+      onClick={handleCopy}
+      disabled={!text}
+      aria-label={copied ? 'Copied' : label}
+      title={copied ? 'Copied' : label}
+    >
+      {copied ? <Check className="h-4 w-4 text-success" /> : <Copy className="h-4 w-4" />}
+    </Button>
+  );
+}
+
+function SectionCard({ title, copyText, copyLabel, children, testId }) {
+  return (
+    <section className="rounded-xl border border-border bg-muted/40 p-5" data-testid={testId}>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <SectionTitle>{title}</SectionTitle>
+        {copyLabel ? <CopyButton text={copyText} label={copyLabel} /> : null}
+      </div>
+      {children}
+    </section>
   );
 }
 
 function ViewTabs({ value, onChange }) {
   return (
-    <div role="tablist" aria-label="Document view" className="inline-flex rounded-full border border-border bg-muted/50 p-1">
+    <div
+      role="tablist"
+      aria-label="Document view"
+      className="flex gap-1 rounded-xl border border-border bg-muted/40 px-2 pt-2"
+    >
       {TABS.map(({ id, label, Icon }) => {
         const active = value === id;
         return (
@@ -58,10 +135,10 @@ function ViewTabs({ value, onChange }) {
             aria-controls={`document-panel-${id}`}
             onClick={() => onChange(id)}
             className={cn(
-              'flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              '-mb-px flex items-center gap-2 rounded-t-lg border-b-2 px-5 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               active
-                ? 'bg-card text-wissen-navy shadow-sm dark:text-wissen-navy-light'
-                : 'text-muted-foreground hover:text-foreground'
+                ? 'border-primary bg-card text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
             )}
           >
             <Icon className="h-4 w-4" />
@@ -79,7 +156,7 @@ function ConfidenceBlock({ detailState }) {
 
   if (status === 'loading' || status === 'idle') {
     return (
-      <div className="w-full space-y-2 sm:w-44" aria-busy="true">
+      <div className="w-full space-y-2 sm:w-52" aria-busy="true">
         <Skeleton className="h-3 w-24" />
         <Skeleton className="h-1.5 w-full" />
       </div>
@@ -107,12 +184,12 @@ function ConfidenceBlock({ detailState }) {
   }
 
   const confidence = document.classificationConfidence;
-  if (confidence == null) return null;
-  const percent = Math.round(confidence * 100);
+  const percent = toPercent(confidence);
+  if (percent == null) return null;
 
   return (
     <div
-      className="w-full rounded-lg border border-border bg-muted/40 px-3.5 py-2.5 sm:w-44"
+      className="w-full rounded-lg border border-border bg-muted/40 px-4 py-3 sm:w-52"
       data-testid="document-confidence"
     >
       <div className="flex items-baseline justify-between gap-3">
@@ -133,30 +210,31 @@ function ConfidenceBlock({ detailState }) {
   );
 }
 
-// The one place the document's metadata is shown: name, size, upload date, pages, and the
-// classifier's confidence on the right.
+// Name, size, upload date/uploader, and the classifier's confidence on the right.
 function FileCard({ file, detailState }) {
-  const typeMeta = getFileTypeMeta(file.name);
   const document = detailState.document;
+  const name = document?.name || file.name;
+  const typeMeta = getFileTypeMeta(name);
 
-  const meta = [
-    file.size ? formatBytes(file.size) : null,
-    `Uploaded ${formatDate(document?.createdAt ?? file.createdAt)}`,
-    document?.pageCount ? `${document.pageCount} ${document.pageCount === 1 ? 'page' : 'pages'}` : null,
-  ].filter(Boolean);
+  const uploaded = `Uploaded ${formatDate(document?.createdAt ?? file.createdAt)}${
+    document?.uploadedByName ? ` by ${document.uploadedByName}` : ''
+  }`;
+  const meta = [document?.fileSizeMb != null ? formatMegabytes(document.fileSizeMb) : null, uploaded].filter(Boolean);
 
   return (
     <div
       data-testid="document-file-card"
       className="flex flex-col gap-4 rounded-xl border border-border bg-card px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
     >
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <div className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', typeMeta.className)}>
+      <div className="flex min-w-0 flex-1 items-center gap-4">
+        <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-lg', typeMeta.className)}>
           <FileText className="h-5 w-5" />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-card-foreground">{file.name}</p>
-          <p className="truncate text-xs text-muted-foreground">{meta.join(' · ')}</p>
+          <p className="truncate text-base font-semibold text-card-foreground" title={name}>
+            {name}
+          </p>
+          <p className="truncate text-sm text-muted-foreground">{meta.join(' · ')}</p>
         </div>
       </div>
 
@@ -164,6 +242,105 @@ function FileCard({ file, detailState }) {
         <ConfidenceBlock detailState={detailState} />
       </div>
     </div>
+  );
+}
+
+function OverviewSection({ items }) {
+  return (
+    <SectionCard
+      title="Overview"
+      copyText={items.join(', ')}
+      copyLabel="Copy overview"
+      testId="document-overview"
+    >
+      {items.length ? (
+        <ul className="flex flex-wrap gap-2.5">
+          {items.map((item, idx) => (
+            <li key={`${item}-${idx}`}>
+              <Badge className="rounded-full border-transparent bg-wissen-navy px-5 py-2 text-sm font-medium text-white hover:bg-wissen-navy dark:bg-wissen-navy-light">
+                {item}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">No overview yet. It appears once processing finishes.</p>
+      )}
+    </SectionCard>
+  );
+}
+
+function SummarySection({ text }) {
+  return (
+    <SectionCard title="Summary" copyText={text} copyLabel="Copy summary" testId="document-summary">
+      <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">
+        {text || <span className="text-muted-foreground">No summary yet. It appears once processing finishes.</span>}
+      </p>
+    </SectionCard>
+  );
+}
+
+function DetailItem({ Icon, iconClassName, label, children }) {
+  return (
+    <div className="flex items-start gap-3">
+      <Icon className={cn('mt-0.5 h-5 w-5 shrink-0 text-wissen-navy dark:text-wissen-navy-light', iconClassName)} />
+      <div className="min-w-0">
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <div className="mt-0.5 break-words text-sm font-medium text-foreground">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function DetailsSection({ document }) {
+  const status = document.status;
+  const style = statusStyle(status);
+  const percent = toPercent(document.classificationConfidence);
+  const extension = document.extension ? document.extension.toUpperCase() : null;
+
+  // Listed row by row so the three-column grid reads like the reference layout.
+  const items = [
+    { label: 'Document Type', Icon: FileText, value: document.documentType, className: 'capitalize' },
+    { label: 'Page Count', Icon: Hash, value: document.pageCount },
+    {
+      label: 'Processing Status',
+      Icon: CheckCircle2,
+      iconClassName: style.icon,
+      value: status ? (
+        <Badge className={cn('mt-0.5 rounded-md border-transparent px-2.5 py-0.5 text-xs font-bold uppercase', style.badge)}>
+          {status}
+        </Badge>
+      ) : null,
+    },
+    { label: 'File Type', Icon: FileType, value: document.fileType },
+    { label: 'Uploaded By', Icon: User, value: document.uploadedByName },
+    {
+      label: 'Classification Confidence',
+      Icon: Info,
+      value: percent != null ? <span className="font-semibold text-primary">{percent}%</span> : null,
+    },
+    { label: 'File Size', Icon: HardDrive, value: document.fileSizeMb != null ? formatMegabytes(document.fileSizeMb) : null },
+    { label: 'Uploaded On', Icon: Calendar, value: document.createdAt ? formatDateTime(document.createdAt) : null },
+    { label: 'Extension', Icon: File, value: extension },
+  ];
+
+  return (
+    <section className="rounded-xl border border-border bg-muted/40 p-5" data-testid="document-details">
+      <div className="mb-4">
+        <SectionTitle>Document Details</SectionTitle>
+      </div>
+      <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map(({ label, Icon, iconClassName, value, className }) => (
+          <DetailItem key={label} Icon={Icon} iconClassName={iconClassName} label={label}>
+            {value == null || value === '' ? (
+              <span className="text-muted-foreground">{FALLBACK}</span>
+            ) : (
+              <span className={className}>{value}</span>
+            )}
+          </DetailItem>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -181,46 +358,43 @@ export function DocumentView({ file }) {
     <div className="flex min-h-0 flex-1 flex-col gap-5" data-testid="document-view">
       <FileCard file={file} detailState={detailState} />
 
-      <div className="flex flex-col gap-5 rounded-xl border border-border bg-card p-5 sm:p-6">
-        <ViewTabs value={tab} onChange={setTab} />
+      <ViewTabs value={tab} onChange={setTab} />
 
-        {tab === 'summary' ? (
-          <div
-            role="tabpanel"
-            id="document-panel-summary"
-            aria-labelledby="document-tab-summary"
-            className="flex flex-col gap-4"
-          >
-            {detailState.status === 'success' ? (
-              <>
-                <TextBlock
-                  title="Overview"
-                  text={document.overview}
-                  emptyText="No overview yet. It appears once processing finishes."
-                />
-                <TextBlock
-                  title="Summary"
-                  text={document.summary}
-                  emptyText="No summary yet. It appears once processing finishes."
-                />
-              </>
-            ) : detailState.status === 'error' ? (
-              <p className="rounded-xl border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
-                The summary is unavailable until the document details load.
-              </p>
-            ) : (
-              <>
-                <Skeleton className="h-24 w-full rounded-xl" />
-                <Skeleton className="h-32 w-full rounded-xl" />
-              </>
-            )}
-          </div>
-        ) : (
-          <div role="tabpanel" id="document-panel-document" aria-labelledby="document-tab-document">
-            <DocumentPreview key={file.id} file={file} fileState={fileState} />
-          </div>
-        )}
-      </div>
+      {tab === 'summary' ? (
+        <div
+          role="tabpanel"
+          id="document-panel-summary"
+          aria-labelledby="document-tab-summary"
+          className="flex flex-col gap-5"
+        >
+          {detailState.status === 'success' ? (
+            <>
+              <OverviewSection items={document.overview ?? []} />
+              <SummarySection text={document.summary} />
+              <DetailsSection document={document} />
+            </>
+          ) : detailState.status === 'error' ? (
+            <p className="rounded-xl border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
+              The summary is unavailable until the document details load.
+            </p>
+          ) : (
+            <>
+              <Skeleton className="h-24 w-full rounded-xl" />
+              <Skeleton className="h-28 w-full rounded-xl" />
+              <Skeleton className="h-44 w-full rounded-xl" />
+            </>
+          )}
+        </div>
+      ) : (
+        <div
+          role="tabpanel"
+          id="document-panel-document"
+          aria-labelledby="document-tab-document"
+          className="rounded-xl border border-border bg-card p-5 sm:p-6"
+        >
+          <DocumentPreview key={file.id} file={file} fileState={fileState} />
+        </div>
+      )}
     </div>
   );
 }

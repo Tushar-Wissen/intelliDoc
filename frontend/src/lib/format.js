@@ -17,6 +17,14 @@ export function formatBytes(content) {
   return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
+// Size already expressed in MB (e.g. the API's fileSizeMb), e.g. "0.34 MB", "12.5 MB".
+export function formatMegabytes(value) {
+  if (value == null || Number.isNaN(Number(value))) return '—';
+  const mb = Number(value);
+  if (mb > 0 && mb < 0.01) return '< 0.01 MB';
+  return `${mb >= 10 ? mb.toFixed(1) : mb.toFixed(2)} MB`;
+}
+
 export function estimatePageCount(content) {
   if (!content) return 1;
   return Math.max(1, Math.ceil(content.length / 3000));
