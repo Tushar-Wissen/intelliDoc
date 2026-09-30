@@ -1,13 +1,13 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Menu, Database, Server, Cpu, LogOut } from 'lucide-react';
+import { Menu, Database, Server, Cpu, LogOut } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { ThemeToggle } from '@/components/theme-toggle';
+import { WorkspaceSelector } from '@/components/layout/workspace-selector';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,7 +45,7 @@ function getInitials(user) {
   return (user?.email?.[0] || '?').toUpperCase();
 }
 
-export function Header({ title, subtitle, healthStatus, onMenuClick }) {
+export function Header({ title, subtitle, badge, testId, healthStatus, onMenuClick }) {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
 
@@ -62,23 +62,35 @@ export function Header({ title, subtitle, healthStatus, onMenuClick }) {
   const allUp = services.every((s) => s.status === 'up');
 
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:px-6">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="md:hidden"
-        aria-label="Open menu"
-        onClick={onMenuClick}
-      >
-        <Menu className="h-5 w-5" />
-      </Button>
-
-      <div className="min-w-0 flex-1">
-        <h1 className="truncate text-base font-semibold tracking-tight">{title}</h1>
-        {subtitle && <p className="hidden truncate text-xs text-muted-foreground sm:block">{subtitle}</p>}
-      </div>
-
+    <header id={testId} data-testid={testId} className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 sm:px-6">
       <TooltipProvider delayDuration={200}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="md:hidden"
+          aria-label="Open menu"
+          onClick={onMenuClick}
+        >
+          <Menu className="h-5 w-5" />
+        </Button>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <h1 className="truncate text-base font-semibold tracking-tight">{title}</h1>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{title}</TooltipContent>
+            </Tooltip>
+            {badge && (
+              <span className="shrink-0 rounded-full bg-wissen-navy/10 px-2 py-0.5 text-[11px] font-semibold text-wissen-navy dark:text-wissen-navy-light">
+                {badge}
+              </span>
+            )}
+          </div>
+          {subtitle && <p className="hidden truncate text-xs text-muted-foreground sm:block">{subtitle}</p>}
+        </div>
+
         <DropdownMenu>
           <DropdownMenuContent align="end" className="w-64">
             <DropdownMenuLabel>Service health</DropdownMenuLabel>
@@ -94,19 +106,9 @@ export function Header({ title, subtitle, healthStatus, onMenuClick }) {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
-              <Bell className="h-[1.1rem] w-[1.1rem]" />
-              <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-primary" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Notifications</TooltipContent>
-        </Tooltip>
       </TooltipProvider>
 
-      <ThemeToggle />
+      <WorkspaceSelector />
 
       <Separator orientation="vertical" className="hidden h-6 sm:block" />
 
@@ -114,7 +116,7 @@ export function Header({ title, subtitle, healthStatus, onMenuClick }) {
         <DropdownMenuTrigger asChild>
           <Button id="account-menu-trigger" variant="ghost" className="gap-2 px-1.5">
             <Avatar className="h-7 w-7">
-              <AvatarFallback className="bg-primary/10 text-xs font-semibold text-primary">
+              <AvatarFallback className="bg-wissen-navy text-xs font-semibold text-white dark:bg-wissen-navy-light">
                 {getInitials(user)}
               </AvatarFallback>
             </Avatar>
@@ -125,9 +127,6 @@ export function Header({ title, subtitle, healthStatus, onMenuClick }) {
           <DropdownMenuSeparator />
           <DropdownMenuItem id="profile-menu-item" onClick={() => navigate('/profile')}>
             Profile
-          </DropdownMenuItem>
-          <DropdownMenuItem id="settings-menu-item" disabled>
-            Settings
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem id="sign-out-menu-item" onClick={handleSignOut}>

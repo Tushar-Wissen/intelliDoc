@@ -1,11 +1,17 @@
-import React, { useState } from 'react';
-import axios from 'axios';
-import { UploadCloud, FileText, ClipboardType, Loader2, Sparkles, X, Folder } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { UploadCloud, FileText, Loader2, X, Info } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
+import { formatBytes } from '@/lib/format';
+import { getFileExtension } from '@/lib/file-types';
+import { API_ERROR_CODES } from '@/lib/api-client';
+import { documentsApi, SUPPORTED_UPLOAD_EXTENSIONS } from '@/lib/documents-api';
+import { useWorkspace } from '@/context/workspace-context';
+import { useFolders } from '@/context/folder-context';
+import { useToast } from '@/context/toast-context';
+import { FolderSelect } from '@/components/features/folder-select';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import {
   Dialog,
@@ -16,227 +22,237 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-const TABS = [
-  { key: 'file', label: 'Upload file', icon: UploadCloud },
-  { key: 'text', label: 'Paste text', icon: ClipboardType },
-];
+const ACCEPT = SUPPORTED_UPLOAD_EXTENSIONS.map((ext) => `.${ext.toLowerCase()}`).join(',');
+const FORMATS_LABEL = SUPPORTED_UPLOAD_EXTENSIONS.join(' or ');
 
-export function UploadDialog({ open, onOpenChange, apiBaseUrl = '', onCreated, onShowToast }) {
-  const [tab, setTab] = useState('file');
-  const [isDragging, setIsDragging] = useState(false);
-  const [selectedFiles, setSelectedFiles] = useState([]);
+const titleFromFileName = (fileName) => fileName.replace(/\.[^/.]+$/, '');
+const isSameFile = (a, b) => a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
 
+// `defaultFolderId` preselects the folder the dialog was opened from (e.g. an open folder view).
+export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId = null }) {
+  const { selectedWorkspaceId } = useWorkspace();
+  const { folders, loading: foldersLoading, error: foldersError, refreshFolders } = useFolders();
+  const toast = useToast();
+
+  const [files, setFiles] = useState([]);
+  // Every upload goes into a folder (module); the API has no workspace-level upload here.
+  const [selectedFolderId, setSelectedFolderId] = useState(null);
   const [title, setTitle] = useState('');
-  const [content, setContent] = useState('');
+  // Once the user edits the title themselves, picking another file no longer overwrites it.
+  const [titleEdited, setTitleEdited] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [fieldErrors, setFieldErrors] = useState({ folder: '', title: '', files: '' });
+  const [rejections, setRejections] = useState([]);
   const [error, setError] = useState('');
 
-  const reset = () => {
-    setSelectedFiles([]);
-    setIsDragging(false);
+  const workspaceMissing = !selectedWorkspaceId;
+  const noFolders = !foldersLoading && folders.length === 0;
+  const selectedFolder = folders.find((f) => f.id === selectedFolderId) ?? null;
+  // A title only applies when exactly one file is uploaded; several files keep their own names.
+  const singleFile = files.length === 1;
+
+  // Start with a clean form each time the dialog opens.
+  useEffect(() => {
+    if (!open) return;
+    setFiles([]);
+    setSelectedFolderId(defaultFolderId);
     setTitle('');
-    setContent('');
+    setTitleEdited(false);
+    setIsDragging(false);
+    setProgress(0);
+    setFieldErrors({ folder: '', title: '', files: '' });
+    setRejections([]);
     setError('');
-    setTab('file');
+  }, [open, defaultFolderId]);
+
+  // Forget a folder selection that no longer exists (e.g. after switching workspace).
+  // Wait for the list to load so a preselected folder isn't dropped before it arrives.
+  useEffect(() => {
+    if (foldersLoading) return;
+    if (selectedFolderId && !folders.some((f) => f.id === selectedFolderId)) setSelectedFolderId(null);
+  }, [folders, foldersLoading, selectedFolderId]);
+
+  // Keep the suggested title in step with the selection while the user hasn't typed their own.
+  useEffect(() => {
+    if (titleEdited) return;
+    setTitle(files.length === 1 ? titleFromFileName(files[0].name) : '');
+  }, [files, titleEdited]);
+
+  const handleOpenChange = (next) => {
+    // Don't let the dialog be dismissed mid-upload; the outcome would otherwise go unseen.
+    if (submitting) return;
+    onOpenChange(next);
+  };
+
+  // Adds picked/dropped files to the selection, skipping unsupported types and duplicates.
+  const addFiles = (candidates) => {
+    if (!candidates.length) return;
+    setRejections([]);
+    setError('');
+
+    const supported = [];
+    const unsupported = [];
+    candidates.forEach((candidate) => {
+      if (SUPPORTED_UPLOAD_EXTENSIONS.includes(getFileExtension(candidate.name))) supported.push(candidate);
+      else unsupported.push(candidate.name);
+    });
+
+    setFiles((prev) => [...prev, ...supported.filter((f) => !prev.some((p) => isSameFile(p, f)))]);
+    setFieldErrors((prev) => ({
+      ...prev,
+      files: unsupported.length
+        ? `Unsupported file type: ${unsupported.join(', ')}. Only ${FORMATS_LABEL} files are accepted.`
+        : '',
+    }));
+  };
+
+  const removeFile = (index) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index));
+    setFieldErrors((prev) => ({ ...prev, files: '' }));
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
     setIsDragging(false);
-    if (e.dataTransfer.files) {
-      setSelectedFiles((prev) => [...prev, ...Array.from(e.dataTransfer.files)]);
-    }
+    if (!submitting && !workspaceMissing) addFiles(Array.from(e.dataTransfer.files ?? []));
   };
 
-  const handleOpenChange = (next) => {
-    if (!next) reset();
-    onOpenChange(next);
-  };
-
-  const createDummyDocument = (file, fileContent = '') => {
-    const id = 'doc_' + Math.random().toString(36).substring(2, 10);
-    const isPdf = file.name.toLowerCase().endsWith('.pdf');
-    const isDocx = file.name.toLowerCase().endsWith('.docx') || file.name.toLowerCase().endsWith('.doc');
-    const isCsv = file.name.toLowerCase().endsWith('.csv');
-
-    return {
-      id,
-      title: file.name,
-      content: fileContent || `Extracted document content for ${file.name}. Parsed and scheduled for AI evaluation.`,
-      contentType: file.type || (isPdf ? 'application/pdf' : isDocx ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : isCsv ? 'text/csv' : 'text/plain'),
-      status: 'PROCESSING',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      summary: null,
-      sentiment: null,
-      confidenceScore: null,
-      entities: [],
-      keyTopics: [],
-    };
-  };
-
-  const readFileContent = async (file) => {
-    try {
-      if (file.type === 'text/plain' || file.name.endsWith('.txt') || file.name.endsWith('.csv')) {
-        return await file.text();
-      }
-      const buffer = await file.arrayBuffer();
-      const text = new TextDecoder('latin1').decode(buffer);
-      const matches = text.match(/BT[\s\S]*?ET/g);
-      if (matches && matches.length > 0) {
-        const extracted = matches
-          .map((block) => {
-            const strings = block.match(/\((.*?)\)\s*Tj/g) || [];
-            return strings.map((s) => s.replace(/^\(/, '').replace(/\)\s*Tj$/, '')).join(' ');
-          })
-          .filter(Boolean)
-          .join('\n');
-        if (extracted.trim().length > 10) {
-          return extracted.trim();
-        }
-      }
-      const asciiOnly = text.replace(/[^\x20-\x7E\t\r\n]/g, ' ').replace(/\s+/g, ' ').trim();
-      if (asciiOnly.length > 30) {
-        return asciiOnly;
-      }
-      return await file.text();
-    } catch {
-      return `Document content for ${file.name}`;
-    }
-  };
-
-  const handleSubmitFiles = async () => {
-    if (selectedFiles.length === 0) return;
-
-    setSubmitting(true);
-    setError('');
-
-    const newDocs = [];
-    for (const file of selectedFiles) {
-      let fileContent = await readFileContent(file);
-      let createdDoc = null;
-
-      if (apiBaseUrl) {
-        try {
-          const res = await axios.post(
-            `${apiBaseUrl}/api/v1/documents`,
-            {
-              title: file.name,
-              content: fileContent || `Document: ${file.name}`,
-              contentType: file.type || 'text/plain',
-            },
-            { timeout: 2000 }
-          );
-          createdDoc = res.data;
-        } catch {
-          // Fallback to dummy data
-        }
-      }
-
-      if (!createdDoc) {
-        createdDoc = createDummyDocument(file, fileContent);
-      }
-      newDocs.push(createdDoc);
-    }
-
-    if (newDocs.length > 1) {
-      let folderTitle = '';
-      const relativePaths = selectedFiles.map((f) => f.webkitRelativePath).filter(Boolean);
-      if (relativePaths.length > 0 && relativePaths[0] && relativePaths[0].includes('/')) {
-        folderTitle = relativePaths[0].split('/')[0];
-      }
-      if (!folderTitle) {
-        folderTitle = `Batch Upload (${newDocs.length} files)`;
-      }
-
-      const folderItem = {
-        id: 'folder_' + Math.random().toString(36).substring(2, 10),
-        type: 'folder',
-        title: folderTitle,
-        files: newDocs,
-        status: 'PROCESSING',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-
-      onCreated?.(folderItem);
-    } else if (newDocs.length === 1) {
-      onCreated?.(newDocs[0]);
-    }
-
-    handleOpenChange(false);
-    onShowToast?.('We’ve got your files and are working on them right now. Sit tight—the details will appear shortly.');
-    setSubmitting(false);
-  };
-
-  const handleSubmitText = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title.trim() || !content.trim()) return;
+    if (submitting || workspaceMissing) return;
 
+    const cleanedTitle = title.trim();
+    const nextErrors = {
+      folder: selectedFolderId ? '' : 'Please select a folder to upload into.',
+      title: singleFile && !cleanedTitle ? 'Document title is required.' : '',
+      files: files.length ? '' : 'Please select at least one file to upload.',
+    };
+    if (nextErrors.folder || nextErrors.title || nextErrors.files) {
+      setFieldErrors(nextErrors);
+      return;
+    }
+
+    const folderName = selectedFolder?.name ?? 'the folder';
     setSubmitting(true);
+    setProgress(0);
+    setRejections([]);
     setError('');
-    let createdDoc = null;
 
-    if (apiBaseUrl) {
-      try {
-        const res = await axios.post(
-          `${apiBaseUrl}/api/v1/documents`,
-          {
-            title,
-            content,
-            contentType: 'text/plain',
-          },
-          { timeout: 2000 }
-        );
-        createdDoc = res.data;
-      } catch {
-        // Fallback to dummy data
+    try {
+      const result = await documentsApi.upload(
+        selectedFolderId,
+        { files, title: singleFile ? cleanedTitle : undefined },
+        { onProgress: setProgress }
+      );
+      const uploadedCount = result.documents.length;
+
+      if (uploadedCount === 0) {
+        // Nothing was accepted: keep the dialog open and explain why.
+        const reasons = result.rejections.map((r) => r.message).filter(Boolean);
+        setRejections(result.rejections);
+        toast.error('Upload failed', reasons[0] || 'No files were accepted. Please try again.');
+        setSubmitting(false);
+        return;
       }
-    }
 
-    if (!createdDoc) {
-      createdDoc = createDummyDocument({ name: title, type: 'text/plain' }, content);
-    }
+      // Folder contents come with the folder list, so re-fetch it to show the new documents.
+      refreshFolders();
+      onUploaded?.(result.documents);
+      setSubmitting(false);
+      onOpenChange(false);
 
-    onCreated?.(createdDoc);
-    handleOpenChange(false);
-    onShowToast?.('We’ve got your files and are working on them right now. Sit tight—the details will appear shortly.');
-    setSubmitting(false);
+      if (result.rejections.length > 0) {
+        // Partial success: the accepted documents are saved, the rest are explained.
+        const reasons = result.rejections.map((r) => r.message).filter(Boolean).join(' ');
+        toast.warning(
+          'Uploaded with issues',
+          `${uploadedCount} of ${files.length} files uploaded to "${folderName}". ${reasons}`
+        );
+      } else if (uploadedCount === 1) {
+        toast.success('Upload complete', `"${result.documents[0].name}" was added to "${folderName}".`);
+      } else {
+        toast.success('Upload complete', `${uploadedCount} files were added to "${folderName}".`);
+      }
+    } catch (err) {
+      // The folder may have been deleted meanwhile; refresh so the picker drops it.
+      if (err?.code === API_ERROR_CODES.NOT_FOUND) refreshFolders();
+      setError(err?.message || 'Something went wrong. Please try again.');
+      toast.error('Upload failed', err?.message || 'Something went wrong. Please try again.');
+      setSubmitting(false);
+    }
   };
+
+  const locked = submitting || workspaceMissing || noFolders;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Upload document</DialogTitle>
+          <DialogTitle>Upload documents</DialogTitle>
           <DialogDescription>
-            Add a document to analyze with AI-powered summarization and Q&amp;A.
+            Add documents to analyze with AI-powered summarization and Q&amp;A.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              type="button"
-              onClick={() => setTab(t.key)}
-              className={cn(
-                'flex items-center justify-center gap-1.5 rounded-md py-1.5 text-sm font-medium transition-colors',
-                tab === t.key
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground hover:text-foreground'
-              )}
-            >
-              <t.icon className="h-3.5 w-3.5" />
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {workspaceMissing && (
+            <p className="text-sm text-destructive" data-testid="document-workspace-error">
+              Select or create a workspace before uploading documents.
+            </p>
+          )}
 
-        {tab === 'file' ? (
-          <>
+          {!workspaceMissing && noFolders && (
+            <p className="text-sm text-destructive" data-testid="document-folder-missing-error">
+              Create a folder before uploading documents.
+            </p>
+          )}
+
+          <div className="space-y-1">
+            <FolderSelect
+              id="document-folder-select"
+              folders={folders}
+              value={selectedFolderId}
+              onChange={(folderId) => {
+                setSelectedFolderId(folderId);
+                if (fieldErrors.folder) setFieldErrors((prev) => ({ ...prev, folder: '' }));
+              }}
+              loading={foldersLoading}
+              error={foldersError}
+              disabled={locked}
+              noneLabel="Select a folder"
+              allowNone={false}
+              required
+              invalid={Boolean(fieldErrors.folder)}
+            />
+            {fieldErrors.folder && <p className="text-xs text-destructive">{fieldErrors.folder}</p>}
+          </div>
+
+          {singleFile && (
+            <div className="space-y-1.5">
+              <Label htmlFor="document-title-input">
+                Document title <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="document-title-input"
+                data-testid="document-title-input"
+                placeholder="e.g. Q3 Financial Performance Report"
+                value={title}
+                disabled={locked}
+                onChange={(e) => {
+                  setTitle(e.target.value);
+                  setTitleEdited(true);
+                  if (fieldErrors.title) setFieldErrors((prev) => ({ ...prev, title: '' }));
+                }}
+              />
+              {fieldErrors.title && <p className="text-xs text-destructive">{fieldErrors.title}</p>}
+            </div>
+          )}
+
+          <div className="space-y-1.5">
             <label
-              htmlFor="document-upload-input"
+              htmlFor="document-files-input"
               onDragOver={(e) => {
                 e.preventDefault();
                 setIsDragging(true);
@@ -245,158 +261,119 @@ export function UploadDialog({ open, onOpenChange, apiBaseUrl = '', onCreated, o
               onDrop={handleDrop}
               className={cn(
                 'flex cursor-pointer flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-9 text-center transition-colors',
-                isDragging
-                  ? 'border-primary bg-accent'
-                  : 'border-border hover:border-primary/50 hover:bg-accent/50'
+                locked && 'pointer-events-none opacity-60',
+                isDragging ? 'border-primary bg-accent' : 'border-border hover:border-primary/50 hover:bg-accent/50'
               )}
             >
               <input
-                id="document-upload-input"
+                id="document-files-input"
+                data-testid="document-files-input"
                 type="file"
                 multiple
-                accept=".pdf,.docx,.csv,.txt"
+                accept={ACCEPT}
                 className="hidden"
+                disabled={locked}
                 onChange={(e) => {
-                  if (e.target.files) {
-                    setSelectedFiles((prev) => [...prev, ...Array.from(e.target.files)]);
-                  }
-                }}
-              />
-              <input
-                id="folder-upload-input"
-                type="file"
-                webkitdirectory="true"
-                directory=""
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files) {
-                    setSelectedFiles((prev) => [...prev, ...Array.from(e.target.files)]);
-                  }
+                  addFiles(Array.from(e.target.files ?? []));
+                  e.target.value = ''; // allow re-selecting the same files after an error
                 }}
               />
               <UploadCloud className="h-9 w-9 text-muted-foreground" />
               <div>
                 <p className="text-sm font-medium">
-                  <span className="text-primary font-semibold">Click to browse files</span> or drag and drop
+                  <span className="font-semibold text-primary">Click to browse files</span> or drag and drop
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  PDF, DOCX, CSV or TXT &mdash; up to 25MB
-                </p>
-                <div
-                  className="mt-2.5 flex items-center justify-center gap-1.5"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <label
-                    htmlFor="folder-upload-input"
-                    className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary/80 px-2.5 py-1 text-xs font-medium text-secondary-foreground shadow-sm transition-colors hover:bg-secondary"
-                  >
-                    <Folder className="h-3.5 w-3.5 text-primary" />
-                    Or select a folder
-                  </label>
-                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{FORMATS_LABEL} only &mdash; select as many as you need</p>
               </div>
             </label>
+            {fieldErrors.files && <p className="text-xs text-destructive">{fieldErrors.files}</p>}
+          </div>
 
-            {selectedFiles.length > 0 && (
-              <div className="mt-4 flex max-h-[200px] flex-col gap-2 overflow-y-auto">
-                {selectedFiles.map((file, index) => (
-                  <div
-                    key={`${file.name}-${index}`}
-                    className="flex items-center justify-between rounded-md border p-2 text-sm"
-                  >
-                    <div className="flex items-center gap-2 overflow-hidden">
-                      <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      <span className="truncate font-medium">{file.name}</span>
-                      <span className="shrink-0 text-xs text-muted-foreground">
-                        ({(file.size / 1024).toFixed(1)} KB)
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      className="shrink-0 rounded-full p-1 hover:bg-muted"
-                      onClick={() => {
-                        setSelectedFiles((prev) => prev.filter((_, i) => i !== index));
-                      }}
-                    >
-                      <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                    </button>
+          {files.length > 0 && (
+            <ul data-testid="document-files-list" className="max-h-40 space-y-1.5 overflow-y-auto">
+              {files.map((file, index) => (
+                <li key={`${file.name}-${file.size}-${file.lastModified}`} className="flex items-center justify-between rounded-md border p-2 text-sm">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate font-medium">{file.name}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">({formatBytes(file.size)})</span>
                   </div>
-                ))}
+                  <button
+                    type="button"
+                    disabled={submitting}
+                    aria-label={`Remove ${file.name}`}
+                    className="shrink-0 rounded-full p-1 hover:bg-muted disabled:pointer-events-none disabled:opacity-50"
+                    onClick={() => removeFile(index)}
+                  >
+                    <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {submitting && (
+            <div className="space-y-1.5" data-testid="document-upload-progress">
+              <div
+                role="progressbar"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={progress}
+                className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
+              >
+                <div
+                  className="h-full rounded-full bg-wissen-navy transition-all duration-200"
+                  style={{ width: `${progress}%` }}
+                />
               </div>
-            )}
-
-            {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
-
-            <DialogFooter className="mt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => handleOpenChange(false)}
-                disabled={submitting}
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={handleSubmitFiles}
-                disabled={selectedFiles.length === 0 || submitting}
-              >
-                {submitting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading...
-                  </>
-                ) : (
-                  'Upload'
-                )}
-              </Button>
-            </DialogFooter>
-          </>
-        ) : (
-          <form onSubmit={handleSubmitText} className="space-y-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="doc-title">Document title</Label>
-              <Input
-                id="doc-title"
-                placeholder="e.g. Q3 Financial Performance Report.txt"
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                required
-              />
+              <p className="text-xs text-muted-foreground">
+                {progress < 100 ? `Uploading... ${progress}%` : 'Upload finished, processing...'}
+              </p>
             </div>
+          )}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="doc-content">Document text content</Label>
-              <Textarea
-                id="doc-content"
-                rows={6}
-                placeholder="Paste document text or contract clauses here for instant analysis..."
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                required
-              />
-            </div>
+          {rejections.length > 0 && (
+            <ul className="space-y-1 rounded-md border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+              {rejections.map((rejection, idx) => (
+                <li key={`${rejection.fileName}-${idx}`}>{rejection.message}</li>
+              ))}
+            </ul>
+          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
+          {selectedFolder && (
+            <p className="flex items-start gap-2 rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground">
+              <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>Documents will be added to the &ldquo;{selectedFolder.name}&rdquo; folder.</span>
+            </p>
+          )}
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
-                Cancel
-              </Button>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" /> Analyze with AI
-                  </>
-                )}
-              </Button>
-            </DialogFooter>
-          </form>
-        )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button
+              id="document-submit-button"
+              data-testid="document-submit-button"
+              type="submit"
+              disabled={locked}
+              aria-busy={submitting}
+              className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                <>
+                  <UploadCloud className="h-4 w-4" />
+                  {files.length > 1 ? `Upload ${files.length} files` : 'Upload'}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

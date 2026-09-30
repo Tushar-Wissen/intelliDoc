@@ -13,13 +13,8 @@ import com.intellidoc.backend.exception.ApiException;
 import com.intellidoc.backend.exception.DmsExceptions;
 import com.intellidoc.backend.model.DocumentEntity;
 import com.intellidoc.backend.model.DocumentGroupEntity;
-import com.intellidoc.backend.model.DocumentSummaryEntity;
-import com.intellidoc.backend.model.UserAccountEntity;
 import com.intellidoc.backend.repository.DocumentGroupRepository;
 import com.intellidoc.backend.repository.DocumentRepository;
-import com.intellidoc.backend.repository.DocumentSummaryRepository;
-import com.intellidoc.backend.repository.UserAccountRepository;
-import com.intellidoc.backend.util.OverviewTopicsParser;
 import com.intellidoc.backend.security.AuthPrincipal;
 import com.intellidoc.backend.storage.MinioStorageService;
 import lombok.extern.slf4j.Slf4j;
@@ -43,8 +38,6 @@ public class DocumentService {
     private final ModuleService moduleService;
     private final DocumentRepository documentRepository;
     private final DocumentGroupRepository documentGroupRepository;
-    private final DocumentSummaryRepository documentSummaryRepository;
-    private final UserAccountRepository userAccountRepository;
     private final DocumentWriteService documentWriteService;
     private final MinioStorageService minioStorageService;
     private final AiServiceClient aiServiceClient;
@@ -56,8 +49,6 @@ public class DocumentService {
             ModuleService moduleService,
             DocumentRepository documentRepository,
             DocumentGroupRepository documentGroupRepository,
-            DocumentSummaryRepository documentSummaryRepository,
-            UserAccountRepository userAccountRepository,
             DocumentWriteService documentWriteService,
             MinioStorageService minioStorageService,
             AiServiceClient aiServiceClient,
@@ -67,8 +58,6 @@ public class DocumentService {
         this.moduleService = moduleService;
         this.documentRepository = documentRepository;
         this.documentGroupRepository = documentGroupRepository;
-        this.documentSummaryRepository = documentSummaryRepository;
-        this.userAccountRepository = userAccountRepository;
         this.documentWriteService = documentWriteService;
         this.minioStorageService = minioStorageService;
         this.aiServiceClient = aiServiceClient;
@@ -325,35 +314,18 @@ public class DocumentService {
     }
 
     private DocumentDetailDto toDetail(DocumentEntity document) {
-        String uploadedByName = userAccountRepository.findById(document.getUploadedBy())
-                .map(UserAccountEntity::getDisplayName)
-                .orElse(null);
         return DocumentDetailDto.builder()
                 .id(document.getId())
                 .fileName(document.getFileName())
                 .documentType(document.getDocumentType())
                 .classificationConfidence(document.getClassificationConfidence())
                 .processingStatus(document.getProcessingStatus())
-                .overview(OverviewTopicsParser.parse(document.getOverview()))
-                .summary(resolveSummary(document))
-                .uploadedByName(uploadedByName)
-                .fileType(mediaTypeFor(document.getFileType(), null))
-                .extension(document.getFileType())
-                .fileSizeMb(bytesToMegabytes(document.getFileSizeBytes()))
+                .overview(document.getOverview())
+                .summary(document.getSummary())
                 .pageCount(0)
                 .moduleId(document.getGroupId())
                 .createdAt(document.getCreatedAt())
                 .build();
-    }
-
-    private String resolveSummary(DocumentEntity document) {
-        return documentSummaryRepository.findByDocumentId(document.getId())
-                .map(DocumentSummaryEntity::getSummary)
-                .orElse(document.getSummary());
-    }
-
-    private static double bytesToMegabytes(long bytes) {
-        return Math.round((bytes / (1024.0 * 1024.0)) * 100.0) / 100.0;
     }
 
     static String mediaTypeFor(String fileType, String storedType) {
