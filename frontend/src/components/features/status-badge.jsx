@@ -5,7 +5,6 @@ import { Badge } from '@/components/ui/badge';
 const STATUS_VARIANTS = {
   POSITIVE: 'success',
   COMPLETED: 'success',
-  READY: 'success',
   ACTIVE: 'secondary',
   NEUTRAL: 'secondary',
   PROCESSING: 'secondary',
