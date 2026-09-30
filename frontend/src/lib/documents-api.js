@@ -26,15 +26,29 @@ function toAppDocument(apiDocument) {
   };
 }
 
+// `overview` is a list of topic labels; older responses sent one block of text, so split that
+// into lines instead of dropping it.
+function toOverviewItems(overview) {
+  const items = Array.isArray(overview) ? overview : typeof overview === 'string' ? overview.split(/\r?\n/) : [];
+  return items
+    .filter((item) => typeof item === 'string')
+    .map((item) => item.replace(/^[\s•\-*]+/, '').trim())
+    .filter(Boolean);
+}
+
 // Adapts GET /documents/{documentId} to the detail shape the file view uses.
 function toAppDocumentDetail(apiDocument) {
   return {
     ...toAppDocument(apiDocument),
     documentType: apiDocument.documentType ?? null,
     classificationConfidence: apiDocument.classificationConfidence ?? null,
-    overview: apiDocument.overview ?? '',
+    overview: toOverviewItems(apiDocument.overview),
     summary: apiDocument.summary ?? '',
-    pageCount: apiDocument.pageCount ?? 0,
+    uploadedByName: apiDocument.uploadedByName ?? null,
+    fileType: apiDocument.fileType ?? null,
+    extension: apiDocument.extension ?? null,
+    fileSizeMb: apiDocument.fileSizeMb ?? null,
+    pageCount: apiDocument.pageCount ?? null,
   };
 }
 
@@ -97,7 +111,8 @@ export const documentsApi = {
 
   // GET /documents/{documentId}
   //   -> { id, fileName, documentType, classificationConfidence, processingStatus,
-  //        overview, summary, pageCount, moduleId, createdAt }
+  //        overview: string[], summary, uploadedByName, fileType, extension, fileSizeMb,
+  //        pageCount, moduleId, createdAt }
   // Pass `signal` to cancel the request when the user switches to another file first.
   async get(documentId, { signal } = {}) {
     try {
