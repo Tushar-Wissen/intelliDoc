@@ -164,7 +164,7 @@ function FolderNode({ folder, index, expanded, selected, selectedFileId, onToggl
       </div>
 
       {expanded && hasFiles && (
-        <div className="ml-[27px] flex flex-col gap-0.5 border-l border-sidebar-border pb-1 pl-2">
+        <div className="ml-[27px] mt-1 flex flex-col gap-1 border-l border-sidebar-border pb-1.5 pl-2">
           {folder.files.map((file) => (
             <FileRow
               key={file.id}
@@ -232,7 +232,7 @@ function FoldersSection({ onNavigate }) {
         <div
           id="folder-list"
           data-testid="folder-list"
-          className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-3 pb-2 scrollbar-thin"
+          className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-2 scrollbar-thin"
         >
           {loading ? (
             <div className="flex items-center justify-center py-6">

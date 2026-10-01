@@ -7,10 +7,14 @@ import {
   Search,
   Sparkles,
   Trash2,
+  Calendar,
+  Eye,
+  HardDrive,
+  MoreVertical,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
-import { formatDate } from '@/lib/format';
+import { formatBytes, formatDate } from '@/lib/format';
 import { useFolders } from '@/context/folder-context';
 import { useToast } from '@/context/toast-context';
 import { DocumentView } from '@/components/features/document-view';
@@ -22,6 +26,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
@@ -76,7 +81,7 @@ function TruncatedName({ name }) {
   return (
     <Tooltip open={open} onOpenChange={handleOpenChange}>
       <TooltipTrigger asChild>
-        <p ref={ref} className="truncate text-sm font-medium text-card-foreground">
+        <p ref={ref} className="truncate text-[13px] font-semibold text-card-foreground">
           {name}
         </p>
       </TooltipTrigger>
@@ -87,68 +92,106 @@ function TruncatedName({ name }) {
   );
 }
 
-function FileTableRow({ file, updatedAt, onClick, onDelete }) {
+function FileCard({ file, updatedAt, onClick, onDelete }) {
   const tagColor = TAG_COLORS[file.tag] ?? DEFAULT_TAG_COLOR;
-  const sectionsCount = file.sections?.length ?? 0;
+  const size = typeof file.size === 'number' ? formatBytes(file.size) : null;
 
+  // Radix's dropdown unmounts as soon as an item is selected, and the browser's trailing
+  // "click" event can then land on the card underneath — skip that one stray click.
+  const suppressNextClickRef = useRef(false);
+  const runMenuAction = (action) => () => {
+    suppressNextClickRef.current = true;
+    action();
+  };
+  const handleCardClick = () => {
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false;
+      return;
+    }
+    onClick?.();
+  };
+
+  // One row per file, matching the folder cards: icon and name on the left, type, size,
+  // date and actions on the right.
   return (
-    <tr
+    <div
       role="button"
       tabIndex={0}
-      onClick={onClick}
+      onClick={handleCardClick}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();
           onClick?.();
         }
       }}
-      className="cursor-pointer transition-colors hover:bg-accent/40 focus-visible:bg-accent/40 focus-visible:outline-none"
+      data-testid={`folder-file-${file.id}`}
+      className="group flex w-full cursor-pointer items-center gap-3 rounded-lg border border-border bg-card px-3 py-2 text-left shadow-sm transition-colors duration-200 hover:border-wissen-navy/40 hover:bg-accent/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wissen-navy/40"
     >
-      <td className="px-4 py-3 align-middle">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', tagColor.bg)}>
-            <FileText className={cn('h-4 w-4', tagColor.fg)} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <TruncatedName name={file.name} />
-            <p className="truncate text-xs text-muted-foreground sm:hidden">{file.tag}</p>
-          </div>
-        </div>
-      </td>
-      <td className="hidden px-4 py-3 align-middle sm:table-cell">
-        <span
-          className={cn(
-            'inline-flex max-w-full truncate rounded-full px-2 py-0.5 text-[11px] font-medium capitalize',
-            tagColor.bg,
-            tagColor.fg
-          )}
-        >
+      <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-md', tagColor.bg)}>
+        <FileText className={cn('h-4 w-4', tagColor.fg)} />
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <TruncatedName name={file.name} />
+        {/* Narrow screens: the right-hand details collapse into one line under the name. */}
+        <p className="truncate text-[11px] text-muted-foreground lg:hidden">
           {file.tag}
-        </span>
-      </td>
-      <td className="whitespace-nowrap px-4 py-3 text-right align-middle text-xs tabular-nums text-muted-foreground">
-        {formatDate(updatedAt)}
-      </td>
-      <td className="py-3 pl-1 pr-3 text-right align-middle">
-        {/* The row itself opens the file, so keep clicks and keys on this button from reaching it. */}
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-          aria-label={`Delete ${file.name}`}
-          title="Delete document"
-          data-testid={`folder-file-delete-${file.id}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete?.(file);
-          }}
-          onKeyDown={(e) => e.stopPropagation()}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </td>
-    </tr>
+          {size && <> &middot; {size}</>} &middot; {formatDate(updatedAt)}
+        </p>
+      </div>
+
+      <div className="hidden shrink-0 items-center gap-3 text-[11px] text-muted-foreground lg:flex">
+        {file.tag && (
+          <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-medium uppercase', tagColor.bg, tagColor.fg)}>
+            <FileText className="h-3 w-3" />
+            {file.tag}
+          </span>
+        )}
+
+        {size && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-muted/70 px-2 py-0.5 font-medium">
+            <HardDrive className="h-3 w-3" />
+            {size}
+          </span>
+        )}
+
+        <div className="flex items-center gap-1">
+          <Calendar className="h-3 w-3" />
+          <span className="whitespace-nowrap">{formatDate(updatedAt)}</span>
+        </div>
+      </div>
+
+      <div className="shrink-0">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+              aria-label={`More actions for ${file.name}`}
+              className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wissen-navy/40"
+            >
+              <MoreVertical className="h-3.5 w-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={runMenuAction(() => onClick?.())}>
+              <Eye className="h-4 w-4" />
+              Open
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              data-testid={`folder-file-delete-${file.id}`}
+              className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+              onClick={runMenuAction(() => onDelete?.(file))}
+            >
+              <Trash2 className="h-4 w-4" />
+              Delete
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
   );
 }
 
@@ -294,36 +337,24 @@ function FolderOverview({ folder, onFileClick, onUploadClick }) {
           No documents match your search.
         </p>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border">
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-            {/* Fixed layout: the side columns get set widths and Name takes the rest, so long
-                file names truncate instead of widening the table. */}
-            <TooltipProvider delayDuration={300}>
-            <table className="w-full table-fixed border-collapse text-left">
-              <thead className="sticky top-0 z-10 bg-muted">
-                <tr className="border-b border-border text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                  <th className="px-4 py-2.5 font-semibold">Name</th>
-                  <th className="hidden w-28 px-4 py-2.5 font-semibold sm:table-cell">Type</th>
-                  <th className="w-32 px-4 py-2.5 text-right font-semibold">Updated</th>
-                  <th className="w-14 py-2.5 pl-1 pr-3">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border bg-card">
-                {filteredFiles.map((file) => (
-                  <FileTableRow
-                    key={file.id}
-                    file={file}
-                    updatedAt={file.updatedAt ?? folder.updatedAt}
-                    onClick={() => onFileClick?.({ ...file, folderId: folder.id, folderName: folder.name })}
-                    onDelete={setDeletingFile}
-                  />
-                ))}
-              </tbody>
-            </table>
-            </TooltipProvider>
+        <div>
+          <div className="mb-2 flex items-center gap-1.5">
+            <h3 className="text-sm font-semibold text-foreground">Documents</h3>
+            <span className="text-xs font-medium text-muted-foreground">{filteredFiles.length}</span>
           </div>
+          <TooltipProvider delayDuration={300}>
+            <div className="flex flex-col gap-2">
+              {filteredFiles.map((file) => (
+                <FileCard
+                  key={file.id}
+                  file={file}
+                  updatedAt={file.updatedAt ?? folder.updatedAt}
+                  onClick={() => onFileClick?.({ ...file, folderId: folder.id, folderName: folder.name })}
+                  onDelete={setDeletingFile}
+                />
+              ))}
+            </div>
+          </TooltipProvider>
         </div>
       )}
 

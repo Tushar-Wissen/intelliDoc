@@ -62,9 +62,9 @@ function ChatMessage({ message }) {
   }
 
   // Assistant: shimmer until the first token arrives.
-  if (message.status === 'streaming' && !message.text) return <ShimmerLoader />;
-
   const model = getAiModel(message.modelId);
+  if (message.status === 'streaming' && !message.text) return <ShimmerLoader modelLabel={model?.label} />;
+
   const isError = message.status === 'error';
   return (
     <div className="flex max-w-[85%] flex-col gap-1 self-start">
