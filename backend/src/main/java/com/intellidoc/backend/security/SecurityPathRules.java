@@ -18,6 +18,7 @@ public final class SecurityPathRules {
         }
         return HttpMethod.POST.matches(request.getMethod())
                 && ("/auth/login".equals(path) || "/api/v1/auth/login".equals(path)
-                || "/auth/signup".equals(path) || "/api/v1/auth/signup".equals(path));
+                || "/auth/signup".equals(path) || "/api/v1/auth/signup".equals(path)
+                || "/auth/forgot-password".equals(path) || "/api/v1/auth/forgot-password".equals(path));
     }
 }
