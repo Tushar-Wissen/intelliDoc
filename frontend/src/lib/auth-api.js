@@ -81,6 +81,9 @@ export const authApi = {
         { headers }
       );
       const user = data.user ? toAppUser(data.user, updates.email) : null;
+      if (user) {
+        writeSession(user);
+      }
       return { user, error: null };
     } catch (err) {
       const message = err.response?.data?.message || err.response?.data?.error?.message || 'Failed to update profile';
