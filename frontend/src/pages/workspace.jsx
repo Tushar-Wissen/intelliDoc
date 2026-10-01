@@ -15,6 +15,7 @@ import { EmptyWorkspaceState } from '@/components/features/empty-workspace-state
 import { CreateFolderDialog } from '@/components/features/create-folder-dialog';
 import { RenameFolderDialog } from '@/components/features/rename-folder-dialog';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { WorkspaceRequiredAction } from '@/components/features/workspace-required-action';
 
 import { useHealthStatus } from '@/hooks/use-health-status';
 import { useDocumentProcessingStatus } from '@/hooks/use-document-processing-status';
@@ -315,25 +316,31 @@ export function WorkspacePage() {
               />
             </div>
             <div className="flex items-center gap-3 mr-80 sm:mr-96">
-              <Button
-                id="create-folder-button"
-                data-testid="create-folder-button"
-                variant="outline"
-                className="gap-2 bg-card font-semibold"
-                onClick={() => setCreateFolderOpen(true)}
-              >
-                <Plus className="h-4 w-4" />
-                Create Folder
-              </Button>
-              <Button
-                id="document-upload-button"
-                data-testid="document-upload-button"
-                className="gap-2 bg-wissen-navy font-semibold text-white hover:bg-wissen-navy/90"
-                onClick={() => setUploadOpen(true)}
-              >
-                <UploadCloud className="h-4 w-4" />
-                Upload
-              </Button>
+              <WorkspaceRequiredAction disabled={!selectedWorkspaceId}>
+                <Button
+                  id="create-folder-button"
+                  data-testid="create-folder-button"
+                  variant="outline"
+                  className="gap-2 bg-card font-semibold"
+                  disabled={!selectedWorkspaceId}
+                  onClick={() => setCreateFolderOpen(true)}
+                >
+                  <Plus className="h-4 w-4" />
+                  Create Folder
+                </Button>
+              </WorkspaceRequiredAction>
+              <WorkspaceRequiredAction disabled={!selectedWorkspaceId}>
+                <Button
+                  id="document-upload-button"
+                  data-testid="document-upload-button"
+                  className="gap-2 bg-wissen-navy font-semibold text-white hover:bg-wissen-navy/90"
+                  disabled={!selectedWorkspaceId}
+                  onClick={() => setUploadOpen(true)}
+                >
+                  <UploadCloud className="h-4 w-4" />
+                  Upload
+                </Button>
+              </WorkspaceRequiredAction>
             </div>
           </div>
         )}
@@ -345,6 +352,7 @@ export function WorkspacePage() {
                 folder={activeFolder}
                 onFileClick={handleFileClick}
                 activeFileId={activeFileId}
+                uploadDisabled={!selectedWorkspaceId}
                 onUploadClick={() => setUploadOpen(true)}
               />
             </div>
@@ -383,6 +391,7 @@ export function WorkspacePage() {
                   description="Create your first folder to keep related documents organized and ready for AI-powered review."
                   ctaLabel="Create Folder"
                   ctaIcon={Plus}
+                  ctaDisabled={!selectedWorkspaceId}
                   onCtaClick={() => setCreateFolderOpen(true)}
                 />
               ) : filteredFolders.length === 0 ? (

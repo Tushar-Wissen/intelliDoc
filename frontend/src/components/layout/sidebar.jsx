@@ -11,6 +11,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { NAV_ITEMS, WORKSPACE_UTILITY_ITEMS } from '@/constants/nav';
 import { useFolders } from '@/context/folder-context';
 import { CreateFolderDialog } from '@/components/features/create-folder-dialog';
+import { WorkspaceRequiredAction } from '@/components/features/workspace-required-action';
+import { useWorkspace } from '@/context/workspace-context';
 
 function isNavItemActive(item, location) {
   if (item.comingSoon) return false;
@@ -182,6 +184,7 @@ function FolderNode({ folder, index, expanded, selected, selectedFileId, onToggl
 
 function FoldersSection({ onNavigate }) {
   const { folders, loading, error, selectedFolderId, selectedFileId, refreshFolders } = useFolders();
+  const { selectedWorkspaceId } = useWorkspace();
   const [expandedFolderIds, setExpandedFolderIds] = useState(() => new Set());
   const [createOpen, setCreateOpen] = useState(false);
   const total = folders.length;
@@ -215,18 +218,21 @@ function FoldersSection({ onNavigate }) {
             )}
           </div>
 
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-            id="sidebar-create-folder-button"
-            data-testid="sidebar-create-folder-button"
-            aria-label="Create folder"
-            onClick={() => setCreateOpen(true)}
-          >
-            <Plus className="h-3.5 w-3.5" />
-          </Button>
+          <WorkspaceRequiredAction disabled={!selectedWorkspaceId}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6 rounded-md text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              id="sidebar-create-folder-button"
+              data-testid="sidebar-create-folder-button"
+              aria-label="Create folder"
+              disabled={!selectedWorkspaceId}
+              onClick={() => setCreateOpen(true)}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </Button>
+          </WorkspaceRequiredAction>
         </div>
 
         <div
@@ -269,14 +275,17 @@ function FoldersSection({ onNavigate }) {
                 </p>
               </div>
 
-              <Button
-                type="button"
-                className="w-full gap-2 bg-white text-xs font-semibold text-wissen-navy hover:bg-white/90"
-                onClick={() => setCreateOpen(true)}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Create Folder
-              </Button>
+              <WorkspaceRequiredAction disabled={!selectedWorkspaceId}>
+                <Button
+                  type="button"
+                  className="w-full gap-2 bg-white text-xs font-semibold text-wissen-navy hover:bg-white/90"
+                  disabled={!selectedWorkspaceId}
+                  onClick={() => setCreateOpen(true)}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Create Folder
+                </Button>
+              </WorkspaceRequiredAction>
             </div>
           ) : (
             folders.map((folder, idx) => (

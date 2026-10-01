@@ -20,6 +20,7 @@ import { useToast } from '@/context/toast-context';
 import { DocumentView } from '@/components/features/document-view';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { WorkspaceRequiredAction } from '@/components/features/workspace-required-action';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -195,7 +196,7 @@ function FileCard({ file, updatedAt, onClick, onDelete }) {
   );
 }
 
-function FolderOverview({ folder, onFileClick, onUploadClick }) {
+function FolderOverview({ folder, onFileClick, onUploadClick, uploadDisabled }) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [deletingFile, setDeletingFile] = useState(null);
@@ -250,14 +251,17 @@ function FolderOverview({ folder, onFileClick, onUploadClick }) {
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <Button
-            type="button"
-            onClick={onUploadClick}
-            className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
-          >
-            <UploadCloud className="h-4 w-4" />
-            Upload
-          </Button>
+          <WorkspaceRequiredAction disabled={uploadDisabled}>
+            <Button
+              type="button"
+              disabled={uploadDisabled}
+              onClick={onUploadClick}
+              className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
+            >
+              <UploadCloud className="h-4 w-4" />
+              Upload
+            </Button>
+          </WorkspaceRequiredAction>
         </div>
       </div>
 
@@ -312,14 +316,17 @@ function FolderOverview({ folder, onFileClick, onUploadClick }) {
             </p>
           </div>
 
-          <Button
-            type="button"
-            onClick={onUploadClick}
-            className="gap-2 bg-wissen-navy px-5 text-white hover:bg-wissen-navy/90"
-          >
-            <UploadCloud className="h-4 w-4" />
-            Upload document
-          </Button>
+          <WorkspaceRequiredAction disabled={uploadDisabled}>
+            <Button
+              type="button"
+              disabled={uploadDisabled}
+              onClick={onUploadClick}
+              className="gap-2 bg-wissen-navy px-5 text-white hover:bg-wissen-navy/90"
+            >
+              <UploadCloud className="h-4 w-4" />
+              Upload document
+            </Button>
+          </WorkspaceRequiredAction>
 
           <div className="flex flex-wrap items-center justify-center gap-1.5">
             {EMPTY_STATE_FORMATS.map((format) => (
@@ -379,7 +386,7 @@ function FolderOverview({ folder, onFileClick, onUploadClick }) {
   );
 }
 
-export function FolderDetail({ folder, onFileClick, activeFileId, onUploadClick }) {
+export function FolderDetail({ folder, onFileClick, activeFileId, onUploadClick, uploadDisabled }) {
   const allFiles = folder.files ?? [];
   const activeFile = activeFileId ? allFiles.find((f) => f.id === activeFileId) : null;
 
@@ -389,6 +396,7 @@ export function FolderDetail({ folder, onFileClick, activeFileId, onUploadClick 
         folder={folder}
         onFileClick={onFileClick}
         onUploadClick={onUploadClick}
+        uploadDisabled={uploadDisabled}
       />
     );
   }
