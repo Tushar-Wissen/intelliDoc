@@ -31,6 +31,7 @@ import { useHealthStatus } from '@/hooks/use-health-status';
 import { useWorkspace } from '@/context/workspace-context';
 import { useToast } from '@/context/toast-context';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { WorkspaceRequiredAction } from '@/components/features/workspace-required-action';
 
 // The API returns every document at once, so infinite scroll reveals them in slices.
 const PAGE_SIZE = 10;
@@ -260,16 +261,19 @@ export function OrphanedFilesPage() {
                   Files from deleted folders or unassigned uploads will appear here.
                 </p>
               </div>
-              <Button
-                id="document-upload-button"
-                data-testid="document-upload-button"
-                type="button"
-                className="gap-2 bg-wissen-navy px-5 text-white hover:bg-wissen-navy/90"
-                onClick={() => setUploadOpen(true)}
-              >
-                <UploadCloud className="h-4 w-4" />
-                Upload document
-              </Button>
+              <WorkspaceRequiredAction disabled={!selectedWorkspaceId}>
+                <Button
+                  id="document-upload-button"
+                  data-testid="document-upload-button"
+                  type="button"
+                  className="gap-2 bg-wissen-navy px-5 text-white hover:bg-wissen-navy/90"
+                  disabled={!selectedWorkspaceId}
+                  onClick={() => setUploadOpen(true)}
+                >
+                  <UploadCloud className="h-4 w-4" />
+                  Upload document
+                </Button>
+              </WorkspaceRequiredAction>
             </div>
           ) : (
             <>
@@ -311,17 +315,19 @@ export function OrphanedFilesPage() {
                 </div>
 
                 <div className="flex shrink-0 items-center gap-2">
-                  <Button
-                    id="orphaned-files-upload-button"
-                    data-testid="orphaned-files-upload-button"
-                    type="button"
-                    className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
-                    disabled={!selectedWorkspaceId}
-                    onClick={() => setUploadOpen(true)}
-                  >
-                    <UploadCloud className="h-4 w-4" />
-                    Upload
-                  </Button>
+                  <WorkspaceRequiredAction disabled={!selectedWorkspaceId}>
+                    <Button
+                      id="orphaned-files-upload-button"
+                      data-testid="orphaned-files-upload-button"
+                      type="button"
+                      className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
+                      disabled={!selectedWorkspaceId}
+                      onClick={() => setUploadOpen(true)}
+                    >
+                      <UploadCloud className="h-4 w-4" />
+                      Upload
+                    </Button>
+                  </WorkspaceRequiredAction>
                   <Button
                     type="button"
                     variant="outline"

@@ -3,6 +3,7 @@ import { Sparkles, FileText, Users } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { WorkspaceRequiredAction } from '@/components/features/workspace-required-action';
 
 const DEFAULT_FEATURES = [
   { icon: FileText, label: 'Organize your documents' },
@@ -18,6 +19,7 @@ export function EmptyWorkspaceState({
   ctaIcon: CtaIcon,
   onCtaClick,
   ctaTestId,
+  ctaDisabled = false,
   features = DEFAULT_FEATURES,
   className,
 }) {
@@ -37,15 +39,17 @@ export function EmptyWorkspaceState({
         <p className="max-w-md text-sm leading-relaxed text-muted-foreground">{description}</p>
       </div>
 
-      <Button
-        data-testid={ctaTestId}
-        size="lg"
-        className="gap-2 bg-wissen-navy px-6 text-white hover:bg-wissen-navy/90"
-        onClick={onCtaClick}
-      >
-        <CtaIcon className="h-4 w-4" />
-        {ctaLabel}
-      </Button>
+      <WorkspaceRequiredAction disabled={ctaDisabled}>
+        <Button
+          data-testid={ctaTestId}
+          size="lg"
+          className="gap-2 bg-wissen-navy px-6 text-white hover:bg-wissen-navy/90"
+          onClick={onCtaClick}
+        >
+          <CtaIcon className="h-4 w-4" />
+          {ctaLabel}
+        </Button>
+      </WorkspaceRequiredAction>
 
       <div className="grid w-full max-w-lg grid-cols-1 gap-6 pt-4 sm:grid-cols-3">
         {features.map(({ icon: FeatureIcon, label }) => (
