@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intellidoc.backend.dto.AiChatAnswerRequestDto;
 import com.intellidoc.backend.dto.AiChatAnswerResponseDto;
+import com.intellidoc.backend.dto.AiExtractionResponseDto;
 import com.intellidoc.backend.dto.AiAnalysisRequestDto;
 import com.intellidoc.backend.dto.AiAnalysisResponseDto;
 import com.intellidoc.backend.dto.AiQARequestDto;
@@ -15,6 +16,9 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.client.MultipartBodyBuilder;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -165,6 +169,39 @@ public class AiServiceClient {
                             + e.getMessage(),
                     e
             );
+        }
+    }
+
+    public AiExtractionResponseDto extractDocument(String documentId, MultipartFile file) {
+        log.info("Dispatching document ID {} to AI Service for extraction", documentId);
+        try {
+            ByteArrayResource resource = new ByteArrayResource(file.getBytes()) {
+                @Override
+                public String getFilename() {
+                    return file.getOriginalFilename();
+                }
+            };
+            MultipartBodyBuilder bodyBuilder = new MultipartBodyBuilder();
+            bodyBuilder.part("document_id", documentId);
+            bodyBuilder.part("file", resource)
+                    .filename(file.getOriginalFilename())
+                    .contentType(file.getContentType() != null
+                            ? MediaType.parseMediaType(file.getContentType())
+                            : MediaType.APPLICATION_OCTET_STREAM);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+            HttpEntity<?> request = new HttpEntity<>(bodyBuilder.build(), headers);
+            ResponseEntity<AiExtractionResponseDto> response = restTemplate.exchange(
+                    baseUrl + "/api/v1/extract/file",
+                    HttpMethod.POST,
+                    request,
+                    AiExtractionResponseDto.class
+            );
+            return response.getBody();
+        } catch (Exception e) {
+            log.error("Error invoking AI Service /api/v1/extract/file", e);
+            throw new RuntimeException("AI Service extraction error: " + e.getMessage(), e);
         }
     }
 

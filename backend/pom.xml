@@ -38,6 +38,12 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
+        <!-- Required by Spring's multipart HTTP client body publisher -->
+        <dependency>
+            <groupId>org.reactivestreams</groupId>
+            <artifactId>reactive-streams</artifactId>
+        </dependency>
+
         <!-- PostgreSQL Driver for Supabase / Local PostgreSQL -->
         <dependency>
             <groupId>org.postgresql</groupId>

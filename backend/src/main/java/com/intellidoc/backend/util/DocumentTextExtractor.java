@@ -13,6 +13,7 @@ import org.apache.poi.xslf.usermodel.XSLFTextShape;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.springframework.stereotype.Component;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
@@ -20,6 +21,8 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 @Component
 public class DocumentTextExtractor {
@@ -27,53 +30,35 @@ public class DocumentTextExtractor {
     private final Tesseract tesseract;
 
     public DocumentTextExtractor() {
+
         this.tesseract = new Tesseract();
 
         String tessDataPath =
-                new File("backend/src/main/resources/tessdata")
-                        .getAbsolutePath();
+                new File("src/main/resources/tessdata").getAbsolutePath();
 
         System.out.println(
                 "DocumentTextExtractor Tesseract tessdata path: "
                         + tessDataPath
         );
 
-        File trainedData =
-                new File(tessDataPath, "eng.traineddata");
-
-        System.out.println("======================================");
-        System.out.println(
-                "DocumentTextExtractor tessdata path: "
-                        + tessDataPath
-        );
-        System.out.println(
-                "eng.traineddata path: "
-                        + trainedData.getAbsolutePath()
-        );
-        System.out.println(
-                "eng.traineddata exists: "
-                        + trainedData.exists()
-        );
-        System.out.println(
-                "eng.traineddata readable: "
-                        + trainedData.canRead()
-        );
-        System.out.println(
-                "eng.traineddata size: "
-                        + trainedData.length()
-        );
-        System.out.println("======================================");
-
-        if (!trainedData.exists() || !trainedData.canRead()) {
-            throw new IllegalStateException(
-                    "Tesseract language file not found or not readable: "
-                            + trainedData.getAbsolutePath()
-            );
-        }
-
         this.tesseract.setDatapath(tessDataPath);
+
         this.tesseract.setLanguage("eng");
-        this.tesseract.setPageSegMode(6);
+    }
+
+    private String prepareTessdataPath() {
+        try {
+            Path tessdataPath = Files.createTempDirectory("intellidoc-tessdata-");
+            Path trainedData = tessdataPath.resolve("eng.traineddata");
+            try (var input = new ClassPathResource("tessdata/eng.traineddata").getInputStream()) {
+                Files.copy(input, trainedData);
+            }
+            trainedData.toFile().deleteOnExit();
+            tessdataPath.toFile().deleteOnExit();
+            return tessdataPath.toAbsolutePath().toString();
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to prepare bundled Tesseract language data", error);
+        }
     }
 
     public String extractText(MultipartFile file)
@@ -287,82 +272,29 @@ public class DocumentTextExtractor {
     // IMAGE OCR
     // =========================================================
 
-    private String extractImageText(MultipartFile file)
+    private String extractImageText(
+            MultipartFile file)
             throws IOException {
-
-        byte[] imageBytes = file.getBytes();
-
-        System.out.println("======================================");
-        System.out.println(
-                "Starting OCR for image: "
-                        + file.getOriginalFilename()
-        );
-        System.out.println(
-                "Image content type: "
-                        + file.getContentType()
-        );
-        System.out.println(
-                "Image size: "
-                        + imageBytes.length
-                        + " bytes"
-        );
 
         BufferedImage image =
                 ImageIO.read(
-                        new ByteArrayInputStream(imageBytes)
+                        new ByteArrayInputStream(
+                                file.getBytes()
+                        )
                 );
 
         if (image == null) {
+
             throw new IllegalArgumentException(
-                    "Could not read image file: "
-                            + file.getOriginalFilename()
+                    "Could not read image file"
             );
         }
 
-        System.out.println(
-                "Image width: "
-                        + image.getWidth()
-        );
-
-        System.out.println(
-                "Image height: "
-                        + image.getHeight()
-        );
-
-        System.out.println(
-                "Starting Tesseract OCR..."
-        );
-
         try {
 
-            String result =
-                    tesseract.doOCR(image);
-
-            System.out.println(
-                    "OCR completed successfully."
-            );
-
-            System.out.println(
-                    "OCR result length: "
-                            + (result == null
-                            ? 0
-                            : result.length())
-            );
-
-            System.out.println("======================================");
-
-            return result == null
-                    ? ""
-                    : result;
+            return tesseract.doOCR(image);
 
         } catch (TesseractException e) {
-
-            System.out.println(
-                    "OCR failed for image: "
-                            + file.getOriginalFilename()
-            );
-
-            e.printStackTrace();
 
             throw new RuntimeException(
                     "OCR failed for image",
@@ -370,6 +302,7 @@ public class DocumentTextExtractor {
             );
         }
     }
+
 
     // =========================================================
     // FILE EXTENSION

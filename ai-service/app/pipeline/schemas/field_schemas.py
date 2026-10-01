@@ -20,10 +20,14 @@ class DocumentType(str, Enum):
 class ClassificationResultSchema(BaseModel):
     document_type: DocumentType = Field(alias="documentType")
     confidence: float = Field(ge=0.0, le=1.0)
-    overview: str = Field(min_length=1)
+    topics: list[str] = Field(min_length=1)
     summary: str = Field(min_length=1)
 
     model_config = {"populate_by_name": True}
+
+
+class SummaryResultSchema(BaseModel):
+    summary: str = Field(min_length=1)
 
 
 class ProvenanceField(BaseModel):

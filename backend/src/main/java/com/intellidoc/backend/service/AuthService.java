@@ -4,6 +4,8 @@ import com.intellidoc.backend.dto.LoginResponseDto;
 import com.intellidoc.backend.dto.UserProfileDto;
 import com.intellidoc.backend.exception.EmailAlreadyExistsException;
 import com.intellidoc.backend.exception.InvalidCredentialsException;
+import com.intellidoc.backend.exception.InvalidOldPasswordException;
+import com.intellidoc.backend.exception.PasswordMismatchException;
 import com.intellidoc.backend.exception.UserNotFoundException;
 import com.intellidoc.backend.model.TenantEntity;
 import com.intellidoc.backend.model.UserAccountEntity;
@@ -83,6 +85,73 @@ public class AuthService {
         UserAccountEntity user = userAccountRepository.findById(userId)
                 .orElseThrow(UserNotFoundException::new);
         return toProfile(user);
+    }
+
+    @Transactional
+    public LoginResponseDto updateProfile(UUID userId, String displayName) {
+        UserAccountEntity user = userAccountRepository.findById(userId)
+                .orElseThrow(UserNotFoundException::new);
+        
+        String trimmedDisplayName = displayName.trim();
+        if (trimmedDisplayName.isEmpty()) {
+            throw new IllegalArgumentException("Display name cannot be empty");
+        }
+        
+        user.setDisplayName(trimmedDisplayName);
+        userAccountRepository.save(user);
+        
+        log.info("Profile updated for userId={}", userId);
+        
+        // Generate new token with updated user info
+        String token = jwtTokenProvider.generateToken(user.getId(), user.getTenantId());
+        
+        return LoginResponseDto.builder()
+                .token(token)
+                .user(toProfile(user))
+                .build();
+    }
+
+    @Transactional
+    public void changePassword(UUID userId, String oldPassword, String newPassword, String confirmNewPassword) {
+        if (!newPassword.equals(confirmNewPassword)) {
+            throw new PasswordMismatchException();
+        }
+        
+        if (newPassword.length() < 6) {
+            throw new IllegalArgumentException("New password must be at least 6 characters");
+        }
+        
+        UserAccountEntity user = userAccountRepository.findById(userId)
+                .orElseThrow(UserNotFoundException::new);
+        
+        if (!passwordEncoder.matches(oldPassword, user.getPasswordHash())) {
+            throw new InvalidOldPasswordException();
+        }
+        
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userAccountRepository.save(user);
+        
+        log.info("Password changed for userId={}", userId);
+    }
+
+    @Transactional
+    public void forgotPassword(String email, String newPassword, String confirmNewPassword) {
+        if (!newPassword.equals(confirmNewPassword)) {
+            throw new PasswordMismatchException();
+        }
+        
+        if (newPassword.length() < 6) {
+            throw new IllegalArgumentException("New password must be at least 6 characters");
+        }
+        
+        String normalized = normalizeEmail(email);
+        UserAccountEntity user = userAccountRepository.findByEmailIgnoreCase(normalized)
+                .orElseThrow(UserNotFoundException::new);
+        
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        userAccountRepository.save(user);
+        
+        log.info("Password reset for userId={} via forgot password", user.getId());
     }
 
     private UserProfileDto toProfile(UserAccountEntity user) {

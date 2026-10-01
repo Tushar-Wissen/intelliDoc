@@ -51,7 +51,7 @@ def test_answer_generation_empty_evidence_package_short_circuits():
     result = service.generate_answer("What is notice?", package)
 
     assert result is None
-    mock_provider.generate.assert_not_called()
+    mock_provider.generate_split.assert_not_called()
 
 
 def test_answer_generation_parses_claims_and_chunk_tags():
@@ -69,7 +69,7 @@ def test_answer_generation_parses_claims_and_chunk_tags():
     package = make_package(chunks=[chunk])
 
     mock_provider = MagicMock()
-    mock_provider.generate.return_value = CompletionResponse(
+    mock_provider.generate_split.return_value = CompletionResponse(
         text=f"The termination notice period is 60 days. [chunk:{chunk_id}]"
     )
 
@@ -81,6 +81,40 @@ def test_answer_generation_parses_claims_and_chunk_tags():
     assert len(result.claims) == 1
     assert result.claims[0].cited_evidence_id == chunk_id
     assert "60 days" in result.claims[0].text
+
+
+def test_answer_generation_preserves_lists_and_drops_metadata_only_bullets():
+    chunk_id = uuid.uuid4()
+    doc_id = uuid.uuid4()
+    chunk = EvidenceChunk(
+        chunkId=chunk_id,
+        documentId=doc_id,
+        documentName="contract.docx",
+        pageNumber=1,
+        text="Parties: Acme Corp and Beta Ltd. Effective Date: 2026-01-01.",
+        rerankScore=0.9,
+        provenance=["keyword"],
+    )
+    package = make_package(chunks=[chunk])
+    mock_provider = MagicMock()
+    mock_provider.generate_split.return_value = CompletionResponse(
+        text=(
+            f"- Parties: Acme Corp and Beta Ltd [chunk:{chunk_id}]\n"
+            f"- Effective Date: 2026-01-01 [chunk:{chunk_id}]\n"
+            f"- Chunk ID: {chunk_id}"
+        )
+    )
+
+    result = AnswerGenerationService(provider=mock_provider).generate_answer(
+        "List the parties and effective date.", package
+    )
+
+    assert result is not None
+    assert "- Parties: Acme Corp and Beta Ltd" in result.text
+    assert "- Effective Date: 2026-01-01" in result.text
+    assert "Chunk ID" not in result.text
+    assert str(chunk_id) not in result.text
+    assert "- \n" not in result.text
 
 
 def test_answer_generation_propagates_provider_error():
@@ -96,7 +130,7 @@ def test_answer_generation_propagates_provider_error():
     package = make_package(chunks=[chunk])
 
     mock_provider = MagicMock()
-    mock_provider.generate.side_effect = ProviderError("Ollama is offline")
+    mock_provider.generate_split.side_effect = ProviderError("Ollama is offline")
 
     service = AnswerGenerationService(provider=mock_provider)
 

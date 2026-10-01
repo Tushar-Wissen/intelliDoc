@@ -22,6 +22,7 @@ from app.db.models import (
     DocumentChunk,
     DocumentPage,
     DocumentSection,
+    DocumentSummary,
     ExtractedField,
     ProcessingJob,
 )
@@ -344,9 +345,25 @@ class SqlAlchemyPipelineRepository(PipelineRepository):
                     document_type=document_type,
                     classification_confidence=classification_confidence,
                     overview=overview,
-                    summary=summary,
                 )
             )
+            now = datetime.now(timezone.utc)
+            existing = session.scalars(
+                select(DocumentSummary).where(DocumentSummary.document_id == document_id)
+            ).first()
+            if existing is None:
+                session.add(
+                    DocumentSummary(
+                        id=uuid.uuid4(),
+                        document_id=document_id,
+                        summary=summary,
+                        created_at=now,
+                        updated_at=now,
+                    )
+                )
+            else:
+                existing.summary = summary
+                existing.updated_at = now
             session.commit()
 
     def clear_extracted_fields(self, document_id: uuid.UUID) -> None:

@@ -23,3 +23,13 @@ class ModelProviderInterface(ABC):
     def generate(self, prompt: str, *, temperature: float | None = None) -> CompletionResponse:
         """Generate text completion from prompt. Raises ProviderError on network/HTTP failure."""
         raise NotImplementedError
+
+    def generate_split(
+        self,
+        system: str,
+        user: str,
+        *,
+        temperature: float | None = None,
+    ) -> CompletionResponse:
+        """Generate from separate system and user prompts. Defaults to a single combined prompt."""
+        return self.generate(f"{system}\n\n{user}", temperature=temperature)

@@ -21,6 +21,8 @@ class VerifiedClaim:
     supported_by_text: bool
     supported_by_graph: bool
     is_supported: bool
+    block_index: int = 0
+    list_marker: str | None = None
 
 
 @dataclass
@@ -132,6 +134,8 @@ class ClaimVerificationService:
                 supported_by_text=supported_by_text,
                 supported_by_graph=supported_by_graph,
                 is_supported=is_supported,
+                block_index=claim.block_index,
+                list_marker=claim.list_marker,
             )
             verified_claims.append(vc)
 
@@ -154,8 +158,9 @@ class ClaimVerificationService:
             logger.info("Zero claims survived verification; returning None for not-found")
             return None
 
-        # Re-assemble final answer text from surviving claims
-        final_answer_text = " ".join(c.text for c in surviving_claims).strip()
+        # Keep paragraph and Markdown-list structure while omitting claims that
+        # did not pass evidence/contradiction checks.
+        final_answer_text = self._format_surviving_claims(surviving_claims)
 
         # Build citations for surviving chunks
         citations: list[VerifiedCitation] = []
@@ -187,3 +192,19 @@ class ClaimVerificationService:
             is_not_found=False,
             reason=None,
         )
+
+    @staticmethod
+    def _format_surviving_claims(claims: list[VerifiedClaim]) -> str:
+        blocks: list[str] = []
+        by_block: dict[int, list[VerifiedClaim]] = {}
+        for claim in claims:
+            by_block.setdefault(claim.block_index, []).append(claim)
+
+        for block_index in sorted(by_block):
+            block_claims = by_block[block_index]
+            marker = block_claims[0].list_marker
+            if marker:
+                blocks.extend(f"{claim.list_marker or marker} {claim.text}" for claim in block_claims)
+            else:
+                blocks.append(" ".join(claim.text for claim in block_claims))
+        return "\n\n".join(block for block in blocks if block.strip()).strip()

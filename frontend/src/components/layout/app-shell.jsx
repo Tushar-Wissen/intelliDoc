@@ -3,20 +3,43 @@ import React, { useState } from 'react';
 import { Sidebar, MobileSidebar } from '@/components/layout/sidebar';
 import { Header } from '@/components/layout/header';
 
-export function AppShell({ title, subtitle, badge, headerTestId, healthStatus, tabsBar, children }) {
+export function AppShell({
+  title,
+  subtitle,
+  healthStatus,
+  onUploadClick,
+  activeView,
+  onNavigate,
+  activeFolder,
+  secondaryPanel,
+  tabsBar,
+  children,
+}) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const collapsed = Boolean(activeFolder);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      <Sidebar />
-      <MobileSidebar open={mobileNavOpen} onOpenChange={setMobileNavOpen} />
+      <Sidebar
+        onUploadClick={onUploadClick}
+        activeView={activeView}
+        onNavigate={onNavigate}
+        collapsed={collapsed}
+      />
+      <MobileSidebar
+        open={mobileNavOpen}
+        onOpenChange={setMobileNavOpen}
+        onUploadClick={onUploadClick}
+        activeView={activeView}
+        onNavigate={onNavigate}
+      />
+
+      {secondaryPanel}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <Header
-          title={title}
-          subtitle={subtitle}
-          badge={badge}
-          testId={headerTestId}
+          title={activeFolder ? activeFolder.name : title}
+          subtitle={activeFolder ? 'Folder selected — full navigation coming soon' : subtitle}
           healthStatus={healthStatus}
           onMenuClick={() => setMobileNavOpen(true)}
         />

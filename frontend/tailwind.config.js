@@ -56,12 +56,6 @@ export default {
           DEFAULT: 'hsl(var(--success))',
           foreground: 'hsl(var(--success-foreground))',
         },
-        wissen: {
-          navy: '#1D305A',
-          'navy-dark': '#0F1A33',
-          'navy-light': '#30487E',
-          gray: '#86878A',
-        },
       },
       borderRadius: {
         lg: 'var(--radius)',
@@ -97,7 +91,6 @@ export default {
           'Roboto',
           'sans-serif',
         ],
-        display: ['Manrope', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
     },
   },
