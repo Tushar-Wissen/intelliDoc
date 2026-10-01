@@ -26,11 +26,11 @@ export function AuthProvider({ children }) {
         return { error };
       },
 
-      resetPassword: async (details) => mockAuth.resetPassword(details),
+      resetPassword: async (details) => await authApi.forgotPassword(details),
 
       updateProfile: async (updates) => {
         if (!user) return { error: new Error('Not signed in.') };
-        const { user: updatedUser, error } = await mockAuth.updateProfile({ email: user.email, ...updates });
+        const { user: updatedUser, error } = await authApi.updateProfile({ email: user.email, ...updates });
         if (updatedUser) setUser(updatedUser);
         return { error };
       },

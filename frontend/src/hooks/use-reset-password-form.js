@@ -39,7 +39,7 @@ export function useResetPasswordForm({ email, onEmailChange }) {
 
     setSubmitting(true);
     try {
-      const { error } = await resetPassword({ email, newPassword });
+      const { error } = await resetPassword({ email, newPassword, confirmNewPassword });
       if (error) {
         setFormError(error.message);
         return;
