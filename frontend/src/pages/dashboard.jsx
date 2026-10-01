@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Loader2, FolderPlus } from 'lucide-react';
 
 import { AppShell } from '@/components/layout/app-shell';
-import { UploadDialog } from '@/components/features/upload-dialog';
 import { CreateWorkspaceDialog } from '@/components/features/create-workspace-dialog';
 import { EmptyWorkspaceState } from '@/components/features/empty-workspace-state';
 
@@ -59,14 +58,6 @@ const getFileColors = (type) => {
   };
 };
 
-const USER_COLORS = [
-  'bg-violet-100 text-violet-700',
-  'bg-blue-100 text-blue-700',
-  'bg-amber-100 text-amber-700',
-  'bg-emerald-100 text-emerald-700',
-  'bg-pink-100 text-pink-700',
-];
-
 export function DashboardPage() {
   const healthStatus = useHealthStatus();
   const navigate = useNavigate();
@@ -74,7 +65,6 @@ export function DashboardPage() {
   const { folders, loading } = useFolders();
 
   const totalFolders = folders.length;
-  const [uploadOpen, setUploadOpen] = useState(false);
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
 
   const totalDocuments = useMemo(
@@ -84,31 +74,19 @@ export function DashboardPage() {
 
   const recentDocuments = useMemo(() => {
     const allFiles = folders.flatMap((folder) =>
-      (folder.files || []).map((file) => {
-        const colors = getFileColors(file.type);
-        // Deterministic user color based on file id or something, we'll just use length of id
-        const colorIndex = (file.id?.length || 0) % USER_COLORS.length;
-        
-        return {
-          ...file,
-          folderId: folder.id,
-          folder: folder.name,
-          time: formatTimeElapsed(file.createdAt),
-          userInitials: 'JD', // You can replace this if you have real user info
-          userBg: USER_COLORS[colorIndex],
-          ...colors,
-        };
-      })
+      (folder.files || []).map((file) => ({
+        ...file,
+        folderId: folder.id,
+        folder: folder.name,
+        time: formatTimeElapsed(file.updatedAt || file.createdAt),
+        ...getFileColors(file.type),
+      }))
     );
     
     return allFiles
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
       .slice(0, 5);
   }, [folders]);
-
-  const handleWorkspaceCreated = () => {
-    setTimeout(() => setUploadOpen(true), 250);
-  };
 
   return (
     <AppShell title="Dashboard" healthStatus={healthStatus}>
@@ -135,16 +113,23 @@ export function DashboardPage() {
 
           {/* Middle row: most accessed + AI success rate */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
-            <MostAccessedCard documents={recentDocuments} />
+            <MostAccessedCard
+              documents={recentDocuments}
+              loading={loading}
+              onViewAll={() => navigate('/workspace')}
+            />
             <AiSuccessRateCard />
           </div>
 
           {/* Recent documents table */}
           <RecentDocumentsTable
             files={recentDocuments}
+            loading={loading}
             onOpenFile={(file) =>
               navigate('/workspace', { state: { folderId: file.folderId, fileId: file.id } })
             }
+            onOpenFolder={(file) => navigate('/workspace', { state: { folderId: file.folderId } })}
+            onViewAll={() => navigate('/workspace')}
           />
 
         </div>
@@ -153,10 +138,7 @@ export function DashboardPage() {
       <CreateWorkspaceDialog
         open={createWorkspaceOpen}
         onOpenChange={setCreateWorkspaceOpen}
-        onCreated={handleWorkspaceCreated}
       />
-
-      <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} />
     </AppShell>
   );
 }

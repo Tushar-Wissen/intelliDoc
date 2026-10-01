@@ -61,7 +61,7 @@ const PROCESSING_STEPS = [
   { status: DOCUMENT_STATUS.INDEXING, label: 'Indexing', message: 'Indexing for AI search' },
 ];
 
-function ProcessingSteps({ status }) {
+export function ProcessingSteps({ status }) {
   const current = PROCESSING_STEPS.findIndex((step) => step.status === status);
   const checking = current === -1;
   const message = checking ? 'Checking document status' : PROCESSING_STEPS[current].message;
@@ -126,7 +126,6 @@ export function DocumentProcessingState({ status, documentName }) {
       title="Document is not ready yet"
       description={`${documentName ? `"${documentName}"` : 'This document'} is still being processed. You can start chatting once it's ready.`}
     >
-      <ProcessingSteps status={status} />
       <p className="text-[11px] text-muted-foreground">
         Chat unlocks automatically when processing finishes.
       </p>

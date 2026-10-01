@@ -268,13 +268,17 @@ export function WorkspacePage() {
       .join('') || 'Y';
 
   // IntelliDoc AI's chat panel is always visible; its subtitle/placeholder switch between
-  // workspace-wide and single-folder context depending on whether a folder is open.
-  const copilotSubtitle = activeFolder
-    ? 'Searching across documents in this folder'
-    : `Searching across ${totalFilesCount} ${totalFilesCount === 1 ? 'document' : 'documents'}`;
-  const copilotPlaceholder = activeFolder
-    ? 'Ask IntelliDoc AI about your folder...'
-    : 'Ask IntelliDoc AI about your workspace...';
+  // workspace-wide, single-folder and single-document context depending on what is open.
+  const copilotSubtitle = activeFileId
+    ? 'Answering from this document'
+    : activeFolder
+      ? 'Searching across documents in this folder'
+      : `Searching across ${totalFilesCount} ${totalFilesCount === 1 ? 'document' : 'documents'}`;
+  const copilotPlaceholder = activeFileId
+    ? 'Ask IntelliDoc AI about this document...'
+    : activeFolder
+      ? 'Ask IntelliDoc AI about your folder...'
+      : 'Ask IntelliDoc AI about your workspace...';
 
   const recentFiles = useMemo(() => {
     const flattened = [];

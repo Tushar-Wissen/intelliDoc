@@ -13,17 +13,19 @@ import {
   Hash,
   Info,
   RotateCw,
+  Sparkles,
   User,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { formatDate, formatDateTime, formatMegabytes } from '@/lib/format';
 import { getFileTypeMeta } from '@/lib/file-types';
-import { useDocumentDetail } from '@/hooks/use-document-detail';
+import { isDocumentProcessing, useDocumentDetail } from '@/hooks/use-document-detail';
 import { useDocumentFile } from '@/hooks/use-document-file';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DocumentPreview } from '@/components/features/document-preview';
+import { ProcessingSteps } from '@/components/features/copilot-empty-state';
 
 const TABS = [
   { id: 'summary', label: 'Summary', Icon: AlignLeft },
@@ -120,7 +122,7 @@ function ViewTabs({ value, onChange }) {
     <div
       role="tablist"
       aria-label="Document view"
-      className="flex gap-1 rounded-xl border border-border bg-muted/40 px-2 pt-2"
+      className="flex gap-1 rounded-lg border border-border bg-muted/40 px-1.5 pt-1.5"
     >
       {TABS.map(({ id, label, Icon }) => {
         const active = value === id;
@@ -135,13 +137,13 @@ function ViewTabs({ value, onChange }) {
             aria-controls={`document-panel-${id}`}
             onClick={() => onChange(id)}
             className={cn(
-              '-mb-px flex items-center gap-2 rounded-t-lg border-b-2 px-5 py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              '-mb-px flex items-center gap-1.5 rounded-t-md border-b-2 px-3.5 py-1.5 text-[13px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
               active
                 ? 'border-primary bg-card text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
             )}
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="h-3.5 w-3.5" />
             {label}
           </button>
         );
@@ -224,17 +226,17 @@ function FileCard({ file, detailState }) {
   return (
     <div
       data-testid="document-file-card"
-      className="flex flex-col gap-4 rounded-xl border border-border bg-card px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+      className="flex flex-col gap-3 rounded-lg border border-border bg-card px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between"
     >
-      <div className="flex min-w-0 flex-1 items-center gap-4">
-        <div className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-lg', typeMeta.className)}>
-          <FileText className="h-5 w-5" />
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <div className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-md', typeMeta.className)}>
+          <FileText className="h-4 w-4" />
         </div>
         <div className="min-w-0">
-          <p className="truncate text-base font-semibold text-card-foreground" title={name}>
+          <p className="truncate text-sm font-semibold text-card-foreground" title={name}>
             {name}
           </p>
-          <p className="truncate text-sm text-muted-foreground">{meta.join(' · ')}</p>
+          <p className="truncate text-xs text-muted-foreground">{meta.join(' · ')}</p>
         </div>
       </div>
 
@@ -277,6 +279,55 @@ function SummarySection({ text }) {
         {text || <span className="text-muted-foreground">No summary yet. It appears once processing finishes.</span>}
       </p>
     </SectionCard>
+  );
+}
+
+// Document sheet with a scan beam sweeping over it, shown while the pipeline works.
+function ScanningIllustration() {
+  return (
+    <div className="relative h-28 w-24" aria-hidden="true">
+      <div className="absolute inset-0 overflow-hidden rounded-xl border border-wissen-navy/15 bg-card shadow-md">
+        <div className="flex flex-col gap-2 p-3.5">
+          <FileText className="mb-1 h-5 w-5 text-wissen-navy dark:text-wissen-navy-light" />
+          <span className="h-1.5 w-full rounded-full bg-wissen-navy/15" />
+          <span className="h-1.5 w-4/5 rounded-full bg-wissen-navy/10" />
+          <span className="h-1.5 w-full rounded-full bg-wissen-navy/10" />
+          <span className="h-1.5 w-3/5 rounded-full bg-wissen-navy/10" />
+          <span className="h-1.5 w-4/5 rounded-full bg-wissen-navy/10" />
+        </div>
+        <div className="absolute inset-x-0 top-0 animate-scan motion-reduce:hidden">
+          <div className="h-8 bg-gradient-to-b from-transparent to-indigo-500/15" />
+          <div className="h-0.5 bg-indigo-500 shadow-[0_0_10px_2px_rgba(99,102,241,0.55)]" />
+        </div>
+      </div>
+      <span className="absolute -right-3 -top-3 flex h-8 w-8 items-center justify-center rounded-full bg-wissen-navy text-white shadow-sm ring-4 ring-card">
+        <Sparkles className="h-4 w-4 animate-pulse motion-reduce:animate-none" />
+      </span>
+    </div>
+  );
+}
+
+// Replaces the empty overview and summary while the document is still in the pipeline.
+function ProcessingPanel({ status }) {
+  return (
+    <section
+      data-testid="document-processing"
+      className="flex flex-col items-center gap-5 rounded-xl border border-dashed border-wissen-navy/20 bg-gradient-to-b from-wissen-navy/[0.04] to-transparent px-6 py-10 text-center"
+    >
+      <ScanningIllustration />
+      <div className="max-w-md space-y-1.5">
+        <h3 className="font-display text-lg font-semibold tracking-tight text-foreground">
+          Documents are being processed
+        </h3>
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          We&rsquo;re analyzing and indexing your documents. They will appear here once processing is complete.
+        </p>
+      </div>
+      <div className="w-full max-w-sm">
+        <ProcessingSteps status={String(status).toUpperCase()} />
+      </div>
+      <p className="text-xs text-muted-foreground">This page updates automatically &mdash; no need to refresh.</p>
+    </section>
   );
 }
 
@@ -368,11 +419,15 @@ export function DocumentView({ file }) {
           className="flex flex-col gap-5"
         >
           {detailState.status === 'success' ? (
-            <>
-              <OverviewSection items={document.overview ?? []} />
-              <SummarySection text={document.summary} />
-              <DetailsSection document={document} />
-            </>
+            isDocumentProcessing(document.status) ? (
+              <ProcessingPanel status={document.status} />
+            ) : (
+              <>
+                <OverviewSection items={document.overview ?? []} />
+                <SummarySection text={document.summary} />
+                <DetailsSection document={document} />
+              </>
+            )
           ) : detailState.status === 'error' ? (
             <p className="rounded-xl border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
               The summary is unavailable until the document details load.
