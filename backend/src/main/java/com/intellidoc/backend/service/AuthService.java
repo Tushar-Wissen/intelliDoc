@@ -88,7 +88,7 @@ public class AuthService {
     }
 
     @Transactional
-    public UserProfileDto updateProfile(UUID userId, String displayName) {
+    public LoginResponseDto updateProfile(UUID userId, String displayName) {
         UserAccountEntity user = userAccountRepository.findById(userId)
                 .orElseThrow(UserNotFoundException::new);
         
@@ -101,7 +101,14 @@ public class AuthService {
         userAccountRepository.save(user);
         
         log.info("Profile updated for userId={}", userId);
-        return toProfile(user);
+        
+        // Generate new token with updated user info
+        String token = jwtTokenProvider.generateToken(user.getId(), user.getTenantId());
+        
+        return LoginResponseDto.builder()
+                .token(token)
+                .user(toProfile(user))
+                .build();
     }
 
     @Transactional
