@@ -2,6 +2,7 @@ package com.intellidoc.backend.controller;
 
 import com.intellidoc.backend.chat.ChatSessionService;
 import com.intellidoc.backend.dto.ChatSessionDetailResponseDto;
+import com.intellidoc.backend.dto.ChatSessionListResponseDto;
 import com.intellidoc.backend.dto.ChatSessionResponseDto;
 import com.intellidoc.backend.dto.CreateChatSessionRequestDto;
 import com.intellidoc.backend.security.AuthPrincipal;
@@ -31,6 +32,13 @@ public class ChatSessionController {
             @RequestBody CreateChatSessionRequestDto request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(chatSessionService.createSession(workspaceId, principal, request));
+    }
+
+    @GetMapping({"/workspaces/{workspaceId}/chat-sessions", "/api/v1/workspaces/{workspaceId}/chat-sessions"})
+    public ResponseEntity<ChatSessionListResponseDto> listSessions(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @PathVariable UUID workspaceId) {
+        return ResponseEntity.ok(chatSessionService.listSessions(principal, workspaceId));
     }
 
     @GetMapping({"/chat-sessions/{sessionId}", "/api/v1/chat-sessions/{sessionId}"})

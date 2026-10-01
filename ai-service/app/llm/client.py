@@ -25,6 +25,7 @@ from app.pipeline.schemas.field_schemas import (
     ClassificationResultSchema,
     DocumentType,
     ProvenanceField,
+    SummaryResultSchema,
     TYPE_SPECIFIC_FIELD_NAMES,
     TypeSpecificExtractionSchema,
     UniversalExtractionSchema,
@@ -55,6 +56,10 @@ class CallableLlmClient(StructuredLlmClient):
     def complete_json(self, prompt: str, schema: type[T], *, temperature: float | None = None) -> T:
         raw = self._fn(prompt, schema)
         return schema.model_validate(raw)
+
+
+def _httpx_timeout(read_seconds: float) -> httpx.Timeout:
+    return httpx.Timeout(connect=10.0, read=read_seconds, write=30.0, pool=10.0)
 
 
 class HostedLlmClient(StructuredLlmClient):
@@ -95,7 +100,7 @@ class HostedLlmClient(StructuredLlmClient):
                     hosted_completions_url(self._base_url),
                     json=payload,
                     headers=headers,
-                    timeout=self._timeout,
+                    timeout=_httpx_timeout(self._timeout),
                 )
                 response.raise_for_status()
                 content = response.json()["choices"][0]["message"]["content"]
@@ -144,7 +149,7 @@ class OllamaLlmClient(StructuredLlmClient):
             response = httpx.post(
                 f"{self._base_url}/api/generate",
                 json=payload,
-                timeout=self._timeout,
+                timeout=_httpx_timeout(self._timeout),
             )
             response.raise_for_status()
             body = response.json()
@@ -165,6 +170,8 @@ class RulesLlmClient(StructuredLlmClient):
             return schema.model_validate(self._rewrite_question(prompt))
         if schema is ClassificationResultSchema:
             return schema.model_validate(self._classify(prompt))
+        if schema is SummaryResultSchema:
+            return schema.model_validate(self._summarize(prompt))
         if schema is UniversalExtractionSchema:
             fields = self._extract_universal(prompt)
             return UniversalExtractionSchema(fields=fields)
@@ -194,12 +201,21 @@ class RulesLlmClient(StructuredLlmClient):
             doc_type = DocumentType.OTHER
             confidence = 0.55
         title = _first_line(prompt) or "Document"
+        topics = _topics_for_type(doc_type, title, lower)
         return {
             "documentType": doc_type.value,
             "confidence": confidence,
-            "overview": f"Overview of {title[:120]}.",
-            "summary": f"Summary covering key themes in {title[:80]}.",
+            "topics": topics,
+            "summary": self._summarize_text(title),
         }
+
+    def _summarize(self, prompt: str) -> dict[str, Any]:
+        _, _, text = _parse_chunk_prompt(prompt)
+        title = _first_line(text) or "Document"
+        return {"summary": self._summarize_text(title)}
+
+    def _summarize_text(self, title: str) -> str:
+        return f"Summary covering key themes in {title[:80]}."
 
     def _extract_universal(self, prompt: str) -> list[ProvenanceField]:
         chunk_id, page, text = _parse_chunk_prompt(prompt)
@@ -293,6 +309,8 @@ class RulesLlmClient(StructuredLlmClient):
 
 
 _default_client: StructuredLlmClient | None = None
+_rules_client: StructuredLlmClient | None = None
+_summary_client: StructuredLlmClient | None = None
 
 
 def get_llm_client() -> StructuredLlmClient:
@@ -307,12 +325,48 @@ def set_llm_client(client: StructuredLlmClient | None) -> None:
     _default_client = client
 
 
+def get_rules_llm_client() -> StructuredLlmClient:
+    """Deterministic rules engine for classification metadata and field extraction."""
+    global _rules_client
+    if _rules_client is None:
+        _rules_client = RulesLlmClient()
+    return _rules_client
+
+
+def set_rules_llm_client(client: StructuredLlmClient | None) -> None:
+    global _rules_client
+    _rules_client = client
+
+
+def get_summary_llm_client() -> StructuredLlmClient:
+    global _summary_client
+    if _summary_client is None:
+        _summary_client = build_summary_llm_client()
+    return _summary_client
+
+
+def set_summary_llm_client(client: StructuredLlmClient | None) -> None:
+    global _summary_client
+    _summary_client = client
+
+
 def build_llm_client() -> StructuredLlmClient:
-    provider = os.getenv("LLM_PROVIDER", "rules").strip().lower()
+    return _build_provider_client(os.getenv("LLM_PROVIDER", "rules").strip().lower())
+
+
+def build_summary_llm_client() -> StructuredLlmClient:
+    provider = os.getenv("SUMMARY_LLM_PROVIDER", "").strip().lower()
+    if not provider:
+        provider = "hosted" if hosted_api_key() else "rules"
+    return _build_provider_client(provider)
+
+
+def _build_provider_client(provider: str) -> StructuredLlmClient:
     if provider == "ollama":
         base = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
         model = os.getenv("OLLAMA_MODEL", "llama3.2")
-        return OllamaLlmClient(base_url=base, model=model)
+        timeout = float(os.getenv("OLLAMA_TIMEOUT_SECONDS", "300"))
+        return OllamaLlmClient(base_url=base, model=model, timeout_seconds=timeout)
     if provider == "hosted":
         return HostedLlmClient(
             base_url=hosted_base_url(),
@@ -321,7 +375,7 @@ def build_llm_client() -> StructuredLlmClient:
             timeout_seconds=hosted_timeout_seconds(),
         )
     if provider != "rules":
-        logger.warning("Unknown LLM_PROVIDER=%s; using rules", provider)
+        logger.warning("Unknown LLM provider=%s; using rules", provider)
     return RulesLlmClient()
 
 
@@ -462,6 +516,21 @@ def _match_amounts(text: str) -> list[tuple[str, str]]:
 def _match_reference(text: str) -> str | None:
     match = re.search(r"\b(?:ref(?:erence)?|agreement)\s*(?:#|no\.?)?\s*([A-Z0-9-]{4,})\b", text, re.I)
     return match.group(1) if match else None
+
+
+def _topics_for_type(doc_type: DocumentType, title: str, lower: str) -> list[str]:
+    explicit = _match_topics(lower)
+    if explicit:
+        return [part.strip() for part in explicit.split(",") if part.strip()]
+    if doc_type == DocumentType.CONTRACT:
+        return ["Contract terms", "Termination", "Parties"]
+    if doc_type == DocumentType.FINANCIAL_REPORT:
+        return ["Financial performance", "Revenue", "Forecast"]
+    if doc_type == DocumentType.PROPOSAL:
+        return ["Offering", "Pricing", "Customer"]
+    if doc_type == DocumentType.POLICY:
+        return ["Policy scope", "Compliance", "Governance"]
+    return [title[:80] if title else "General content"]
 
 
 def _match_topics(text: str) -> str | None:

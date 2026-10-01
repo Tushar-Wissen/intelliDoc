@@ -39,6 +39,24 @@ class Document(Base):
     summary: Mapped[str | None] = mapped_column(Text)
 
 
+class DocumentSummary(Base):
+    __tablename__ = "document_summary"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("document.id"), nullable=False, unique=True
+    )
+    summary: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+
 class DocumentPage(Base):
     __tablename__ = "document_page"
 

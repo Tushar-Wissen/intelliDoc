@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -18,8 +19,12 @@ public class DocumentDetailDto {
     private String documentType;
     private Double classificationConfidence;
     private String processingStatus;
-    private String overview;
+    private List<String> overview;
     private String summary;
+    private String uploadedByName;
+    private String fileType;
+    private String extension;
+    private double fileSizeMb;
     private int pageCount;
     private UUID moduleId;
     private OffsetDateTime createdAt;
