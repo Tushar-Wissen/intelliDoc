@@ -40,6 +40,64 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /api/v1/extract:
+    post:
+      summary: Selectively merge native page text and OCR page text
+      operationId: extractDocument
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExtractionRequest'
+      responses:
+        '200':
+          description: Document text extracted with page-level provenance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractionResponse'
+        '400':
+          description: No extractable text was supplied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/v1/extract/file:
+    post:
+      summary: Extract text from a PDF, DOCX, or image upload
+      operationId: extractDocumentFile
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - document_id
+                - file
+              properties:
+                document_id:
+                  type: string
+                  example: doc_12345
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Uploaded document extracted with page-level provenance
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExtractionResponse'
+        '400':
+          description: Invalid, unsupported, or unextractable upload
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /api/v1/qa:
     post:
       summary: Answer question based on document context
@@ -131,6 +189,132 @@ components:
           format: float
           example: 0.95
 
+    ExtractionRequest:
+      type: object
+      required:
+        - document_id
+        - pages
+      properties:
+        document_id:
+          type: string
+          example: doc_12345
+        pages:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/ExtractionPage'
+
+    ExtractionPage:
+      type: object
+      required:
+        - page_number
+      properties:
+        page_number:
+          type: integer
+          minimum: 1
+        native_text:
+          type: string
+        ocr_text:
+          type: string
+        ocr_confidence:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+
+    ExtractionResponse:
+      type: object
+      required:
+        - document_id
+        - pages
+        - combined_text
+        - ocr_pages
+        - native_pages
+      properties:
+        document_id:
+          type: string
+        pages:
+          type: array
+          items:
+            type: object
+            required:
+              - page_number
+              - method
+              - text
+            properties:
+              page_number:
+                type: integer
+              method:
+                type: string
+                enum: [native, ocr, unavailable]
+              text:
+                type: string
+              confidence:
+                type: number
+                format: float
+                nullable: true
+        combined_text:
+          type: string
+        ocr_pages:
+          type: array
+          items:
+            type: integer
+        native_pages:
+          type: array
+          items:
+            type: integer
+        sections:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtractedSection'
+        chunks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExtractedChunk'
+        extraction_version:
+          type: string
+          example: selective-ocr-v1
+
+    ExtractedSection:
+      type: object
+      required:
+        - section_id
+        - heading
+        - start_page
+        - end_page
+      properties:
+        section_id:
+          type: string
+        heading:
+          type: string
+        parent_section_id:
+          type: string
+          nullable: true
+        start_page:
+          type: integer
+        end_page:
+          type: integer
+
+    ExtractedChunk:
+      type: object
+      required:
+        - chunk_id
+        - page_number
+        - chunk_text
+        - token_count
+      properties:
+        chunk_id:
+          type: string
+        section_id:
+          type: string
+          nullable: true
+        page_number:
+          type: integer
+        chunk_text:
+          type: string
+        token_count:
+          type: integer
+
     QARequest:
       type: object
       required:
@@ -169,6 +353,24 @@ components:
           type: number
           format: float
           example: 0.92
+        is_not_found:
+          type: boolean
+          example: false
+        citations:
+          type: array
+          items:
+            $ref: '#/components/schemas/QACitation'
+
+    QACitation:
+      type: object
+      required:
+        - source_excerpt
+      properties:
+        page_number:
+          type: integer
+          nullable: true
+        source_excerpt:
+          type: string
 
     ErrorResponse:
       type: object
