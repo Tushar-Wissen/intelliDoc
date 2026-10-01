@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 class DraftClaim:
     text: str
     cited_evidence_id: uuid.UUID | None = None
+    block_index: int = 0
+    list_marker: str | None = None
 
 
 @dataclass
@@ -32,6 +34,13 @@ class GenerationError(Exception):
 
 
 class AnswerGenerationService:
+    _CHUNK_TAG = re.compile(r"\[chunk:([0-9a-f-]{36})\]", re.I)
+    _INTERNAL_METADATA = re.compile(
+        r"\[(?:chunk\s*id|page|section)(?:\s*[:#])?\s*[^\]]*\]"
+        r"|\b(?:chunk\s*(?:id|uuid)|sourceChunkId)\s*[:=]\s*[0-9a-f-]{8,}\b",
+        re.I,
+    )
+
     def __init__(self, provider: ModelProviderInterface | None = None) -> None:
         self._provider = provider
 
@@ -84,46 +93,86 @@ class AnswerGenerationService:
             return None
 
         valid_chunk_ids = {chunk.chunkId for chunk in evidence_package.chunks}
-        default_chunk_id = evidence_package.chunks[0].chunkId if evidence_package.chunks else None
-
-        # Standardize tag formatting: move [chunk:uuid] inside sentence before punctuation if needed
-        # e.g. "Sentence. [chunk:uuid]" -> "Sentence [chunk:uuid]."
-        normalized_text = re.sub(
-            r"\.\s*\[chunk:([0-9a-f-]{36})\]",
-            r" [chunk:\1].",
-            text,
-            flags=re.I,
-        )
-
-        sentences = re.split(r"(?<=[.!?])\s+", normalized_text)
         claims: list[DraftClaim] = []
+        output_blocks: list[str] = []
+        paragraph_lines: list[str] = []
+        block_index = 0
 
-        for sentence in sentences:
-            sentence_text = sentence.strip()
-            if not sentence_text or sentence_text.startswith("[chunk:"):
+        def add_claim(raw_text: str, index: int, list_marker: str | None = None) -> None:
+            tags = self._CHUNK_TAG.findall(raw_text)
+            cleaned = self._CHUNK_TAG.sub("", raw_text)
+            cleaned = self._INTERNAL_METADATA.sub("", cleaned)
+            cleaned = re.sub(r"\s+", " ", cleaned).strip()
+            cited_id = None
+            for tag in tags:
+                try:
+                    parsed_id = uuid.UUID(tag)
+                except ValueError:
+                    continue
+                if parsed_id in valid_chunk_ids:
+                    cited_id = parsed_id
+                    break
+            if cleaned and not re.fullmatch(r"(?:chunk|section|page)(?:\s+details?)?", cleaned, re.I):
+                claims.append(
+                    DraftClaim(
+                        text=cleaned,
+                        cited_evidence_id=cited_id,
+                        block_index=index,
+                        list_marker=list_marker,
+                    )
+                )
+
+        def flush_paragraph() -> None:
+            nonlocal block_index
+            if not paragraph_lines:
+                return
+            paragraph = re.sub(r"\s+", " ", " ".join(paragraph_lines)).strip()
+            paragraph_lines.clear()
+            output_blocks.append(paragraph)
+            citation_attached = re.sub(
+                r"([.!?])\s*(\[chunk:[0-9a-f-]{36}\])",
+                r" \2\1",
+                paragraph,
+                flags=re.I,
+            )
+            for sentence in re.split(r"(?<=[.!?])\s+", citation_attached):
+                add_claim(sentence, block_index)
+            block_index += 1
+
+        for raw_line in text.splitlines():
+            line = raw_line.strip()
+            if not line:
+                flush_paragraph()
                 continue
 
-            chunk_tags = re.findall(r"\[chunk:([0-9a-f-]{36})\]", sentence_text, re.I)
-            cleaned_text = re.sub(r"\[chunk:[0-9a-f-]{36}\]", "", sentence_text, flags=re.I).strip()
-            # Clean up duplicate spaces or trailing punctuation spaces
-            cleaned_text = re.sub(r"\s+", " ", cleaned_text).strip()
+            list_match = re.match(r"^(?P<marker>(?:[-*•]|\d+[.)])\s+)(?P<body>.+)$", line)
+            if list_match:
+                flush_paragraph()
+                marker = list_match.group("marker").strip()
+                body = list_match.group("body").strip()
+                display_body = self._CHUNK_TAG.sub("", body)
+                display_body = self._INTERNAL_METADATA.sub("", display_body)
+                display_body = re.sub(r"\s+", " ", display_body).strip()
+                if display_body:
+                    output_blocks.append(f"{marker} {display_body}")
+                add_claim(body, block_index, marker)
+                block_index += 1
+                continue
 
-            cited_id: uuid.UUID | None = None
-            if chunk_tags:
-                try:
-                    parsed_id = uuid.UUID(chunk_tags[0])
-                    if parsed_id in valid_chunk_ids:
-                        cited_id = parsed_id
-                except ValueError:
-                    pass
-
-            if cited_id is None and len(valid_chunk_ids) == 1:
-                cited_id = default_chunk_id
-
-            if cleaned_text:
-                claims.append(DraftClaim(text=cleaned_text, cited_evidence_id=cited_id))
+            # A heading is formatting, not a factual claim. The prompt asks the
+            # model to avoid headings unless the question explicitly needs one.
+            if re.match(r"^#{1,6}\s+", line):
+                flush_paragraph()
+                continue
+            paragraph_lines.append(line)
+        flush_paragraph()
 
         if not claims:
             return None
 
-        return DraftAnswer(text=text, claims=claims)
+        # This text is retained for diagnostics only; remove raw source IDs and
+        # metadata even if the provider ignored the prompt instruction.
+        safe_text = "\n\n".join(output_blocks)
+        safe_text = self._CHUNK_TAG.sub("", safe_text)
+        safe_text = self._INTERNAL_METADATA.sub("", safe_text)
+        return DraftAnswer(text=safe_text.strip(), claims=claims)

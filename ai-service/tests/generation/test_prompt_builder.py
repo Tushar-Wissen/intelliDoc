@@ -54,11 +54,12 @@ def test_prompt_builder_evidence_only_instruction():
 
     assert SYSTEM_PROMPT in prompt
     assert "ONLY source of information is the evidence package" in prompt
-    assert "Do NOT dump, quote, or repeat large blocks of evidence text." in prompt
+    assert "Do not include internal source IDs or chunk/page/section metadata." in prompt
     assert str(chunk_id) in prompt
     assert "The termination notice period is 30 days." in prompt
     assert "What is the termination notice period?" in prompt
-    assert "Provide a direct, concise grounded answer." in prompt
+    assert "Write only the answer for the user." in prompt
+    assert "Do not reproduce source-chunk IDs" in prompt
     # No graph facts section for retrieval_only
     assert "GRAPH FACTS & RELATIONSHIPS:" not in prompt
 
@@ -103,7 +104,7 @@ def test_prompt_builder_splits_system_and_user():
 
     system, user = PromptBuilder.build_prompt_parts("What is the notice period?", package)
     assert system == SYSTEM_PROMPT
-    assert "=== EVIDENCE PACKAGE ===" in user
+    assert "=== RETRIEVED EVIDENCE" in user
     assert "=== USER QUESTION ===" in user
     assert str(chunk_id) in user
 
