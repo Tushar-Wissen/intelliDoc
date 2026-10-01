@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { KeyRound, Loader2, LogOut, Trash2, UserRound } from 'lucide-react';
 
 import { useAuth } from '@/context/auth-context';
+import { authApi } from '@/lib/auth-api';
 import { useHealthStatus } from '@/hooks/use-health-status';
 import { AppShell } from '@/components/layout/app-shell';
 import { Button } from '@/components/ui/button';
@@ -51,6 +52,7 @@ export function ProfilePage() {
   const [profileSuccess, setProfileSuccess] = useState('');
   const [profileFieldErrors, setProfileFieldErrors] = useState({});
 
+  const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
@@ -116,6 +118,7 @@ export function ProfilePage() {
     setPasswordSuccess('');
 
     const errors = {};
+    if (!oldPassword) errors.oldPassword = 'Current password is required.';
     if (!newPassword) errors.newPassword = 'Password is required.';
     else if (newPassword.length < 6) errors.newPassword = 'Password must be at least 6 characters.';
     if (!confirmNewPassword) errors.confirmNewPassword = 'Please confirm your new password.';
@@ -128,9 +131,10 @@ export function ProfilePage() {
 
     setSavingPassword(true);
     try {
-      const { error } = await updateProfile({ password: newPassword });
+      const { error } = await authApi.changePassword({ oldPassword, newPassword, confirmNewPassword });
       if (error) throw error;
       setPasswordSuccess('Password updated.');
+      setOldPassword('');
       setNewPassword('');
       setConfirmNewPassword('');
     } catch (err) {
@@ -170,211 +174,228 @@ export function ProfilePage() {
       onNavigate={(view) => navigate('/', { state: { view } })}
     >
       <ScrollArea id="profile-page" className="-mx-1 min-h-0 flex-1">
-      <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-1 pb-10">
-        <Card id="profile-info-card" className="overflow-hidden border-border/80 shadow-sm">
-          <CardHeader className="flex-row items-center gap-4 border-b border-border/80 bg-gradient-to-r from-wissen-navy/[0.08] via-card to-card py-6 dark:from-wissen-navy-light/[0.14]">
-            <Avatar className="h-14 w-14 shrink-0">
-              <AvatarFallback className="bg-wissen-navy text-base font-semibold text-white shadow-sm dark:bg-wissen-navy-light">
-                {getInitials(user)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="min-w-0">
-              <CardTitle id="profile-display-name" className="truncate font-display text-lg">
-                {user?.fullName || 'Your profile'}
-              </CardTitle>
-              <CardDescription className="truncate text-sm">{user?.email}</CardDescription>
-              <p id="profile-member-since" className="mt-0.5 text-xs text-muted-foreground">
-                Member since {formatDate(user?.createdAt)}
-              </p>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-5">
-            <div className="mb-4 flex items-center gap-2 font-display text-sm font-semibold">
-              <UserRound className="h-4 w-4 text-wissen-navy dark:text-wissen-navy-light" />
-              Personal information
-            </div>
-            <form id="profile-form" className="flex flex-col gap-4" onSubmit={handleSaveProfile} noValidate>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="full-name-input">Full name</Label>
-                <Input
-                  id="full-name-input"
-                  name="fullName"
-                  type="text"
-                  autoComplete="name"
-                  placeholder="Your name"
-                  disabled={savingProfile}
-                  aria-invalid={Boolean(profileFieldErrors.fullName)}
-                  aria-describedby={profileFieldErrors.fullName ? 'full-name-input-error' : undefined}
-                  value={fullName}
-                  onChange={handleFullNameChange}
-                />
-                <FieldError id="full-name-input-error" message={profileFieldErrors.fullName} />
-              </div>
-
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="profile-email-input">Email</Label>
-                <Input
-                  id="profile-email-input"
-                  type="email"
-                  autoComplete="email"
-                  value={user?.email || ''}
-                  disabled
-                  readOnly
-                />
-                <p className="text-xs text-muted-foreground">Your email is used to sign in and can&apos;t be changed.</p>
-              </div>
-
-              {profileError && (
-                <p id="profile-error-message" role="alert" className="text-sm text-destructive">
-                  {profileError}
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-1 pb-10">
+          <Card id="profile-info-card" className="overflow-hidden border-border/80 shadow-sm">
+            <CardHeader className="flex-row items-center gap-4 border-b border-border/80 bg-gradient-to-r from-wissen-navy/[0.08] via-card to-card py-6 dark:from-wissen-navy-light/[0.14]">
+              <Avatar className="h-14 w-14 shrink-0">
+                <AvatarFallback className="bg-wissen-navy text-base font-semibold text-white shadow-sm dark:bg-wissen-navy-light">
+                  {getInitials(user)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="min-w-0">
+                <CardTitle id="profile-display-name" className="truncate font-display text-lg">
+                  {user?.fullName || 'Your profile'}
+                </CardTitle>
+                <CardDescription className="truncate text-sm">{user?.email}</CardDescription>
+                <p id="profile-member-since" className="mt-0.5 text-xs text-muted-foreground">
+                  Member since {formatDate(user?.createdAt)}
                 </p>
-              )}
-              {profileSuccess && (
-                <p id="profile-success-message" className="text-sm text-success">
-                  {profileSuccess}
-                </p>
-              )}
-
-              <div className="flex items-center gap-3">
-                <Button
-                  id="save-profile-button"
-                  type="submit"
-                  className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
-                  disabled={savingProfile || !trimmedFullName || isNameUnchanged}
-                >
-                  {savingProfile && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Save changes
-                </Button>
-                {!isNameUnchanged && (
-                  <button
-                    id="reset-profile-button"
-                    type="button"
-                    className="text-sm font-medium text-muted-foreground hover:text-foreground"
-                    onClick={handleResetFullName}
+              </div>
+            </CardHeader>
+            <CardContent className="pt-5">
+              <div className="mb-4 flex items-center gap-2 font-display text-sm font-semibold">
+                <UserRound className="h-4 w-4 text-wissen-navy dark:text-wissen-navy-light" />
+                Personal information
+              </div>
+              <form id="profile-form" className="flex flex-col gap-4" onSubmit={handleSaveProfile} noValidate>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="full-name-input">Full name</Label>
+                  <Input
+                    id="full-name-input"
+                    name="fullName"
+                    type="text"
+                    autoComplete="name"
+                    placeholder="Your name"
                     disabled={savingProfile}
-                  >
-                    Cancel
-                  </button>
+                    aria-invalid={Boolean(profileFieldErrors.fullName)}
+                    aria-describedby={profileFieldErrors.fullName ? 'full-name-input-error' : undefined}
+                    value={fullName}
+                    onChange={handleFullNameChange}
+                  />
+                  <FieldError id="full-name-input-error" message={profileFieldErrors.fullName} />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="profile-email-input">Email</Label>
+                  <Input
+                    id="profile-email-input"
+                    type="email"
+                    autoComplete="email"
+                    value={user?.email || ''}
+                    disabled
+                    readOnly
+                  />
+                  <p className="text-xs text-muted-foreground">Your email is used to sign in and can&apos;t be changed.</p>
+                </div>
+
+                {profileError && (
+                  <p id="profile-error-message" role="alert" className="text-sm text-destructive">
+                    {profileError}
+                  </p>
                 )}
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+                {profileSuccess && (
+                  <p id="profile-success-message" className="text-sm text-success">
+                    {profileSuccess}
+                  </p>
+                )}
 
-        <Card id="change-password-card" className="border-border/80 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 font-display">
-              <KeyRound className="h-4 w-4 text-wissen-navy dark:text-wissen-navy-light" />
-              Change password
-            </CardTitle>
-            <CardDescription>Update the password used to sign in</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form id="change-password-form" className="flex flex-col gap-4" onSubmit={handleChangePassword} noValidate>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="new-password-input">New password</Label>
-                <Input
-                  id="new-password-input"
-                  name="newPassword"
-                  type="password"
-                  autoComplete="new-password"
-                  placeholder="At least 6 characters"
-                  disabled={savingPassword}
-                  aria-invalid={Boolean(passwordFieldErrors.newPassword)}
-                  aria-describedby={passwordFieldErrors.newPassword ? 'new-password-input-error' : undefined}
-                  value={newPassword}
-                  onChange={withPasswordFieldClear('newPassword', setNewPassword)}
-                />
-                <FieldError id="new-password-input-error" message={passwordFieldErrors.newPassword} />
-              </div>
+                <div className="flex items-center gap-3">
+                  <Button
+                    id="save-profile-button"
+                    type="submit"
+                    className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
+                    disabled={savingProfile || !trimmedFullName || isNameUnchanged}
+                  >
+                    {savingProfile && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Save changes
+                  </Button>
+                  {!isNameUnchanged && (
+                    <button
+                      id="reset-profile-button"
+                      type="button"
+                      className="text-sm font-medium text-muted-foreground hover:text-foreground"
+                      onClick={handleResetFullName}
+                      disabled={savingProfile}
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </form>
+            </CardContent>
+          </Card>
 
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="confirm-new-password-input">Confirm new password</Label>
-                <Input
-                  id="confirm-new-password-input"
-                  name="confirmNewPassword"
-                  type="password"
-                  autoComplete="new-password"
-                  placeholder="Re-enter your new password"
-                  disabled={savingPassword}
-                  aria-invalid={Boolean(passwordFieldErrors.confirmNewPassword)}
-                  aria-describedby={passwordFieldErrors.confirmNewPassword ? 'confirm-new-password-input-error' : undefined}
-                  value={confirmNewPassword}
-                  onChange={withPasswordFieldClear('confirmNewPassword', setConfirmNewPassword)}
-                />
-                <FieldError id="confirm-new-password-input-error" message={passwordFieldErrors.confirmNewPassword} />
-              </div>
+          <Card id="change-password-card" className="border-border/80 shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 font-display">
+                <KeyRound className="h-4 w-4 text-wissen-navy dark:text-wissen-navy-light" />
+                Change password
+              </CardTitle>
+              <CardDescription>Update the password used to sign in</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form id="change-password-form" className="flex flex-col gap-4" onSubmit={handleChangePassword} noValidate>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="old-password-input">Current password</Label>
+                  <Input
+                    id="old-password-input"
+                    name="oldPassword"
+                    type="password"
+                    autoComplete="current-password"
+                    placeholder="Your current password"
+                    disabled={savingPassword}
+                    aria-invalid={Boolean(passwordFieldErrors.oldPassword)}
+                    aria-describedby={passwordFieldErrors.oldPassword ? 'old-password-input-error' : undefined}
+                    value={oldPassword}
+                    onChange={withPasswordFieldClear('oldPassword', setOldPassword)}
+                  />
+                  <FieldError id="old-password-input-error" message={passwordFieldErrors.oldPassword} />
+                </div>
 
-              {passwordError && (
-                <p id="password-error-message" role="alert" className="text-sm text-destructive">
-                  {passwordError}
-                </p>
-              )}
-              {passwordSuccess && (
-                <p id="password-success-message" className="text-sm text-success">
-                  {passwordSuccess}
-                </p>
-              )}
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="new-password-input">New password</Label>
+                  <Input
+                    id="new-password-input"
+                    name="newPassword"
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="At least 6 characters"
+                    disabled={savingPassword}
+                    aria-invalid={Boolean(passwordFieldErrors.newPassword)}
+                    aria-describedby={passwordFieldErrors.newPassword ? 'new-password-input-error' : undefined}
+                    value={newPassword}
+                    onChange={withPasswordFieldClear('newPassword', setNewPassword)}
+                  />
+                  <FieldError id="new-password-input-error" message={passwordFieldErrors.newPassword} />
+                </div>
 
-              <div>
-                <Button
-                  id="update-password-button"
-                  type="submit"
-                  className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
-                  disabled={savingPassword}
-                >
-                  {savingPassword && <Loader2 className="h-4 w-4 animate-spin" />}
-                  Update password
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="confirm-new-password-input">Confirm new password</Label>
+                  <Input
+                    id="confirm-new-password-input"
+                    name="confirmNewPassword"
+                    type="password"
+                    autoComplete="new-password"
+                    placeholder="Re-enter your new password"
+                    disabled={savingPassword}
+                    aria-invalid={Boolean(passwordFieldErrors.confirmNewPassword)}
+                    aria-describedby={passwordFieldErrors.confirmNewPassword ? 'confirm-new-password-input-error' : undefined}
+                    value={confirmNewPassword}
+                    onChange={withPasswordFieldClear('confirmNewPassword', setConfirmNewPassword)}
+                  />
+                  <FieldError id="confirm-new-password-input-error" message={passwordFieldErrors.confirmNewPassword} />
+                </div>
 
-        <Card id="account-card" className="border-border/80 shadow-sm">
-          <CardHeader>
-            <CardTitle className="font-display">Account</CardTitle>
-            <CardDescription>Sign out of IntelliDoc on this device</CardDescription>
-          </CardHeader>
-          <Separator />
-          <CardFooter className="pt-6">
-            <Button
-              id="sign-out-button"
-              type="button"
-              variant="outline"
-              className="gap-2"
-              onClick={handleSignOut}
-              disabled={signingOut}
-            >
-              {signingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
-              Sign out
-            </Button>
-          </CardFooter>
-        </Card>
+                {passwordError && (
+                  <p id="password-error-message" role="alert" className="text-sm text-destructive">
+                    {passwordError}
+                  </p>
+                )}
+                {passwordSuccess && (
+                  <p id="password-success-message" className="text-sm text-success">
+                    {passwordSuccess}
+                  </p>
+                )}
 
-        <Card id="danger-zone-card" className="border-destructive/30 shadow-sm">
-          <CardHeader>
-            <CardTitle className="font-display text-destructive">Remove account</CardTitle>
-            <CardDescription>Permanently delete your IntelliDoc account and sign out everywhere</CardDescription>
-          </CardHeader>
-          <Separator className="bg-destructive/20" />
-          <CardFooter className="pt-6">
-            <Button
-              id="remove-account-button"
-              type="button"
-              variant="destructive"
-              className="gap-2"
-              onClick={() => {
-                setDeleteError('');
-                setDeleteDialogOpen(true);
-              }}
-            >
-              <Trash2 className="h-4 w-4" />
-              Remove account
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
+                <div>
+                  <Button
+                    id="update-password-button"
+                    type="submit"
+                    className="gap-2 bg-wissen-navy text-white hover:bg-wissen-navy/90"
+                    disabled={savingPassword}
+                  >
+                    {savingPassword && <Loader2 className="h-4 w-4 animate-spin" />}
+                    Update password
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          <Card id="account-card" className="border-border/80 shadow-sm">
+            <CardHeader>
+              <CardTitle className="font-display">Account</CardTitle>
+              <CardDescription>Sign out of IntelliDoc on this device</CardDescription>
+            </CardHeader>
+            <Separator />
+            <CardFooter className="pt-6">
+              <Button
+                id="sign-out-button"
+                type="button"
+                variant="outline"
+                className="gap-2"
+                onClick={handleSignOut}
+                disabled={signingOut}
+              >
+                {signingOut ? <Loader2 className="h-4 w-4 animate-spin" /> : <LogOut className="h-4 w-4" />}
+                Sign out
+              </Button>
+            </CardFooter>
+          </Card>
+
+          <Card id="danger-zone-card" className="border-destructive/30 shadow-sm">
+            <CardHeader>
+              <CardTitle className="font-display text-destructive">Remove account</CardTitle>
+              <CardDescription>Permanently delete your IntelliDoc account and sign out everywhere</CardDescription>
+            </CardHeader>
+            <Separator className="bg-destructive/20" />
+            <CardFooter className="pt-6">
+              <Button
+                id="remove-account-button"
+                type="button"
+                variant="destructive"
+                className="gap-2"
+                onClick={() => {
+                  setDeleteError('');
+                  setDeleteDialogOpen(true);
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+                Remove account
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
       </ScrollArea>
 
       <Dialog open={deleteDialogOpen} onOpenChange={(open) => !deletingAccount && setDeleteDialogOpen(open)}>

@@ -69,4 +69,57 @@ export const authApi = {
   signOut() {
     setToken(null);
   },
+
+  async updateProfile(updates) {
+    const displayName = updates.displayName || updates.fullName;
+    try {
+      const token = getToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const { data } = await axios.put(
+        `${API_BASE_URL}/auth/me`,
+        { displayName },
+        { headers }
+      );
+      const user = data.user ? toAppUser(data.user, updates.email) : null;
+      if (user) {
+        writeSession(user);
+      }
+      return { user, error: null };
+    } catch (err) {
+      const message = err.response?.data?.message || err.response?.data?.error?.message || 'Failed to update profile';
+      return { user: null, error: new Error(message) };
+    }
+  },
+
+  async changePassword({ oldPassword, newPassword, confirmNewPassword }) {
+    try {
+      const token = getToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const { data } = await axios.post(
+        `${API_BASE_URL}/auth/change-password`,
+        { oldPassword, newPassword, confirmNewPassword },
+        { headers }
+      );
+      return { data, error: null };
+    } catch (err) {
+      const message = err.response?.data?.message || err.response?.data?.error?.message || 'Failed to change password';
+      return { data: null, error: new Error(message) };
+    }
+  },
+
+  async forgotPassword({ email, newPassword, confirmNewPassword }) {
+    try {
+      const token = getToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const { data } = await axios.post(`${API_BASE_URL}/auth/forgot-password`, {
+        email,
+        newPassword,
+        confirmNewPassword,
+      }, { headers });
+      return { data, error: null };
+    } catch (err) {
+      const message = err.response?.data?.message || err.response?.data?.error?.message || 'Failed to reset password';
+      return { data: null, error: new Error(message) };
+    }
+  },
 };
