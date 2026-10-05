@@ -1,5 +1,5 @@
 import React from 'react';
-import { FolderInput, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Eye, FolderInput, MoreHorizontal, Trash2 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { formatDateTime } from '@/lib/format';
@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-export function OrphanedFileRow({ file, selected, onToggleSelect, onMoveToFolder, onDelete }) {
+export function OrphanedFileRow({ file, selected, onToggleSelect, onOpen, onMoveToFolder, onDelete }) {
   const { Icon, label, className: typeClassName } = getFileTypeMeta(file.name);
 
   return (
@@ -33,15 +33,22 @@ export function OrphanedFileRow({ file, selected, onToggleSelect, onMoveToFolder
       </td>
 
       <td className="px-3 py-3">
-        <div className="flex min-w-0 items-center gap-3">
+        <button
+          type="button"
+          onClick={() => onOpen(file)}
+          data-testid={`orphaned-file-open-${file.id}`}
+          className="group flex w-full min-w-0 items-center gap-3 rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg', typeClassName)}>
             <Icon className="h-4 w-4" />
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-card-foreground">{file.name}</p>
+            <p className="truncate text-sm font-medium text-card-foreground group-hover:text-primary group-hover:underline">
+              {file.name}
+            </p>
             <p className="truncate text-xs text-muted-foreground sm:hidden">{label}</p>
           </div>
-        </div>
+        </button>
       </td>
 
       <td className="hidden px-3 py-3 sm:table-cell">
@@ -73,6 +80,10 @@ export function OrphanedFileRow({ file, selected, onToggleSelect, onMoveToFolder
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onOpen(file)}>
+                <Eye className="h-4 w-4" />
+                View
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onMoveToFolder([file.id])}>
                 <FolderInput className="h-4 w-4" />
                 Move to folder

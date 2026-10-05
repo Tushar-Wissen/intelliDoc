@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
+  ArrowLeft,
   Check,
   FileText,
   FolderInput,
   MoreHorizontal,
   Search,
   Sparkles,
+  Trash2,
   UploadCloud,
   X,
 } from 'lucide-react';
@@ -16,6 +18,7 @@ import { AppShell } from '@/components/layout/app-shell';
 import { OrphanedFileRow } from '@/components/features/orphaned-file-row';
 import { UploadDialog } from '@/components/features/upload-dialog';
 import { MoveToFolderDialog } from '@/components/features/move-to-folder-dialog';
+import { DocumentView } from '@/components/features/document-view';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -69,6 +72,8 @@ export function OrphanedFilesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
+  // Only the id is stored; the file is looked up so a move or delete closes the view on its own.
+  const [activeFileId, setActiveFileId] = useState(null);
 
   const scrollRef = useRef(null);
 
@@ -83,6 +88,7 @@ export function OrphanedFilesPage() {
     if (workspaceLoading) return;
 
     setSelectedIds(new Set());
+    setActiveFileId(null);
     setError(null);
 
     if (!selectedWorkspaceId) {
@@ -223,14 +229,26 @@ export function OrphanedFilesPage() {
     }
   }, [deleting, deletingFile, toast]);
 
+  const activeFile = useMemo(
+    () => (activeFileId ? files.find((f) => f.id === activeFileId) ?? null : null),
+    [files, activeFileId]
+  );
+
+  const handleOpenFile = useCallback((file) => setActiveFileId(file.id), []);
+  const handleCloseFile = useCallback(() => setActiveFileId(null), []);
+
   const isEmpty = !loading && !error && totalCount === 0;
   const hasNoMatches = !loading && !error && totalCount > 0 && items.length === 0;
 
   return (
     <AppShell
       title="Orphaned Files"
-      badge={!loading && !error ? `${totalCount} ${totalCount === 1 ? 'file' : 'files'}` : undefined}
-      subtitle="Files that are not assigned to any folder/module within this workspace."
+      badge={!activeFile && !loading && !error ? `${totalCount} ${totalCount === 1 ? 'file' : 'files'}` : undefined}
+      subtitle={
+        activeFile
+          ? 'Orphaned file — not assigned to any folder/module.'
+          : 'Files that are not assigned to any folder/module within this workspace.'
+      }
       headerTestId="orphaned-files-header"
       healthStatus={healthStatus}
     >
@@ -239,7 +257,49 @@ export function OrphanedFilesPage() {
           data-testid="orphaned-files-page"
           className="flex min-h-0 flex-1 flex-col gap-5"
         >
-          {isEmpty ? (
+          {activeFile ? (
+            <>
+              {/* Back to the list (left) + file actions (right) */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="-ml-2 gap-2 text-muted-foreground hover:text-foreground"
+                  data-testid="orphaned-file-back"
+                  onClick={handleCloseFile}
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to Orphaned Files
+                </Button>
+                <div className="flex shrink-0 items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2"
+                    onClick={() => handleMoveToFolder([activeFile.id])}
+                  >
+                    <FolderInput className="h-4 w-4" />
+                    Move to Folder
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="gap-2 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => handleDelete(activeFile)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete
+                  </Button>
+                </div>
+              </div>
+
+              <div className="-mx-1 min-h-0 flex-1 overflow-y-auto">
+                <div className="flex min-h-full flex-col px-1 pb-1">
+                  <DocumentView key={activeFile.id} file={activeFile} />
+                </div>
+              </div>
+            </>
+          ) : isEmpty ? (
             <div
               id="orphaned-files-empty-state"
               data-testid="orphaned-files-empty-state"
@@ -411,6 +471,7 @@ export function OrphanedFilesPage() {
                               file={file}
                               selected={selectedIds.has(file.id)}
                               onToggleSelect={toggleSelect}
+                              onOpen={handleOpenFile}
                               onMoveToFolder={handleMoveToFolder}
                               onDelete={handleDelete}
                             />
