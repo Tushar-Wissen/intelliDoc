@@ -7,6 +7,7 @@ import com.intellidoc.backend.exception.ApiException;
 import com.intellidoc.backend.model.DocumentEntity;
 import com.intellidoc.backend.model.DocumentGroupEntity;
 import com.intellidoc.backend.model.WorkspaceEntity;
+import com.intellidoc.backend.repository.ChatMessageRepository;
 import com.intellidoc.backend.repository.DocumentGroupRepository;
 import com.intellidoc.backend.repository.DocumentRepository;
 import com.intellidoc.backend.repository.DocumentSummaryRepository;
@@ -32,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -63,6 +65,8 @@ class DocumentServiceTest {
     private MinioStorageService minioStorageService;
     @Mock
     private AiServiceClient aiServiceClient;
+    @Mock
+    private ChatMessageRepository chatMessageRepository;
 
     private DocumentService documentService;
 
@@ -78,10 +82,11 @@ class DocumentServiceTest {
                 documentWriteService,
                 minioStorageService,
                 aiServiceClient,
+                chatMessageRepository,
                 1024,
                 "pdf,docx"
         );
-        when(workspaceAccessService.requireMember(eq(WORKSPACE_ID), eq(USER_ID)))
+        lenient().when(workspaceAccessService.requireMember(eq(WORKSPACE_ID), eq(USER_ID)))
                 .thenReturn(WorkspaceEntity.builder().id(WORKSPACE_ID).build());
     }
 
@@ -97,7 +102,6 @@ class DocumentServiceTest {
         MockMultipartFile pdf = new MockMultipartFile("files", "ok.pdf", "application/pdf", new byte[]{1, 2, 3});
         MockMultipartFile xlsx = new MockMultipartFile("files", "bad.xlsx", "application/vnd.ms-excel", new byte[]{1});
         when(documentWriteService.saveUploaded(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(documentGroupRepository.findById(any())).thenReturn(java.util.Optional.empty());
 
         DocumentUploadResponseDto result = documentService.upload(
                 new AuthPrincipal(USER_ID, TENANT_ID),
@@ -136,7 +140,6 @@ class DocumentServiceTest {
     void storesAtWorkspaceDocumentOriginalPath() {
         MockMultipartFile pdf = new MockMultipartFile("files", "ok.pdf", "application/pdf", new byte[]{1, 2});
         when(documentWriteService.saveUploaded(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(documentGroupRepository.findById(any())).thenReturn(java.util.Optional.empty());
 
         documentService.upload(new AuthPrincipal(USER_ID, TENANT_ID), WORKSPACE_ID, List.of(pdf), null);
 

@@ -36,7 +36,6 @@ import static org.hamcrest.Matchers.greaterThan;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -334,7 +333,7 @@ class DmsApiTest {
                         .header("Authorization", bearer(token)))
                 .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.documents[0].moduleName", is("Finance")))
-                .andExpect(jsonPath("$.documents[1].moduleId", nullValue()));
+                .andExpect(jsonPath("$.documents[1].moduleId").doesNotExist());
 
         assertEquals(1, documentGroupRepository.findByWorkspaceIdAndName(
                 UUID.fromString(workspaceId), "Finance").stream().count());
@@ -374,8 +373,8 @@ class DmsApiTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"Finance\"}"))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.totalFiles", nullValue()))
-                .andExpect(jsonPath("$.files", nullValue()))
+                .andExpect(jsonPath("$.totalFiles").doesNotExist())
+                .andExpect(jsonPath("$.files").doesNotExist())
                 .andReturn();
         String financeModuleId = objectMapper.readTree(financeModule.getResponse().getContentAsString()).get("id").asText();
 
