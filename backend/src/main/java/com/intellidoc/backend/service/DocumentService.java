@@ -2,19 +2,15 @@ package com.intellidoc.backend.service;
 
 import com.intellidoc.backend.client.AiServiceClient;
 import com.intellidoc.backend.dms.ProcessingStatus;
-import com.intellidoc.backend.dto.AssignModuleRequestDto;
-import com.intellidoc.backend.dto.DocumentDetailDto;
-import com.intellidoc.backend.dto.DocumentListResponseDto;
-import com.intellidoc.backend.dto.DocumentOriginalFileDto;
-import com.intellidoc.backend.dto.DocumentSummaryDto;
-import com.intellidoc.backend.dto.DocumentUploadResponseDto;
-import com.intellidoc.backend.dto.UploadRejectionDto;
+import com.intellidoc.backend.dto.*;
 import com.intellidoc.backend.exception.ApiException;
 import com.intellidoc.backend.exception.DmsExceptions;
+import com.intellidoc.backend.model.ChatMessageEntity;
 import com.intellidoc.backend.model.DocumentEntity;
 import com.intellidoc.backend.model.DocumentGroupEntity;
 import com.intellidoc.backend.model.DocumentSummaryEntity;
 import com.intellidoc.backend.model.UserAccountEntity;
+import com.intellidoc.backend.repository.ChatMessageRepository;
 import com.intellidoc.backend.repository.DocumentGroupRepository;
 import com.intellidoc.backend.repository.DocumentRepository;
 import com.intellidoc.backend.repository.DocumentSummaryRepository;
@@ -27,10 +23,13 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -48,6 +47,7 @@ public class DocumentService {
     private final DocumentWriteService documentWriteService;
     private final MinioStorageService minioStorageService;
     private final AiServiceClient aiServiceClient;
+    private final ChatMessageRepository chatMessageRepository;
     private final long maxFileSizeBytes;
     private final Set<String> allowedExtensions;
 
@@ -61,6 +61,7 @@ public class DocumentService {
             DocumentWriteService documentWriteService,
             MinioStorageService minioStorageService,
             AiServiceClient aiServiceClient,
+            ChatMessageRepository chatMessageRepository,
             @Value("${intellidoc.upload.max-file-size-bytes:20971520}") long maxFileSizeBytes,
             @Value("${intellidoc.upload.allowed-extensions:pdf,docx}") String allowedExtensions) {
         this.workspaceAccessService = workspaceAccessService;
@@ -72,6 +73,7 @@ public class DocumentService {
         this.documentWriteService = documentWriteService;
         this.minioStorageService = minioStorageService;
         this.aiServiceClient = aiServiceClient;
+        this.chatMessageRepository = chatMessageRepository;
         this.maxFileSizeBytes = maxFileSizeBytes;
         this.allowedExtensions = Arrays.stream(allowedExtensions.split(","))
                 .map(value -> value.trim().toLowerCase(Locale.ROOT))
@@ -367,5 +369,144 @@ public class DocumentService {
             return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
         }
         return storedType == null || storedType.isBlank() ? "application/octet-stream" : storedType;
+    }
+
+    // ========== Dashboard Stats API ==========
+    public DashboardStatsDto getDashboardStats(AuthPrincipal principal, UUID workspaceId) {
+        workspaceAccessService.requireMember(workspaceId, principal.userId());
+
+        long totalDocuments = documentRepository.countByWorkspaceIdAndDeletedAtIsNull(workspaceId);
+        long totalFolders = documentGroupRepository.countByWorkspaceId(workspaceId);
+        long recentDocuments = documentRepository.countByWorkspaceIdAndCreatedAtAfter(workspaceId, java.time.OffsetDateTime.now().minusDays(7));
+
+        return DashboardStatsDto.builder()
+                .totalDocuments(totalDocuments)
+                .totalFolders(totalFolders)
+                .recentDocuments(recentDocuments)
+                .build();
+    }
+
+    // ========== Most Accessed Documents API ==========
+    public MostAccessedDocumentsResponseDto getMostAccessedDocuments(AuthPrincipal principal, UUID workspaceId) {
+        workspaceAccessService.requireMember(workspaceId, principal.userId());
+
+        // For now, we'll return documents sorted by creation date as a proxy for views
+        // In a real implementation, you would have a view count field
+        List<DocumentEntity> documents = documentRepository.findByWorkspaceIdAndDeletedAtIsNullOrderByCreatedAtDesc(workspaceId);
+
+        List<MostAccessedDocumentDto> documentsDto = documents.stream()
+                .limit(10)
+                .map(doc -> MostAccessedDocumentDto.builder()
+                        .id(doc.getId())
+                        .name(doc.getFileName())
+                        .folder(getFolderName(doc.getGroupId()))
+                        .views(0L) // Placeholder - would need a view count field in real implementation
+                        .build())
+                .toList();
+
+        return MostAccessedDocumentsResponseDto.builder()
+                .data(documentsDto)
+                .build();
+    }
+
+    // ========== Recent Accessed Documents API ==========
+    public RecentAccessedDocumentsResponseDto getRecentAccessedDocuments(AuthPrincipal principal, UUID workspaceId) {
+        workspaceAccessService.requireMember(workspaceId, principal.userId());
+
+        List<DocumentEntity> documents = documentRepository.findByWorkspaceIdAndDeletedAtIsNullOrderByCreatedAtDesc(workspaceId);
+
+        List<RecentAccessedDocumentDto> documentsDto = documents.stream()
+                .limit(10)
+                .map(doc -> RecentAccessedDocumentDto.builder()
+                        .id(doc.getId())
+                        .name(doc.getFileName())
+                        .type(doc.getFileType())
+                        .folder(getFolderName(doc.getGroupId()))
+                        .size(doc.getFileSizeBytes())
+                        .updatedAt(doc.getCreatedAt() != null ? doc.getCreatedAt().toString() : null)
+                        .createdAt(doc.getCreatedAt() != null ? doc.getCreatedAt().toString() : null)
+                        .build())
+                .toList();
+
+        return RecentAccessedDocumentsResponseDto.builder()
+                .data(documentsDto)
+                .build();
+    }
+
+    // ========== AI Success Rate API ==========
+    public AiSuccessRateResponseDto getAiSuccessRate(AuthPrincipal principal, UUID workspaceId) {
+        workspaceAccessService.requireMember(workspaceId, principal.userId());
+
+        // Calculate actual success rates from chat message data
+        long totalCount = chatMessageRepository.countTotalQuestionsSince(workspaceId, OffsetDateTime.now().minusWeeks(4));
+        long answeredCount = chatMessageRepository.countAnsweredQuestions(workspaceId);
+        long unansweredCount = chatMessageRepository.countUnansweredQuestions(workspaceId);
+
+        int percentage = totalCount > 0 ? (int) Math.round((answeredCount * 100.0) / totalCount) : 0;
+
+        // Calculate weekly change
+        long lastWeekTotal = chatMessageRepository.countTotalQuestionsSince(workspaceId, OffsetDateTime.now().minusWeeks(1));
+        long lastWeekAnswered = chatMessageRepository.countAnsweredQuestionsSince(workspaceId, OffsetDateTime.now().minusWeeks(1));
+        int lastWeekPercentage = lastWeekTotal > 0 ? (int) Math.round((lastWeekAnswered * 100.0) / lastWeekTotal) : 0;
+        int weeklyChange = percentage - lastWeekPercentage;
+
+        String weeklyChangeStr = (weeklyChange >= 0 ? "+" : "") + weeklyChange + "%";
+
+        // Find top unanswered topic
+        String unansweredTopic = findTopUnansweredTopic(workspaceId);
+
+        return AiSuccessRateResponseDto.builder()
+                .percentage(percentage)
+                .answeredCount(answeredCount)
+                .totalCount(totalCount)
+                .weeklyChange(weeklyChangeStr)
+                .unansweredTopic(unansweredTopic)
+                .build();
+    }
+
+    private String getFolderName(UUID groupId) {
+        if (groupId == null) {
+            return "Root";
+        }
+        return documentGroupRepository.findNameById(groupId);
+    }
+
+    private String findTopUnansweredTopic(UUID workspaceId) {
+        try {
+            // Find the most common unanswered question topic
+            // We look at unanswered questions and find the most common words/patterns
+            List<ChatMessageEntity> unansweredMessages = chatMessageRepository.findUnansweredMessages(workspaceId);
+            if (unansweredMessages.isEmpty()) {
+                return "No unanswered questions";
+            }
+
+            // Simple heuristic: find the most common words in unanswered questions
+            Map<String, Integer> wordFrequency = new HashMap<>();
+            for (ChatMessageEntity msg : unansweredMessages) {
+                if (msg.getContent() != null) {
+                    String[] words = msg.getContent().toLowerCase()
+                            .replaceAll("[^a-z0-9\\s]", " ")
+                            .split("\\s+");
+                    for (String word : words) {
+                        if (word.length() > 3) { // Skip short words
+                            wordFrequency.merge(word, 1, Integer::sum);
+                        }
+                    }
+                }
+            }
+
+            if (wordFrequency.isEmpty()) {
+                return "General questions";
+            }
+
+            // Find the most frequent meaningful word
+            return wordFrequency.entrySet().stream()
+                    .max(Map.Entry.comparingByValue())
+                    .map(entry -> "Questions about \"" + entry.getKey() + "\" - no matching document found. Consider uploading one.")
+                    .orElse("General questions - no matching document found. Consider uploading one.");
+        } catch (Exception e) {
+            log.warn("Failed to find top unanswered topic", e);
+            return "Unable to determine";
+        }
     }
 }

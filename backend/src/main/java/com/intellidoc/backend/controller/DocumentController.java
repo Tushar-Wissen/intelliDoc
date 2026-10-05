@@ -1,10 +1,14 @@
 package com.intellidoc.backend.controller;
 
+import com.intellidoc.backend.dto.AiSuccessRateResponseDto;
 import com.intellidoc.backend.dto.AssignModuleRequestDto;
+import com.intellidoc.backend.dto.DashboardStatsDto;
 import com.intellidoc.backend.dto.DocumentDetailDto;
 import com.intellidoc.backend.dto.DocumentListResponseDto;
 import com.intellidoc.backend.dto.DocumentOriginalFileDto;
 import com.intellidoc.backend.dto.DocumentUploadResponseDto;
+import com.intellidoc.backend.dto.MostAccessedDocumentsResponseDto;
+import com.intellidoc.backend.dto.RecentAccessedDocumentsResponseDto;
 import com.intellidoc.backend.security.AuthPrincipal;
 import com.intellidoc.backend.service.DocumentService;
 import lombok.RequiredArgsConstructor;
@@ -123,6 +127,38 @@ public class DocumentController {
             @PathVariable UUID documentId) {
         documentService.archive(principal, documentId);
         return ResponseEntity.noContent().build();
+    }
+
+    // ========== Dashboard Stats API ==========
+    @GetMapping({"/workspaces/{workspaceId}/dashboard-stats", "/api/v1/workspaces/{workspaceId}/dashboard-stats"})
+    public ResponseEntity<DashboardStatsDto> getDashboardStats(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @PathVariable UUID workspaceId) {
+        return ResponseEntity.ok(documentService.getDashboardStats(principal, workspaceId));
+    }
+
+    // ========== Most Accessed Documents API ==========
+    @GetMapping({"/workspaces/{workspaceId}/most-accessed-documents", "/api/v1/workspaces/{workspaceId}/most-accessed-documents"})
+    public ResponseEntity<MostAccessedDocumentsResponseDto> getMostAccessedDocuments(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @PathVariable UUID workspaceId) {
+        return ResponseEntity.ok(documentService.getMostAccessedDocuments(principal, workspaceId));
+    }
+
+    // ========== Recent Accessed Documents API ==========
+    @GetMapping({"/workspaces/{workspaceId}/recent-accessed-documents", "/api/v1/workspaces/{workspaceId}/recent-accessed-documents"})
+    public ResponseEntity<RecentAccessedDocumentsResponseDto> getRecentAccessedDocuments(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @PathVariable UUID workspaceId) {
+        return ResponseEntity.ok(documentService.getRecentAccessedDocuments(principal, workspaceId));
+    }
+
+    // ========== AI Success Rate API ==========
+    @GetMapping({"/workspaces/{workspaceId}/ai-success-rate", "/api/v1/workspaces/{workspaceId}/ai-success-rate"})
+    public ResponseEntity<com.intellidoc.backend.dto.AiSuccessRateResponseDto> getAiSuccessRate(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @PathVariable UUID workspaceId) {
+        return ResponseEntity.ok(documentService.getAiSuccessRate(principal, workspaceId));
     }
 
     private static List<MultipartFile> mergeFiles(List<MultipartFile> files, List<MultipartFile> filesBracket) {
