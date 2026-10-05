@@ -10,6 +10,7 @@ import { useHealthStatus } from '@/hooks/use-health-status';
 import { useWorkspace } from '@/context/workspace-context';
 import { useFolders } from '@/context/folder-context';
 
+import { dashboardApi } from '@/lib/dashboard-api';
 import { DashboardStatCards } from '@/components/dashboard/stat-cards';
 import { MostAccessedCard } from '@/components/dashboard/most-accessed-card';
 import { AiSuccessRateCard } from '@/components/dashboard/ai-success-rate-card';
@@ -61,32 +62,62 @@ const getFileColors = (type) => {
 export function DashboardPage() {
   const healthStatus = useHealthStatus();
   const navigate = useNavigate();
-  const { workspaces, loading: workspacesLoading } = useWorkspace();
+  const { workspaces, loading: workspacesLoading, selectedWorkspaceId } = useWorkspace();
   const { folders, loading } = useFolders();
 
-  const totalFolders = folders.length;
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
+  const [stats, setStats] = useState({ totalDocuments: 0, totalFolders: 0, recentDocuments: 0 });
+  const [loadingStats, setLoadingStats] = useState(false);
+  const [mostAccessed, setMostAccessed] = useState([]);
+  const [loadingMostAccessed, setLoadingMostAccessed] = useState(false);
+  const [aiSuccessRate, setAiSuccessRate] = useState(null);
+  const [recentDocuments, setRecentDocuments] = useState([]);
+  const [loadingRecentDocuments, setLoadingRecentDocuments] = useState(false);
 
-  const totalDocuments = useMemo(
-    () => folders.reduce((sum, folder) => sum + (folder.filesCount || 0), 0),
-    [folders]
-  );
-
-  const recentDocuments = useMemo(() => {
-    const allFiles = folders.flatMap((folder) =>
-      (folder.files || []).map((file) => ({
-        ...file,
-        folderId: folder.id,
-        folder: folder.name,
-        time: formatTimeElapsed(file.updatedAt || file.createdAt),
-        ...getFileColors(file.type),
-      }))
-    );
+  React.useEffect(() => {
+    if (!selectedWorkspaceId) return;
+    let mounted = true;
     
-    return allFiles
-      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-      .slice(0, 5);
-  }, [folders]);
+    async function loadStats() {
+      setLoadingStats(true);
+      setLoadingMostAccessed(true);
+      setLoadingRecentDocuments(true);
+      try {
+        const [statsData, mostAccessedData, aiSuccessData, recentDocsData] = await Promise.all([
+          dashboardApi.getDashboardStats(selectedWorkspaceId),
+          dashboardApi.getMostAccessedDocuments(selectedWorkspaceId),
+          dashboardApi.getAiSuccessRate(selectedWorkspaceId),
+          dashboardApi.getRecentDocuments(selectedWorkspaceId)
+        ]);
+        if (mounted) {
+          setStats(statsData);
+          setMostAccessed(mostAccessedData);
+          setAiSuccessRate(aiSuccessData);
+          setRecentDocuments(
+            recentDocsData.map((file) => ({
+              ...file,
+              time: formatTimeElapsed(file.updatedAt || file.createdAt),
+              ...getFileColors(file.type),
+            }))
+          );
+        }
+      } catch (error) {
+        console.error("Failed to fetch dashboard data:", error);
+      } finally {
+        if (mounted) {
+          setLoadingStats(false);
+          setLoadingMostAccessed(false);
+          setLoadingRecentDocuments(false);
+        }
+      }
+    }
+    
+    loadStats();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [selectedWorkspaceId]);
 
   return (
     <AppShell title="Dashboard" healthStatus={healthStatus}>
@@ -109,22 +140,26 @@ export function DashboardPage() {
         <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto scrollbar-thin pl-1 pr-8 py-1">
 
           {/* Stats row */}
-          <DashboardStatCards totalDocuments={totalDocuments} totalFolders={totalFolders} />
+          <DashboardStatCards 
+            totalDocuments={stats.totalDocuments} 
+            totalFolders={stats.totalFolders} 
+            recentDocuments={stats.recentDocuments}
+          />
 
           {/* Middle row: most accessed + AI success rate */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
             <MostAccessedCard
-              documents={recentDocuments}
-              loading={loading}
+              documents={mostAccessed}
+              loading={loadingMostAccessed}
               onViewAll={() => navigate('/workspace')}
             />
-            <AiSuccessRateCard />
+            <AiSuccessRateCard {...(aiSuccessRate || {})} />
           </div>
 
           {/* Recent documents table */}
           <RecentDocumentsTable
             files={recentDocuments}
-            loading={loading}
+            loading={loadingRecentDocuments}
             onOpenFile={(file) =>
               navigate('/workspace', { state: { folderId: file.folderId, fileId: file.id } })
             }

@@ -28,7 +28,7 @@ function StatCard({ icon: Icon, label, value, comparisonValue, comparisonText, i
   );
 }
 
-export function DashboardStatCards({ totalDocuments, totalFolders }) {
+export function DashboardStatCards({ totalDocuments, totalFolders, recentDocuments }) {
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       <StatCard
@@ -43,7 +43,7 @@ export function DashboardStatCards({ totalDocuments, totalFolders }) {
       <StatCard
         icon={Upload}
         label="Added this week"
-        value={totalDocuments || 0}
+        value={recentDocuments || 0}
         comparisonValue="+4"
         comparisonText="vs last week"
         iconBg="bg-wissen-navy/10"

@@ -46,12 +46,18 @@ function DonutChart({ percentage }) {
 }
 
 export function AiSuccessRateCard({
-  percentage = 88,
-  answeredCount = 23,
-  totalCount = 28,
-  weeklyChange = '+6%',
-  unansweredTopic = '"Leave policy for contractors" — no matching document found. Consider uploading one.',
+  percentage = null,
+  answeredCount = null,
+  totalCount = null,
+  weeklyChange = null,
+  unansweredTopic = null,
 }) {
+  // Use ?? so real 0 values from the API are respected, not overridden
+  const displayPercentage = percentage ?? 0;
+  const displayAnswered = answeredCount ?? 0;
+  const displayTotal = totalCount ?? 0;
+  const displayWeeklyChange = weeklyChange ?? '+0%';
+
   return (
     <Card>
       <CardHeader className="pb-2">
@@ -64,13 +70,13 @@ export function AiSuccessRateCard({
         </div> */}
 
         <div className="flex items-center gap-6 mb-6">
-          <DonutChart percentage={percentage} />
+          <DonutChart percentage={displayPercentage} />
           <div className="flex flex-col justify-center">
             <p className="text-sm font-medium text-foreground mb-1">
-              <span className="font-bold">{answeredCount}</span> of {totalCount} searches found a useful answer
+              <span className="font-bold">{displayAnswered}</span> of {displayTotal} searches found a useful answer
             </p>
             <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-              {weeklyChange} <span className="font-normal text-muted-foreground">vs last week</span>
+              {displayWeeklyChange} <span className="font-normal text-muted-foreground">vs last week</span>
             </p>
           </div>
         </div>
