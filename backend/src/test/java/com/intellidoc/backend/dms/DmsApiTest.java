@@ -386,6 +386,32 @@ class DmsApiTest {
     }
 
     @Test
+    void orphanDocumentsReturnsOnlyFilesWithoutFolder() throws Exception {
+        String workspaceId = createWorkspace(token, "Orphan");
+        mockMvc.perform(multipart("/workspaces/" + workspaceId + "/documents")
+                        .file(pdf("loose.pdf"))
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isAccepted());
+        mockMvc.perform(multipart("/workspaces/" + workspaceId + "/documents")
+                        .file(pdf("filed.pdf"))
+                        .param("relativePaths", "Finance/filed.pdf")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isAccepted());
+
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/orphan-documents")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.documents", hasSize(1)))
+                .andExpect(jsonPath("$.documents[0].fileName", is("loose.pdf")))
+                .andExpect(jsonPath("$.documents[0].moduleId").doesNotExist());
+
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/orphan-documents")
+                        .header("Authorization", bearer(otherToken)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error.code", is("WORKSPACE_ACCESS_DENIED")));
+    }
+
+    @Test
     void uploadIntoExistingModuleAssignsFiles() throws Exception {
         String workspaceId = createWorkspace(token, "ModuleUpload");
         MvcResult created = mockMvc.perform(post("/workspaces/" + workspaceId + "/modules")

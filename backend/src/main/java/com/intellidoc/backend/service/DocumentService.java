@@ -169,6 +169,15 @@ public class DocumentService {
         return DocumentListResponseDto.builder().documents(documents).build();
     }
 
+    public DocumentListResponseDto listOrphanDocuments(AuthPrincipal principal, UUID workspaceId) {
+        workspaceAccessService.requireMember(workspaceId, principal.userId());
+        List<DocumentSummaryDto> documents = documentRepository.findOrphanDocuments(workspaceId)
+                .stream()
+                .map(this::toSummary)
+                .toList();
+        return DocumentListResponseDto.builder().documents(documents).build();
+    }
+
     public DocumentDetailDto get(AuthPrincipal principal, UUID documentId) {
         DocumentEntity document = requireActiveDocument(documentId);
         workspaceAccessService.requireMember(document.getWorkspaceId(), principal.userId());
