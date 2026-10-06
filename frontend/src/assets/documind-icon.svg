@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="396 86 620 410"><defs>
+    <linearGradient id="mback" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1D4ED8"/><stop offset=".55" stop-color="#2F8CF0"/><stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <linearGradient id="mhead" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0" stop-color="#38BDF8"/><stop offset=".45" stop-color="#1E40AF"/><stop offset="1" stop-color="#0EA5E9"/>
+    </linearGradient>
+    <linearGradient id="mswoosh" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#7C3AED"/><stop offset=".5" stop-color="#2563EB"/><stop offset="1" stop-color="#22D3EE"/>
+    </linearGradient>
+    <linearGradient id="mpage" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#E6EEFB"/>
+    </linearGradient>
+    
+    
+    <filter id="mglow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="14"/></filter>
+    <filter id="mnodeglow" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="4"/></filter>
+    <filter id="msoft" x="-20%" y="-20%" width="140%" height="160%"><feGaussianBlur stdDeviation="18"/></filter>
+    <clipPath id="mheadclip"><path id="mheadpath" d="M560 128 Q600 104 660 98 Q712 94 744 122 Q786 160 790 224 Q792 250 784 274 L776 296 Q800 318 808 334 Q811 344 800 347 L790 350 Q794 360 789 366 Q795 373 791 381 Q785 388 785 398 Q786 414 768 416 L750 416 Q732 419 730 436 Q728 456 744 476 Q752 486 740 486 L560 486 Z"/></clipPath>
+  </defs><g><rect x="404" y="196" width="56" height="56" rx="7" fill="#0EA5E9"/>
+  <path d="M460 196 L470 206 L470 252 L460 240 Z" fill="#1D4ED8"/>
+  <rect x="420" y="296" width="40" height="40" rx="6" fill="#3B82F6"/>
+  <path d="M462 350 L500 356 L498 392 L460 386 Z" fill="#8DB8FF"/></g><!-- back sheet + head silhouette -->
+  <path d="M516 158 Q514 128 546 120 L652 98 Q700 90 740 118 Q786 156 790 224 Q792 250 784 274 L776 296 Q800 318 808 334 Q811 344 800 347 L790 350 Q794 360 789 366 Q795 373 791 381 Q785 388 785 398 Q786 414 768 416 L750 416 Q732 419 730 436 Q728 456 744 476 Q752 486 740 486 L548 486 Q516 486 516 454 Z" fill="url(#mback)"/>
+  <path d="M700 168 Q760 150 780 210 Q792 250 784 274 L776 296 Q800 318 808 334 Q811 344 800 347 L790 350 Q794 360 789 366 Q795 373 791 381 Q785 388 785 398 Q786 414 768 416 L750 416 Q732 419 730 436 Q728 456 744 476 Q752 486 740 486 L690 486 Q700 380 690 300 Q684 210 700 168 Z" fill="url(#mhead)"/>
+
+  <!-- circuit in head -->
+  <g fill="none" stroke="#BAE6FD" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M700 250 H722 Q730 250 730 242 V226 L748 210"/>
+    <path d="M690 290 H736 L752 274 H768"/>
+    <path d="M690 290 L718 318 H762"/>
+    <path d="M700 340 H726 L744 360"/>
+  </g>
+  <g fill="#E0F7FF">
+    <circle cx="752" cy="206" r="11" fill="#7DD3FC" filter="url(#mnodeglow)"/><circle cx="752" cy="206" r="8"/>
+    <circle cx="772" cy="274" r="11" fill="#7DD3FC" filter="url(#mnodeglow)"/><circle cx="772" cy="274" r="8"/>
+    <circle cx="764" cy="318" r="11" fill="#7DD3FC" filter="url(#mnodeglow)"/><circle cx="764" cy="318" r="8"/>
+    <circle cx="747" cy="364" r="9" fill="#7DD3FC" filter="url(#mnodeglow)"/><circle cx="747" cy="364" r="6"/>
+  </g>
+
+  <!-- swoosh -->
+  <path d="M556 486 Q640 482 682 430 Q712 392 760 392 Q732 420 744 476 Q752 486 740 486 Z" fill="url(#mswoosh)"/>
+
+  <!-- document page -->
+  <g>
+    <path d="M552 150 L668 128 L720 176 L720 418 Q720 444 694 448 L574 466 Q548 470 548 444 L548 176 Q548 154 552 150 Z" fill="url(#mpage)" stroke="#1E40AF" stroke-opacity=".15" stroke-width="2"/>
+    <path d="M668 128 L668 166 Q668 180 682 180 L720 176 Z" fill="#1D4ED8"/>
+    <g stroke-linecap="round" stroke-width="13">
+      <path d="M574 196 L652 182" stroke="#CFDCF2"/>
+      <path d="M574 228 L690 208" stroke="#CFDCF2"/>
+      <path d="M574 262 L620 254" stroke="#14B8A6"/><path d="M638 251 L692 242" stroke="#CFDCF2"/>
+      <path d="M574 296 L692 276" stroke="#CFDCF2"/>
+      <path d="M574 330 L692 310" stroke="#CFDCF2"/>
+      <path d="M574 364 L636 354" stroke="#8B5CF6"/><path d="M654 351 L676 347" stroke="#CFDCF2"/>
+      <path d="M574 398 L686 380" stroke="#CFDCF2"/>
+      <path d="M574 430 L680 413" stroke="#CFDCF2"/>
+    </g>
+  </g>
+
+  <!-- chat bubble -->
+  <rect x="826" y="226" width="176" height="128" rx="48" fill="#60A5FA" opacity=".55" filter="url(#mglow)"/>
+  <path d="M874 228 H956 Q1000 228 1000 272 V306 Q1000 350 956 350 H860 Q842 366 812 380 Q830 360 832 330 Q828 320 828 306 V272 Q828 228 874 228 Z" fill="#F8FBFF"/>
+  <circle cx="872" cy="290" r="13" fill="#2563EB"/>
+  <circle cx="914" cy="290" r="13" fill="#14B8A6"/>
+  <circle cx="956" cy="290" r="13" fill="#7C3AED"/>
+
+  </svg>

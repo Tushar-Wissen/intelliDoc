@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FileText, X, Folder, Loader2, LogOut, ChevronRight, ChevronDown, Plus, FolderOpen } from 'lucide-react';
 
+import documindSidebarLogo from '@/assets/documind-logo-sidebar.svg';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context';
 import { Button } from '@/components/ui/button';
@@ -335,13 +336,7 @@ function SidebarBody({ onNavigate, scrollContainerRef }) {
     <TooltipProvider delayDuration={200}>
       <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
         <div className="flex h-16 shrink-0 items-center gap-2.5 border-b border-sidebar-border px-4">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-blue-600 text-white shadow-sm">
-            <FileText className="h-5 w-5" />
-          </span>
-          <div className="min-w-0 leading-tight">
-            <p className="truncate font-display text-sm font-bold tracking-tight">IntelliDoc</p>
-            <p className="truncate text-[11px] text-sidebar-foreground/60">AI Document Platform</p>
-          </div>
+          <img src={documindSidebarLogo} alt="Documind — Your Documents. Smarter Answers." className="h-auto w-full max-w-[224px]" />
         </div>
 
         <nav className="space-y-1 px-3 pt-4">

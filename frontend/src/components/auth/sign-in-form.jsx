@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Loader2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -12,12 +12,11 @@ import { PasswordInput } from '@/components/auth/password-input';
 import { useSignInForm } from '@/hooks/use-sign-in-form';
 import { LOGIN_MODES } from '@/lib/auth-validation';
 
-const SSO_NOTICE = 'Single sign-on is coming soon. Please sign in with your email and password for now.';
+const SSO_NOTICE = 'Google and Microsoft sign-in are coming soon.';
 
 export function SignInForm({ email, onEmailChange, onSwitchMode }) {
   const { password, handlePasswordChange, handleEmailChange, submitting, formError, fieldErrors, handleSubmit } =
     useSignInForm({ email, onEmailChange });
-  const [ssoNotice, setSsoNotice] = useState(false);
 
   return (
     <>
@@ -100,7 +99,7 @@ export function SignInForm({ email, onEmailChange, onSwitchMode }) {
             type="button"
             variant="outline"
             className="h-11 gap-2 bg-card"
-            onClick={() => setSsoNotice(true)}
+            disabled
           >
             <GoogleIcon className="h-4 w-4" /> Google
           </Button>
@@ -109,13 +108,15 @@ export function SignInForm({ email, onEmailChange, onSwitchMode }) {
             type="button"
             variant="outline"
             className="h-11 gap-2 bg-card"
-            onClick={() => setSsoNotice(true)}
+            disabled
           >
             <MicrosoftIcon className="h-4 w-4" /> Microsoft
           </Button>
         </div>
 
-        <AuthAlert id="sso-notice-message" tone="info" message={ssoNotice ? SSO_NOTICE : null} />
+        <p id="sso-notice-message" className="mt-2 text-center text-xs text-muted-foreground">
+          {SSO_NOTICE}
+        </p>
 
         <p className="mt-5 text-center text-sm text-muted-foreground">
           Don&apos;t have an account?{' '}

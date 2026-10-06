@@ -48,7 +48,7 @@ export function NoDocumentsState() {
       icon={FolderOpen}
       badge={<Plus className="h-3 w-3" />}
       title="No documents yet"
-      description="Create a folder and upload documents to start chatting with IntelliDoc AI."
+      description="Create a folder and upload documents to start chatting with DocuMind AI."
     />
   );
 }

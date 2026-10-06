@@ -5,7 +5,7 @@ import { API_BASE_URL, API_ERROR_CODES, ApiError, authHeaders, toApiError } from
 const CHAT_ERROR_MESSAGES = {
   [API_ERROR_CODES.INVALID]: 'This question could not be sent. Check the selected documents and try again.',
   [API_ERROR_CODES.NOT_FOUND]: 'This conversation no longer exists. Start a new one and try again.',
-  [API_ERROR_CODES.SERVER]: 'IntelliDoc AI could not answer right now. Please try again in a moment.',
+  [API_ERROR_CODES.SERVER]: 'DocuMind AI could not answer right now. Please try again in a moment.',
 };
 
 // Maps an API message object to the shape used by the UI.

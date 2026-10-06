@@ -355,7 +355,7 @@ export function ProfilePage() {
           <Card id="account-card" className="border-border/80 shadow-sm">
             <CardHeader>
               <CardTitle className="font-display">Account</CardTitle>
-              <CardDescription>Sign out of IntelliDoc on this device</CardDescription>
+              <CardDescription>Sign out of DocuMind on this device</CardDescription>
             </CardHeader>
             <Separator />
             <CardFooter className="pt-6">
@@ -376,7 +376,7 @@ export function ProfilePage() {
           <Card id="danger-zone-card" className="border-destructive/30 shadow-sm">
             <CardHeader>
               <CardTitle className="font-display text-destructive">Remove account</CardTitle>
-              <CardDescription>Permanently delete your IntelliDoc account and sign out everywhere</CardDescription>
+              <CardDescription>Permanently delete your DocuMind account and sign out everywhere</CardDescription>
             </CardHeader>
             <Separator className="bg-destructive/20" />
             <CardFooter className="pt-6">
@@ -403,7 +403,7 @@ export function ProfilePage() {
           <DialogHeader>
             <DialogTitle>Remove your account?</DialogTitle>
             <DialogDescription>
-              This permanently deletes your IntelliDoc account and everything tied to it. This action cannot be
+              This permanently deletes your DocuMind account and everything tied to it. This action cannot be
               undone.
             </DialogDescription>
           </DialogHeader>

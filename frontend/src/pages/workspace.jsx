@@ -268,7 +268,7 @@ export function WorkspacePage() {
       .map((part) => part[0]?.toUpperCase() || '')
       .join('') || 'Y';
 
-  // IntelliDoc AI's chat panel is always visible; its subtitle/placeholder switch between
+  // DocuMind AI's chat panel is always visible; its subtitle/placeholder switch between
   // workspace-wide, single-folder and single-document context depending on what is open.
   const copilotSubtitle = activeFileId
     ? 'Answering from this document'
@@ -276,10 +276,10 @@ export function WorkspacePage() {
       ? 'Searching across documents in this folder'
       : `Searching across ${totalFilesCount} ${totalFilesCount === 1 ? 'document' : 'documents'}`;
   const copilotPlaceholder = activeFileId
-    ? 'Ask IntelliDoc AI about this document...'
+    ? 'Ask DocuMind AI about this document...'
     : activeFolder
-      ? 'Ask IntelliDoc AI about your folder...'
-      : 'Ask IntelliDoc AI about your workspace...';
+      ? 'Ask DocuMind AI about your folder...'
+      : 'Ask DocuMind AI about your workspace...';
 
   const recentFiles = useMemo(() => {
     const flattened = [];
