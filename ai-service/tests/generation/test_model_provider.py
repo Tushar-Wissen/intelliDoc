@@ -31,12 +31,18 @@ def test_provider_factory_switches_on_config():
 def test_rules_provider_generates_completion():
     provider = RulesProvider()
     chunk_id = "12345678-1234-5678-1234-567812345678"
-    prompt = f"[Chunk ID: {chunk_id}]: contract.pdf\nThis contract has a 30 day termination notice.\nUSER QUESTION:\nWhat is notice?"
+    prompt = (
+        f"[[EVIDENCE_CHUNK id={chunk_id}]]\n"
+        "Source metadata (for grounding only; never repeat): contract.pdf [Page 1]\n"
+        "Text:\nThis contract has a 30 day termination notice.\n"
+        "[[/EVIDENCE_CHUNK]]\n=== USER QUESTION ===\nWhat is notice?"
+    )
 
     res = provider.generate(prompt)
     assert res.text
     assert "30 day termination notice" in res.text
-    assert chunk_id in res.text
+    assert chunk_id not in res.text
+    assert "contract.pdf" not in res.text
 
 
 def test_hosted_provider_requires_api_key():

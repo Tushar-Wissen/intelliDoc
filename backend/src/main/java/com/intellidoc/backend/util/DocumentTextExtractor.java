@@ -13,6 +13,7 @@ import org.apache.poi.xslf.usermodel.XSLFTextShape;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.springframework.stereotype.Component;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.web.multipart.MultipartFile;
 
 import javax.imageio.ImageIO;
@@ -20,6 +21,8 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 @Component
 public class DocumentTextExtractor {
@@ -41,6 +44,21 @@ public class DocumentTextExtractor {
         this.tesseract.setDatapath(tessDataPath);
 
         this.tesseract.setLanguage("eng");
+    }
+
+    private String prepareTessdataPath() {
+        try {
+            Path tessdataPath = Files.createTempDirectory("intellidoc-tessdata-");
+            Path trainedData = tessdataPath.resolve("eng.traineddata");
+            try (var input = new ClassPathResource("tessdata/eng.traineddata").getInputStream()) {
+                Files.copy(input, trainedData);
+            }
+            trainedData.toFile().deleteOnExit();
+            tessdataPath.toFile().deleteOnExit();
+            return tessdataPath.toAbsolutePath().toString();
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to prepare bundled Tesseract language data", error);
+        }
     }
 
     public String extractText(MultipartFile file)

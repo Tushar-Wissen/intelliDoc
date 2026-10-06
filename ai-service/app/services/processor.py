@@ -2,6 +2,7 @@ import re
 from typing import List, Tuple, Optional
 
 from app.schemas import (
+    QACitation,
     SentimentEnum,
     AnalyzeResponse,
     QAResponse,
@@ -1568,140 +1569,45 @@ class DocumentProcessor:
     # ============================================================
 
     @classmethod
-    def answer_question(
-        cls,
-        doc_id: str,
-        context: str,
-        question: str,
-    ) -> QAResponse:
-
-        if not context:
-            return QAResponse(
-                document_id=doc_id,
-                question=question,
-                answer=(
-                    "No matching information "
-                    "found in document context."
-                ),
-                confidence=0.50,
-            )
-
-        # --------------------------------------------------------
-        # Split context into sentences
-        # --------------------------------------------------------
-
-        sentences = [
-            sentence.strip()
-            for sentence in re.split(
-                r"(?<=[.!?])\s+",
-                context,
-            )
-            if sentence.strip()
-        ]
-
-        # --------------------------------------------------------
-        # Question words
-        # --------------------------------------------------------
-
-        q_words = (
-            set(
-                re.findall(
-                    r"\b\w+\b",
-                    question.lower(),
-                )
-            )
-            -
-            {
-                "what",
-                "is",
-                "the",
-                "how",
-                "where",
-                "who",
-                "when",
-                "why",
-                "did",
-                "was",
-                "are",
-                "a",
-                "an",
-                "of",
-                "in",
-            }
-        )
+    def answer_question(cls, doc_id: str, context: str, question: str) -> QAResponse:
+        """Extract answer snippet from context matching the user's question."""
+        current_page = None
+        sentences = []
+        for line in context.splitlines():
+            page_match = re.fullmatch(r"\[Page (\d+)\]", line.strip())
+            if page_match:
+                current_page = int(page_match.group(1))
+                continue
+            sentences.extend((sentence.strip(), current_page) for sentence in re.split(r'(?<=[.!?])\s+', line) if sentence.strip())
+        q_words = set(re.findall(r'\b\w+\b', question.lower())) - {"what", "is", "the", "how", "where", "who", "when", "why", "did", "was", "are", "a", "an", "of", "in"}
 
         best_sentence = None
+        best_page = None
         best_overlap = 0
 
-        # --------------------------------------------------------
-        # Find sentence with highest word overlap
-        # --------------------------------------------------------
-
-        for sentence in sentences:
-
-            s_words = set(
-                re.findall(
-                    r"\b\w+\b",
-                    sentence.lower(),
-                )
-            )
-
-            overlap = len(
-                q_words.intersection(
-                    s_words
-                )
-            )
-
+        for sentence, page_number in sentences:
+            s_words = set(re.findall(r'\b\w+\b', sentence.lower()))
+            overlap = len(q_words.intersection(s_words))
             if overlap > best_overlap:
-
                 best_overlap = overlap
                 best_sentence = sentence
+                best_page = page_number
 
-        # --------------------------------------------------------
-        # No matching sentence
-        # --------------------------------------------------------
-
-        if (
-            not best_sentence
-            or best_overlap == 0
-        ):
-
-            if sentences:
-
-                best_sentence = (
-                    "Based on document context: "
-                    + sentences[0]
-                )
-
-                confidence = 0.70
-
-            else:
-
-                best_sentence = (
-                    "No matching information "
-                    "found in document context."
-                )
-
-                confidence = 0.50
-
-        # --------------------------------------------------------
-        # Matching sentence found
-        # --------------------------------------------------------
-
+        if not best_sentence or best_overlap == 0:
+            best_sentence = "Not found in supplied document context."
+            confidence = 0.0
+            is_not_found = True
+            citations = []
         else:
-
-            confidence = min(
-                0.75
-                + (best_overlap * 0.08),
-                0.96,
-            )
+            confidence = min(0.75 + (best_overlap * 0.08), 0.96)
+            is_not_found = False
+            citations = [QACitation(page_number=best_page, source_excerpt=best_sentence)]
 
         return QAResponse(
             document_id=doc_id,
             question=question,
             answer=best_sentence,
-            confidence=round(
-                confidence,
-                2,
-            ),
+            confidence=round(confidence, 2),
+            is_not_found=is_not_found,
+            citations=citations,
         )
