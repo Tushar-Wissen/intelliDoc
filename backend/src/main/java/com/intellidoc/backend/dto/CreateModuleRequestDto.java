@@ -11,4 +11,5 @@ import lombok.NoArgsConstructor;
 @Builder
 public class CreateModuleRequestDto {
     private String name;
+    private String description;
 }

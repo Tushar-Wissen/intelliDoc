@@ -11,4 +11,5 @@ import lombok.NoArgsConstructor;
 @Builder
 public class PatchModuleRequestDto {
     private String name;
+    private String description;
 }

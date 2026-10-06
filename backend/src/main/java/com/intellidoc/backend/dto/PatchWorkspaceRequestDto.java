@@ -11,5 +11,6 @@ import lombok.NoArgsConstructor;
 @Builder
 public class PatchWorkspaceRequestDto {
     private String name;
+    private String description;
     private String status;
 }

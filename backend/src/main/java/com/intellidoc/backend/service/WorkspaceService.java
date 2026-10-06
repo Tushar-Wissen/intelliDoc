@@ -38,6 +38,7 @@ public class WorkspaceService {
         WorkspaceEntity workspace = workspaceRepository.save(WorkspaceEntity.builder()
                 .tenantId(principal.tenantId())
                 .name(name)
+                .description(normalizeDescription(request.getDescription()))
                 .status(WorkspaceStatus.ACTIVE)
                 .createdBy(principal.userId())
                 .build());
@@ -74,6 +75,9 @@ public class WorkspaceService {
         if (request != null && request.getName() != null) {
             workspace.setName(requireName(request.getName()));
         }
+        if (request != null && request.getDescription() != null) {
+            workspace.setDescription(normalizeDescription(request.getDescription()));
+        }
         if (request != null && request.getStatus() != null && !request.getStatus().isBlank()) {
             workspace.setStatus(request.getStatus().trim());
         }
@@ -97,10 +101,18 @@ public class WorkspaceService {
         return name.trim();
     }
 
+    private static String normalizeDescription(String description) {
+        if (description == null || description.isBlank()) {
+            return null;
+        }
+        return description.trim();
+    }
+
     static WorkspaceResponseDto toDto(WorkspaceEntity workspace) {
         return WorkspaceResponseDto.builder()
                 .id(workspace.getId())
                 .name(workspace.getName())
+                .description(workspace.getDescription())
                 .status(workspace.getStatus())
                 .createdAt(workspace.getCreatedAt())
                 .build();

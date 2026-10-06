@@ -4,7 +4,7 @@
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg15
     container_name: intellidoc-postgres
     restart: always
     environment:
@@ -60,8 +60,9 @@ services:
       - intellidoc-network
 
   minio:
-    # Docker Hub no longer serves minio/minio; official images are on Quay.
-    image: quay.io/minio/minio:latest
+    # The official MinIO Quay image is unauthorized in this environment. Use the
+    # public MinIO-compatible Docker Hub image that is actually reachable here.
+    image: elestio/minio:latest
     container_name: intellidoc-minio
     restart: always
     command: server /data --console-address ":9001"

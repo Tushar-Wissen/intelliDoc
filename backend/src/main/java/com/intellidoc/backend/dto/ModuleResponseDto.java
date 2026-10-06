@@ -19,6 +19,7 @@ public class ModuleResponseDto {
     private UUID id;
     private UUID workspaceId;
     private String name;
+    private String description;
     private OffsetDateTime createdAt;
     private Integer totalFiles;
     private List<ModuleFileDto> files;

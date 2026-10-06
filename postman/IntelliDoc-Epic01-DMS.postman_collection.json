@@ -107,6 +107,7 @@
                 "exec": [
                   "pm.test('created', () => pm.response.to.have.status(201));",
                   "const json = pm.response.json();",
+                  "pm.test('description returned', () => pm.expect(json.description).to.eql(pm.environment.get('workspaceDescription')));",
                   "pm.environment.set('workspaceId', json.id);"
                 ]
               }
@@ -117,7 +118,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Q3 Vendor Contracts Review\"\n}"
+              "raw": "{\n  \"name\": \"Q3 Vendor Contracts Review\",\n  \"description\": \"{{workspaceDescription}}\"\n}"
             },
             "url": "{{baseUrl}}/workspaces"
           }
@@ -766,6 +767,7 @@
               "script": {
                 "exec": [
                   "pm.test('created', () => pm.response.to.have.status(201));",
+                  "pm.test('description returned', () => pm.expect(pm.response.json().description).to.eql(pm.environment.get('workspaceDescription')));",
                   "pm.environment.set('workspaceId', pm.response.json().id);"
                 ]
               }
@@ -776,7 +778,7 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"E2E Chat Test Workspace\"\n}"
+              "raw": "{\n  \"name\": \"E2E Chat Test Workspace\",\n  \"description\": \"{{workspaceDescription}}\"\n}"
             },
             "url": "{{baseUrl}}/workspaces"
           }

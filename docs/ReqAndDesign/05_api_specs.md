@@ -80,10 +80,12 @@
 **POST `/workspaces`**
 ```json
 // Request
-{ "name": "Q3 Vendor Contracts Review" }
+{ "name": "Q3 Vendor Contracts Review", "description": "Review vendor contracts and related documents." }
 // Response  (201)
-{ "id": "uuid", "name": "Q3 Vendor Contracts Review", "status": "ACTIVE", "createdAt": "2026-09-14T10:00:00Z" }
+{ "id": "uuid", "name": "Q3 Vendor Contracts Review", "description": "Review vendor contracts and related documents.", "status": "ACTIVE", "createdAt": "2026-09-14T10:00:00Z" }
 ```
+
+`description` is optional and may be omitted or null. `PATCH /workspaces/{workspaceId}` also accepts `description`; send an empty string to clear it.
 
 ---
 
@@ -101,9 +103,9 @@
 **POST `/workspaces/{workspaceId}/modules`**
 ```json
 // Request
-{ "name": "Vendor Contracts" }
+{ "name": "Vendor Contracts", "description": "Quarterly vendor approvals" }
 // Response (201)
-{ "id": "uuid", "workspaceId": "uuid", "name": "Vendor Contracts", "createdAt": "2026-09-14T10:00:00Z" }
+{ "id": "uuid", "workspaceId": "uuid", "name": "Vendor Contracts", "description": "Quarterly vendor approvals", "createdAt": "2026-09-14T10:00:00Z" }
 ```
 
 A request to create a module with a name that already exists **in that same workspace** returns `409 MODULE_NAME_TAKEN`. The same name in a different workspace succeeds — modules never cross workspace boundaries.
