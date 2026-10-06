@@ -25,6 +25,15 @@ public interface DocumentRepository extends JpaRepository<DocumentEntity, UUID> 
             @Param("groupId") UUID groupId,
             @Param("documentType") String documentType);
 
+    @Query("""
+            select d from DocumentEntity d
+            where d.workspaceId = :workspaceId
+              and d.deletedAt is null
+              and d.groupId is null
+            order by d.createdAt desc
+            """)
+    List<DocumentEntity> findOrphanDocuments(@Param("workspaceId") UUID workspaceId);
+
     Optional<DocumentEntity> findByIdAndDeletedAtIsNull(UUID id);
 
     List<DocumentEntity> findByGroupId(UUID groupId);

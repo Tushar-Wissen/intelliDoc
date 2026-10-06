@@ -78,6 +78,14 @@ public class DocumentController {
         return ResponseEntity.ok(documentService.list(principal, workspaceId, moduleId, documentType));
     }
 
+    // ========== Orphan Documents API (files without any folder/module) ==========
+    @GetMapping({"/workspaces/{workspaceId}/orphan-documents", "/api/v1/workspaces/{workspaceId}/orphan-documents"})
+    public ResponseEntity<DocumentListResponseDto> listOrphanDocuments(
+            @AuthenticationPrincipal AuthPrincipal principal,
+            @PathVariable UUID workspaceId) {
+        return ResponseEntity.ok(documentService.listOrphanDocuments(principal, workspaceId));
+    }
+
     @GetMapping({"/documents/{documentId}", "/api/v1/documents/{documentId}"})
     public ResponseEntity<DocumentDetailDto> get(
             @AuthenticationPrincipal AuthPrincipal principal,
