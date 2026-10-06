@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, Send, Square, RotateCcw, FileText, AlertCircle } from 'lucide-react';
+import { Sparkles, Send, Square, RotateCcw, FileText, AlertCircle, Maximize2, Minimize2 } from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { ShimmerLoader } from '@/components/ui/shimmer-loader';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { AiModelCards, AiModelDropdown, ModelIcon } from '@/components/features/ai-model-selector';
+import { AiModelDropdown, ModelIcon } from '@/components/features/ai-model-selector';
 import { DocumentProcessingState, NoDocumentsState } from '@/components/features/copilot-empty-state';
 import { getAiModel } from '@/constants/ai-models';
 import { useAiModel } from '@/hooks/use-ai-model';
@@ -18,20 +18,25 @@ const nextMessageId = () => `msg-${Date.now()}-${(messageSeq += 1)}`;
 
 const NOT_FOUND_TEXT = "I couldn't find an answer to that in these documents.";
 
-function CitationChips({ citations }) {
+function CitationChips({ citations, tooltipBoundary }) {
   if (!citations?.length) return null;
   return (
     <div className="mt-2 flex flex-wrap gap-1.5">
       {citations.map((citation, idx) => (
         <Tooltip key={citation.citationId ?? idx}>
           <TooltipTrigger asChild>
-            <span className="inline-flex cursor-default items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+            <span className="inline-flex cursor-pointer items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
               <FileText className="h-3 w-3" />
               {`[${idx + 1}] p. ${citation.page ?? 1}`}
             </span>
           </TooltipTrigger>
           {(citation.section || citation.excerpt) && (
-            <TooltipContent side="left" className="max-w-xs">
+            <TooltipContent
+              side="top"
+              collisionBoundary={tooltipBoundary}
+              collisionPadding={12}
+              className="max-w-xs break-words"
+            >
               {citation.section && <p className="font-semibold text-foreground">{citation.section}</p>}
               {citation.excerpt && <p className="mt-1 line-clamp-4 text-muted-foreground">{citation.excerpt}</p>}
             </TooltipContent>
@@ -42,7 +47,7 @@ function CitationChips({ citations }) {
   );
 }
 
-function ChatMessage({ message }) {
+function ChatMessage({ message, tooltipBoundary }) {
   if (message.role === 'notice') {
     return (
       <div className="flex items-center gap-2 py-1 text-[11px] text-muted-foreground">
@@ -78,7 +83,7 @@ function ChatMessage({ message }) {
       >
         {isError && <AlertCircle className="mb-1 h-4 w-4" />}
         {message.text}
-        <CitationChips citations={message.citations} />
+        <CitationChips citations={message.citations} tooltipBoundary={tooltipBoundary} />
       </div>
       <div className="flex items-center gap-1.5 pl-1 text-[11px] text-muted-foreground">
         <ModelIcon model={model} className="h-4 w-4 rounded-full [&_svg]:h-2.5 [&_svg]:w-2.5" />
@@ -105,6 +110,8 @@ export function CopilotSidebar({
 }) {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [panelElement, setPanelElement] = useState(null);
   const messagesEndRef = useRef(null);
   const abortRef = useRef(null);
   // Chat session id per workspace + context, created on the first question.
@@ -214,7 +221,11 @@ export function CopilotSidebar({
     <TooltipProvider delayDuration={200}>
       <div
         id="copilot-sidebar-panel"
-        className="absolute top-0 right-0 h-full w-80 sm:w-96 bg-card text-card-foreground border-l border-border shadow-xl z-50 flex flex-col"
+        ref={setPanelElement}
+        className={cn(
+          'absolute top-0 right-0 z-50 flex h-full flex-col border-l border-border bg-card text-card-foreground shadow-xl transition-[width] duration-300 ease-in-out motion-reduce:transition-none',
+          isExpanded ? 'w-[min(42rem,calc(100vw-1rem))]' : 'w-80 sm:w-96'
+        )}
       >
         <div
           id="copilot-sidebar-header"
@@ -255,6 +266,23 @@ export function CopilotSidebar({
             </Tooltip>
           )}
           <AiModelDropdown model={model} onSelect={handleSelectModel} disabled={isLoading || locked} />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                id="copilot-resize-button"
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 rounded-full text-muted-foreground hover:bg-wissen-navy/10 hover:text-wissen-navy dark:hover:text-wissen-navy-light"
+                onClick={() => setIsExpanded((expanded) => !expanded)}
+                aria-label={isExpanded ? 'Restore chat size' : 'Expand chat'}
+                aria-pressed={isExpanded}
+              >
+                {isExpanded ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{isExpanded ? 'Restore chat size' : 'Expand chat'}</TooltipContent>
+          </Tooltip>
         </div>
 
         {/* ── Locked states: empty workspace, or the open document isn't ready for AI yet ── */}
@@ -268,7 +296,9 @@ export function CopilotSidebar({
             className="flex-1 overflow-y-auto scrollbar-thin p-4 flex flex-col gap-3"
           >
             {hasMessages ? (
-              messages.map((msg) => <ChatMessage key={msg.id} message={msg} />)
+              messages.map((msg) => (
+                <ChatMessage key={msg.id} message={msg} tooltipBoundary={panelElement} />
+              ))
             ) : (
               <div id="copilot-empty-state" className="flex flex-col gap-4 animate-fade-in">
                 <div className="rounded-xl border border-border/50 bg-muted/50 p-3 text-sm leading-relaxed text-foreground shadow-sm">
@@ -278,16 +308,7 @@ export function CopilotSidebar({
                       {' '}for <span className="font-semibold">{activeTabName}</span>
                     </>
                   ) : null}
-                  . Choose a model below, then ask me anything about your documents.
-                </div>
-                <div className="flex flex-col gap-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Choose your AI model
-                  </p>
-                  <AiModelCards model={model} onSelect={handleSelectModel} />
-                  <p className="text-[11px] text-muted-foreground">
-                    Your choice is used for every message until you change it from the header.
-                  </p>
+                  . Ask me anything about your documents.
                 </div>
               </div>
             )}

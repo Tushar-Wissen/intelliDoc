@@ -11,7 +11,6 @@ import { useFolders } from '@/context/folder-context';
 import { useToast } from '@/context/toast-context';
 import { FolderSelect } from '@/components/features/folder-select';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Dialog,
@@ -25,7 +24,6 @@ import {
 const ACCEPT = SUPPORTED_UPLOAD_EXTENSIONS.map((ext) => `.${ext.toLowerCase()}`).join(',');
 const FORMATS_LABEL = SUPPORTED_UPLOAD_EXTENSIONS.join(' or ');
 
-const titleFromFileName = (fileName) => fileName.replace(/\.[^/.]+$/, '');
 const isSameFile = (a, b) => a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
 
 // `defaultFolderId` preselects the folder the dialog was opened from (e.g. an open folder view).
@@ -40,13 +38,10 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
   const [files, setFiles] = useState([]);
   // Every upload goes into a folder (module); the API has no workspace-level upload here.
   const [selectedFolderId, setSelectedFolderId] = useState(null);
-  const [title, setTitle] = useState('');
-  // Once the user edits the title themselves, picking another file no longer overwrites it.
-  const [titleEdited, setTitleEdited] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [fieldErrors, setFieldErrors] = useState({ folder: '', title: '', files: '' });
+  const [fieldErrors, setFieldErrors] = useState({ folder: '', files: '' });
   const [rejections, setRejections] = useState([]);
   const [error, setError] = useState('');
 
@@ -54,19 +49,14 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
   // Folders only matter when uploading into one.
   const noFolders = !workspaceTarget && !foldersLoading && folders.length === 0;
   const selectedFolder = folders.find((f) => f.id === selectedFolderId) ?? null;
-  // A title only applies when exactly one file is uploaded; several files keep their own names.
-  const singleFile = files.length === 1;
-
   // Start with a clean form each time the dialog opens.
   useEffect(() => {
     if (!open) return;
     setFiles([]);
     setSelectedFolderId(defaultFolderId);
-    setTitle('');
-    setTitleEdited(false);
     setIsDragging(false);
     setProgress(0);
-    setFieldErrors({ folder: '', title: '', files: '' });
+    setFieldErrors({ folder: '', files: '' });
     setRejections([]);
     setError('');
   }, [open, defaultFolderId]);
@@ -77,12 +67,6 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
     if (foldersLoading) return;
     if (selectedFolderId && !folders.some((f) => f.id === selectedFolderId)) setSelectedFolderId(null);
   }, [folders, foldersLoading, selectedFolderId]);
-
-  // Keep the suggested title in step with the selection while the user hasn't typed their own.
-  useEffect(() => {
-    if (titleEdited) return;
-    setTitle(files.length === 1 ? titleFromFileName(files[0].name) : '');
-  }, [files, titleEdited]);
 
   const handleOpenChange = (next) => {
     // Don't let the dialog be dismissed mid-upload; the outcome would otherwise go unseen.
@@ -127,13 +111,11 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
     e.preventDefault();
     if (submitting || workspaceMissing) return;
 
-    const cleanedTitle = title.trim();
     const nextErrors = {
       folder: workspaceTarget || selectedFolderId ? '' : 'Please select a folder to upload into.',
-      title: singleFile && !cleanedTitle ? 'Document title is required.' : '',
       files: files.length ? '' : 'Please select at least one file to upload.',
     };
-    if (nextErrors.folder || nextErrors.title || nextErrors.files) {
+    if (nextErrors.folder || nextErrors.files) {
       setFieldErrors(nextErrors);
       return;
     }
@@ -145,7 +127,7 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
     setError('');
 
     try {
-      const body = { files, title: singleFile ? cleanedTitle : undefined };
+      const body = { files };
       const result = workspaceTarget
         ? await documentsApi.uploadToWorkspace(selectedWorkspaceId, body, { onProgress: setProgress })
         : await documentsApi.upload(selectedFolderId, body, { onProgress: setProgress });
@@ -258,27 +240,6 @@ export function UploadDialog({ open, onOpenChange, onUploaded, defaultFolderId =
             />
             {fieldErrors.folder && <p className="text-xs text-destructive">{fieldErrors.folder}</p>}
           </div>
-          )}
-
-          {singleFile && (
-            <div className="space-y-1.5">
-              <Label htmlFor="document-title-input">
-                Document title <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="document-title-input"
-                data-testid="document-title-input"
-                placeholder="e.g. Q3 Financial Performance Report"
-                value={title}
-                disabled={locked}
-                onChange={(e) => {
-                  setTitle(e.target.value);
-                  setTitleEdited(true);
-                  if (fieldErrors.title) setFieldErrors((prev) => ({ ...prev, title: '' }));
-                }}
-              />
-              {fieldErrors.title && <p className="text-xs text-destructive">{fieldErrors.title}</p>}
-            </div>
           )}
 
           <div className="space-y-1.5">
