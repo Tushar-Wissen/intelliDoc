@@ -225,7 +225,7 @@ export function CopilotSidebar({
           </div>
           <div className="flex min-w-0 flex-1 flex-col">
             <span className="font-display font-semibold tracking-tight text-sm text-foreground">
-              IntelliDoc AI
+              DocuMind AI
             </span>
             {subtitle && (
               <span
@@ -307,7 +307,7 @@ export function CopilotSidebar({
               placeholder={
                 documentPending
                   ? 'AI chat unlocks once processing finishes'
-                  : placeholder || 'Ask IntelliDoc AI...'
+                  : placeholder || 'Ask DocuMind AI...'
               }
               className="pr-10 rounded-full bg-background shadow-sm text-sm"
               value={inputText}

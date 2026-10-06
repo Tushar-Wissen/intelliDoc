@@ -312,7 +312,7 @@ function FolderOverview({ folder, onFileClick, onUploadClick, uploadDisabled }) 
               No files in this folder yet
             </h3>
             <p className="mx-auto max-w-sm text-sm leading-relaxed text-muted-foreground">
-              Upload your first document to start organizing it here and asking IntelliDoc AI questions about it.
+              Upload your first document to start organizing it here and asking DocuMind AI questions about it.
             </p>
           </div>
 

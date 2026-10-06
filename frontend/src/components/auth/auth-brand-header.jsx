@@ -1,21 +1,17 @@
 import React from 'react';
-import { FileText } from 'lucide-react';
-
 import wissenLogo from '@/assets/wissen-logo.png';
+import { BrandLogo } from '@/components/brand-logo';
 
 export function AuthBrandHeader() {
   return (
     <div id="auth-brand-header" className="flex flex-col items-center gap-3 text-center">
       <img src={wissenLogo} alt="Wissen Technology" className="h-7 w-auto" />
 
-      <div className="flex items-center gap-2.5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-wissen-navy text-white shadow-sm">
-          <FileText className="h-5 w-5" />
-        </span>
-        <span id="login-brand-title" className="font-display text-2xl font-bold tracking-tight">
-          IntelliDoc
-        </span>
-      </div>
+      <BrandLogo iconClassName="h-11" textClassName="text-3xl" />
+      <p id="login-brand-title" className="sr-only">
+        DocuMind
+      </p>
+      <p className="-mt-1 text-xs tracking-wide text-wissen-gray">Your Documents. Smarter Answers.</p>
     </div>
   );
 }
