@@ -2,6 +2,7 @@ package com.intellidoc.backend.repository;
 
 import com.intellidoc.backend.model.DocumentGroupEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 import java.util.Optional;
@@ -16,4 +17,9 @@ public interface DocumentGroupRepository extends JpaRepository<DocumentGroupEnti
     boolean existsByWorkspaceIdAndName(UUID workspaceId, String name);
 
     boolean existsByWorkspaceIdAndNameAndIdNot(UUID workspaceId, String name, UUID id);
+
+    @Query("select g.name from DocumentGroupEntity g where g.id = :groupId")
+    String findNameById(UUID groupId);
+
+    long countByWorkspaceId(UUID workspaceId);
 }

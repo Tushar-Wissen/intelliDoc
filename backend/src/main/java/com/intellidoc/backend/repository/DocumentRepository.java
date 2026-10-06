@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -33,4 +34,13 @@ public interface DocumentRepository extends JpaRepository<DocumentEntity, UUID> 
     List<DocumentEntity> findByWorkspaceIdAndGroupIdAndDeletedAtIsNull(UUID workspaceId, UUID groupId);
 
     List<DocumentEntity> findByWorkspaceIdAndIdInAndDeletedAtIsNull(UUID workspaceId, java.util.Collection<UUID> ids);
+
+    @Query("select count(d) from DocumentEntity d where d.workspaceId = :workspaceId and d.deletedAt is null")
+    long countByWorkspaceIdAndDeletedAtIsNull(UUID workspaceId);
+
+    @Query("select d from DocumentEntity d where d.workspaceId = :workspaceId and d.deletedAt is null order by d.createdAt desc")
+    List<DocumentEntity> findByWorkspaceIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID workspaceId);
+
+    @Query("select count(d) from DocumentEntity d where d.workspaceId = :workspaceId and d.deletedAt is null and d.createdAt > :since")
+    long countByWorkspaceIdAndCreatedAtAfter(UUID workspaceId, OffsetDateTime since);
 }
