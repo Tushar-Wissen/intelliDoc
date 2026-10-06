@@ -70,7 +70,7 @@ export function RenameFolderDialog({ open, onOpenChange, folder, onRenamed }) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent id="rename-folder-dialog" data-testid="rename-folder-dialog" className="sm:max-w-md">
+      <DialogContent id="rename-folder-dialog" data-testid="rename-folder-dialog">
         <DialogHeader>
           <DialogTitle>Rename Folder</DialogTitle>
           <DialogDescription>Give this folder a new name. Its documents stay exactly where they are.</DialogDescription>

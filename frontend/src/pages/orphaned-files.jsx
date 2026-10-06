@@ -32,6 +32,7 @@ import { documentsApi } from '@/lib/documents-api';
 import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { useHealthStatus } from '@/hooks/use-health-status';
 import { useWorkspace } from '@/context/workspace-context';
+import { useFolders } from '@/context/folder-context';
 import { useToast } from '@/context/toast-context';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { WorkspaceRequiredAction } from '@/components/features/workspace-required-action';
@@ -55,6 +56,7 @@ const COLUMNS = [
 export function OrphanedFilesPage() {
   const healthStatus = useHealthStatus();
   const { selectedWorkspaceId, loading: workspaceLoading } = useWorkspace();
+  const { refreshFolders } = useFolders();
   const toast = useToast();
 
   const [searchInput, setSearchInput] = useState('');
@@ -200,8 +202,9 @@ export function OrphanedFilesPage() {
       setFiles((prev) => prev.filter((f) => f.id !== movedDocument.id));
       setSelectedIds(new Set());
       refreshFiles();
+      refreshFolders().catch(() => {});
     },
-    [refreshFiles]
+    [refreshFiles, refreshFolders]
   );
 
   const handleDelete = useCallback((file) => {

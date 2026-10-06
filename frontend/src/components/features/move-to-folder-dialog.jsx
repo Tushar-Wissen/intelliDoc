@@ -76,7 +76,7 @@ export function MoveToFolderDialog({ open, onOpenChange, documents = [], onMoved
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent id="move-to-folder-dialog" data-testid="move-to-folder-dialog" className="sm:max-w-md">
+      <DialogContent id="move-to-folder-dialog" data-testid="move-to-folder-dialog">
         <DialogHeader>
           <DialogTitle>Move to folder</DialogTitle>
           <DialogDescription className="break-words">

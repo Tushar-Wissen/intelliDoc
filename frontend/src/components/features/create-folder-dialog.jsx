@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FolderPlus, Loader2 } from 'lucide-react';
+import { ChevronDown, FolderPlus, Loader2 } from 'lucide-react';
 
 import { useWorkspace } from '@/context/workspace-context';
 import { useFolders } from '@/context/folder-context';
@@ -81,7 +81,7 @@ export function CreateFolderDialog({ open, onOpenChange, onCreated }) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Create Folder</DialogTitle>
           <DialogDescription>
@@ -92,14 +92,20 @@ export function CreateFolderDialog({ open, onOpenChange, onCreated }) {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="folder-workspace">Workspace</Label>
-            <select
-              id="folder-workspace"
-              value={workspaceName || NO_WORKSPACE_LABEL}
-              disabled
-              className="flex h-10 w-full rounded-md border border-input bg-muted/50 px-3 py-2 text-sm text-foreground shadow-sm disabled:cursor-not-allowed disabled:opacity-100"
-            >
-              <option value={workspaceName || NO_WORKSPACE_LABEL}>{workspaceName || NO_WORKSPACE_LABEL}</option>
-            </select>
+            <div className="relative">
+              <select
+                id="folder-workspace"
+                value={workspaceName || NO_WORKSPACE_LABEL}
+                disabled
+                className="flex h-10 w-full appearance-none rounded-md border border-input bg-muted/50 py-2 pl-3 pr-10 text-sm text-foreground shadow-sm disabled:cursor-not-allowed disabled:opacity-100"
+              >
+                <option value={workspaceName || NO_WORKSPACE_LABEL}>{workspaceName || NO_WORKSPACE_LABEL}</option>
+              </select>
+              <ChevronDown
+                aria-hidden="true"
+                className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-foreground"
+              />
+            </div>
             {workspaceMissing && (
               <p className="text-xs text-destructive" data-testid="folder-workspace-error">
                 {NO_WORKSPACE_MESSAGE}
