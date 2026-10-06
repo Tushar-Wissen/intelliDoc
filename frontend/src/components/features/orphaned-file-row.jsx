@@ -58,7 +58,10 @@ export function OrphanedFileRow({ file, selected, onToggleSelect, onOpen, onMove
       </td>
 
       <td className="hidden px-3 py-3 md:table-cell">
-        <StatusBadge value={file.status} />
+        <StatusBadge
+          value={file.status}
+          className="mt-0.5 rounded-md px-2 py-px text-[10px] font-bold uppercase"
+        />
       </td>
 
       <td className="hidden whitespace-nowrap px-3 py-3 text-sm text-muted-foreground lg:table-cell">

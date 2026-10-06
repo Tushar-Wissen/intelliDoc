@@ -399,7 +399,7 @@ function DetailsSection({ document }) {
 // AI summary and the original file (GET /documents/{id}/file). Both requests start as soon as
 // the file is opened.
 export function DocumentView({ file }) {
-  const [tab, setTab] = useState('document');
+  const [tab, setTab] = useState('summary');
   const detailState = useDocumentDetail(file.id);
   const fileState = useDocumentFile(file.id);
 

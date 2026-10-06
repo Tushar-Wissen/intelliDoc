@@ -401,5 +401,5 @@ export function FolderDetail({ folder, onFileClick, activeFileId, onUploadClick,
     );
   }
 
-  return <DocumentView file={activeFile} />;
+  return <DocumentView key={activeFile.id} file={activeFile} />;
 }
