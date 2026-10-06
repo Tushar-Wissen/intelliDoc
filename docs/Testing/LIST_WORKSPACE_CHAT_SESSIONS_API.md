@@ -1,6 +1,6 @@
 # List workspace chat sessions API
 
-Returns every chat session in a workspace, newest first, including full message history for each session.
+Returns chat sessions **created by the authenticated user** in a workspace, most recently active first, including full message history for each session.
 
 ## Endpoint
 
@@ -11,7 +11,7 @@ Returns every chat session in a workspace, newest first, including full message 
 
 ## Auth
 
-`Authorization: Bearer <JWT>` — caller must be a member of the workspace.
+`Authorization: Bearer <JWT>` — caller must be a member of the workspace. Only sessions where `created_by` equals the caller are returned.
 
 ## Request
 
@@ -92,7 +92,7 @@ Invoke-RestMethod -Uri "http://localhost:8080/workspaces/$workspaceId/chat-sessi
 }
 ```
 
-Sessions are ordered by `createdAt` descending (newest first). Messages within each session are ordered oldest first.
+Sessions are ordered by **last activity** descending (`last_activity_at`, then `created_at`). Messages within each session are ordered oldest first.
 
 Empty workspace (no sessions yet):
 
@@ -114,4 +114,57 @@ Empty workspace (no sessions yet):
 ## Related endpoints (unchanged)
 
 - `POST /workspaces/{workspaceId}/chat-sessions` — create a session
-- `GET /chat-sessions/{sessionId}` — fetch one session (same shape as each item in `sessions[]`)
+- `GET /workspaces/{workspaceId}/chat-sessions/latest` — latest session for a scope (see below)
+- `GET /chat-sessions/{sessionId}` — fetch one session (same shape as each item in `sessions[]`); only the session creator can read it (`404 SESSION_NOT_FOUND` otherwise)
+
+---
+
+# Latest chat session for scope (UI resume after refresh)
+
+Returns the caller’s most recently **active** session for a fixed scope, with full message history. Use this when reopening the copilot on a workspace, module, or single document.
+
+## Endpoint
+
+| Method | Path |
+|--------|------|
+| `GET` | `/workspaces/{workspaceId}/chat-sessions/latest` |
+| `GET` | `/api/v1/workspaces/{workspaceId}/chat-sessions/latest` |
+
+## Query parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `scopeType` | Yes | `WORKSPACE`, `MODULE`, or `DOCUMENTS` |
+| `moduleId` | When `scopeType=MODULE` | Module (`document_group`) UUID |
+| `documentId` | When `scopeType=DOCUMENTS` | Single document UUID (matches sessions scoped to exactly that one document) |
+
+Do not pass `moduleId` / `documentId` for `WORKSPACE` scope.
+
+### Sample requests
+
+```http
+GET /api/v1/workspaces/{workspaceId}/chat-sessions/latest?scopeType=WORKSPACE
+Authorization: Bearer …
+```
+
+```http
+GET /api/v1/workspaces/{workspaceId}/chat-sessions/latest?scopeType=MODULE&moduleId={moduleId}
+Authorization: Bearer …
+```
+
+```http
+GET /api/v1/workspaces/{workspaceId}/chat-sessions/latest?scopeType=DOCUMENTS&documentId={documentId}
+Authorization: Bearer …
+```
+
+## Response
+
+- `200 OK` — body matches [`GET /chat-sessions/{sessionId}`](#related-endpoints-unchanged) (`ChatSessionDetailResponseDto`).
+- `404 SESSION_NOT_FOUND` — no session for this user and scope (UI should `POST` create a session on first question).
+
+## UI integration flow
+
+1. On copilot open or scope change: `GET .../chat-sessions/latest?...`
+2. If `404`: `POST .../chat-sessions` with the same scope shape as create API
+3. Render `messages[]` from the response
+4. Send new questions: `POST /chat-sessions/{sessionId}/messages` (SSE) — unchanged

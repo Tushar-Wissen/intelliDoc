@@ -18,9 +18,11 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 @Slf4j
@@ -45,7 +47,9 @@ public class ChatMessageService {
                 .content(question)
                 .isNotFound(false)
                 .build();
-        return chatMessageRepository.save(userMsg);
+        ChatMessageEntity saved = chatMessageRepository.save(userMsg);
+        touchSessionLastActivity(sessionId);
+        return saved;
     }
 
     @Transactional
@@ -66,7 +70,15 @@ public class ChatMessageService {
             citationService.persistAll(assistantMsg.getId(), bufferedCitations);
         }
 
+        touchSessionLastActivity(sessionId);
         return assistantMsg;
+    }
+
+    private void touchSessionLastActivity(UUID sessionId) {
+        chatSessionRepository.findById(sessionId).ifPresent(session -> {
+            session.setLastActivityAt(OffsetDateTime.now());
+            chatSessionRepository.save(session);
+        });
     }
 
     public void processMessageStream(AuthPrincipal principal, UUID sessionId, String question, SseEmitter emitter) {
@@ -82,6 +94,9 @@ public class ChatMessageService {
                 .orElseThrow(DmsExceptions::sessionNotFound);
 
         workspaceAccessService.requireMember(session.getWorkspaceId(), principal.userId());
+        if (!Objects.equals(session.getCreatedBy(), principal.userId())) {
+            throw DmsExceptions.sessionNotFound();
+        }
 
         sessionLockManager.acquireLock(sessionId);
 

@@ -633,7 +633,20 @@
           "request": {
             "method": "GET",
             "url": "{{baseUrl}}/workspaces/{{workspaceId}}/chat-sessions",
-            "description": "Lists all chat sessions in the workspace (newest first), each with full message history."
+            "description": "Lists chat sessions created by the caller in the workspace (most recently active first), each with full message history."
+          }
+        },
+        {
+          "name": "GET /workspaces/{id}/chat-sessions/latest (workspace scope)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/chat-sessions/latest?scopeType=WORKSPACE",
+              "host": ["{{baseUrl}}"],
+              "path": ["workspaces", "{{workspaceId}}", "chat-sessions", "latest"],
+              "query": [{ "key": "scopeType", "value": "WORKSPACE" }]
+            },
+            "description": "Returns the caller's most recently active workspace-scoped session and full message history (404 if none)."
           }
         },
         {

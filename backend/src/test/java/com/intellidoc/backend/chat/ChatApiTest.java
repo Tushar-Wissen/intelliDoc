@@ -11,7 +11,7 @@ import com.intellidoc.backend.model.DocumentEntity;
 import com.intellidoc.backend.model.DocumentGroupEntity;
 import com.intellidoc.backend.model.TenantEntity;
 import com.intellidoc.backend.model.UserAccountEntity;
-import com.intellidoc.backend.model.WorkspaceEntity;
+import com.intellidoc.backend.model.WorkspaceMemberEntity;
 import com.intellidoc.backend.repository.AnswerCitationRepository;
 import com.intellidoc.backend.repository.ChatMessageRepository;
 import com.intellidoc.backend.repository.ChatSessionDocumentRepository;
@@ -439,6 +439,135 @@ public class ChatApiTest {
         mockMvc.perform(get("/chat-sessions/" + sessionId).header("Authorization", bearer(otherToken)))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.error.code", is("WORKSPACE_ACCESS_DENIED")));
+    }
+
+    @Test
+    void listSessionsOnlyIncludesSessionsCreatedByCaller() throws Exception {
+        String workspaceId = createWorkspace(token, "Shared WS");
+        createDocument(UUID.fromString(workspaceId), null, "shared.pdf");
+        addWorkspaceMember(UUID.fromString(workspaceId), OTHER_USER_ID);
+
+        mockMvc.perform(post("/workspaces/" + workspaceId + "/chat-sessions")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scope\": {\"type\": \"workspace\"}, \"title\": \"Jane chat\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/workspaces/" + workspaceId + "/chat-sessions")
+                        .header("Authorization", bearer(otherToken))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scope\": {\"type\": \"workspace\"}, \"title\": \"John chat\"}"))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/chat-sessions").header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sessions", hasSize(1)))
+                .andExpect(jsonPath("$.sessions[0].title", is("Jane chat")));
+
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/chat-sessions").header("Authorization", bearer(otherToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.sessions", hasSize(1)))
+                .andExpect(jsonPath("$.sessions[0].title", is("John chat")));
+    }
+
+    @Test
+    void getSessionHiddenFromOtherWorkspaceMember() throws Exception {
+        String workspaceId = createWorkspace(token, "Owner WS");
+        createDocument(UUID.fromString(workspaceId), null, "owner-doc.pdf");
+        addWorkspaceMember(UUID.fromString(workspaceId), OTHER_USER_ID);
+
+        MvcResult sessionRes = mockMvc.perform(post("/workspaces/" + workspaceId + "/chat-sessions")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scope\": {\"type\": \"workspace\"}}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String sessionId = objectMapper.readTree(sessionRes.getResponse().getContentAsString()).get("id").asText();
+
+        mockMvc.perform(get("/chat-sessions/" + sessionId).header("Authorization", bearer(otherToken)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code", is("SESSION_NOT_FOUND")));
+    }
+
+    @Test
+    void getLatestWorkspaceSessionReturnsMostRecentlyActive() throws Exception {
+        String workspaceId = createWorkspace(token, "Latest WS");
+        createDocument(UUID.fromString(workspaceId), null, "latest.pdf");
+
+        MvcResult older = mockMvc.perform(post("/workspaces/" + workspaceId + "/chat-sessions")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scope\": {\"type\": \"workspace\"}, \"title\": \"Older\"}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String olderId = objectMapper.readTree(older.getResponse().getContentAsString()).get("id").asText();
+
+        mockMvc.perform(post("/workspaces/" + workspaceId + "/chat-sessions")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scope\": {\"type\": \"workspace\"}, \"title\": \"Newer empty\"}"))
+                .andExpect(status().isCreated());
+
+        chatSessionRepository.findById(UUID.fromString(olderId)).ifPresent(session -> {
+            session.setLastActivityAt(session.getLastActivityAt().plusHours(1));
+            chatSessionRepository.save(session);
+        });
+
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/chat-sessions/latest")
+                        .param("scopeType", "WORKSPACE")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(olderId)))
+                .andExpect(jsonPath("$.title", is("Older")));
+    }
+
+    @Test
+    void getLatestDocumentsScopedSessionMatchesSingleDocument() throws Exception {
+        String workspaceId = createWorkspace(token, "Doc Latest WS");
+        DocumentEntity doc = createDocument(UUID.fromString(workspaceId), null, "only.pdf");
+        DocumentEntity otherDoc = createDocument(UUID.fromString(workspaceId), null, "other.pdf");
+
+        mockMvc.perform(post("/workspaces/" + workspaceId + "/chat-sessions")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scope\": {\"type\": \"documents\", \"documentIds\": [\"" + doc.getId() + "\", \""
+                                + otherDoc.getId() + "\"]}}"))
+                .andExpect(status().isCreated());
+
+        MvcResult singleDocSession = mockMvc.perform(post("/workspaces/" + workspaceId + "/chat-sessions")
+                        .header("Authorization", bearer(token))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"scope\": {\"type\": \"documents\", \"documentIds\": [\"" + doc.getId() + "\"]}}"))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String sessionId = objectMapper.readTree(singleDocSession.getResponse().getContentAsString()).get("id").asText();
+
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/chat-sessions/latest")
+                        .param("scopeType", "DOCUMENTS")
+                        .param("documentId", doc.getId().toString())
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id", is(sessionId)));
+    }
+
+    @Test
+    void getLatestSessionNotFoundWhenNoneExist() throws Exception {
+        String workspaceId = createWorkspace(token, "Empty Latest WS");
+        createDocument(UUID.fromString(workspaceId), null, "empty-latest.pdf");
+
+        mockMvc.perform(get("/workspaces/" + workspaceId + "/chat-sessions/latest")
+                        .param("scopeType", "WORKSPACE")
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error.code", is("SESSION_NOT_FOUND")));
+    }
+
+    private void addWorkspaceMember(UUID workspaceId, UUID userId) {
+        workspaceMemberRepository.save(WorkspaceMemberEntity.builder()
+                .workspaceId(workspaceId)
+                .userId(userId)
+                .role("member")
+                .build());
     }
 
     private String login(String email) throws Exception {

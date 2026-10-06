@@ -19,7 +19,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -80,7 +84,8 @@ public class ChatSessionService {
         workspaceAccessService.requireMember(workspaceId, principal.userId());
 
         List<ChatSessionDetailResponseDto> sessions = chatSessionRepository
-                .findByWorkspaceIdOrderByCreatedAtDesc(workspaceId)
+                .findByWorkspaceIdAndCreatedByOrderByLastActivityAtDescCreatedAtDesc(
+                        workspaceId, principal.userId())
                 .stream()
                 .map(this::toSessionDetail)
                 .toList();
@@ -97,8 +102,90 @@ public class ChatSessionService {
                 .orElseThrow(DmsExceptions::sessionNotFound);
 
         workspaceAccessService.requireMember(session.getWorkspaceId(), principal.userId());
+        requireSessionOwner(session, principal.userId());
 
         return toSessionDetail(session);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<ChatSessionDetailResponseDto> getLatestSessionForScope(
+            AuthPrincipal principal,
+            UUID workspaceId,
+            String scopeType,
+            UUID moduleId,
+            UUID documentId) {
+        workspaceAccessService.requireMember(workspaceId, principal.userId());
+
+        String normalizedType = normalizeLatestScopeType(scopeType, moduleId, documentId);
+        UUID userId = principal.userId();
+
+        Optional<ChatSessionEntity> match = switch (normalizedType) {
+            case "WORKSPACE" -> chatSessionRepository
+                    .findByWorkspaceIdAndCreatedByAndScopeTypeOrderByLastActivityAtDescCreatedAtDesc(
+                            workspaceId, userId, "WORKSPACE")
+                    .stream()
+                    .findFirst();
+            case "MODULE" -> chatSessionRepository
+                    .findByWorkspaceIdAndCreatedByAndScopeTypeAndScopeModuleIdOrderByLastActivityAtDescCreatedAtDesc(
+                            workspaceId, userId, "MODULE", moduleId)
+                    .stream()
+                    .findFirst();
+            case "DOCUMENTS" -> findLatestDocumentsScopedSession(workspaceId, userId, documentId);
+            default -> throw DmsExceptions.invalidScope();
+        };
+
+        return match.map(this::toSessionDetail);
+    }
+
+    private Optional<ChatSessionEntity> findLatestDocumentsScopedSession(
+            UUID workspaceId, UUID userId, UUID documentId) {
+        List<ChatSessionEntity> candidates = chatSessionRepository
+                .findByWorkspaceIdAndCreatedByAndScopeTypeOrderByLastActivityAtDescCreatedAtDesc(
+                        workspaceId, userId, "DOCUMENTS");
+
+        return candidates.stream()
+                .filter(session -> matchesSingleDocumentScope(session.getId(), documentId))
+                .max(Comparator.comparing(ChatSessionEntity::getLastActivityAt)
+                        .thenComparing(ChatSessionEntity::getCreatedAt));
+    }
+
+    private boolean matchesSingleDocumentScope(UUID sessionId, UUID documentId) {
+        List<UUID> docIds = chatSessionDocumentRepository.findDocumentIdsBySessionId(sessionId);
+        return docIds.size() == 1 && Objects.equals(docIds.get(0), documentId);
+    }
+
+    private static String normalizeLatestScopeType(String scopeType, UUID moduleId, UUID documentId) {
+        if (scopeType == null || scopeType.isBlank()) {
+            throw DmsExceptions.invalidScope();
+        }
+        String type = scopeType.trim().toUpperCase();
+        return switch (type) {
+            case "WORKSPACE" -> {
+                if (moduleId != null || documentId != null) {
+                    throw DmsExceptions.invalidScope();
+                }
+                yield "WORKSPACE";
+            }
+            case "MODULE" -> {
+                if (moduleId == null || documentId != null) {
+                    throw DmsExceptions.invalidScope();
+                }
+                yield "MODULE";
+            }
+            case "DOCUMENTS" -> {
+                if (documentId == null || moduleId != null) {
+                    throw DmsExceptions.invalidScope();
+                }
+                yield "DOCUMENTS";
+            }
+            default -> throw DmsExceptions.invalidScope();
+        };
+    }
+
+    private static void requireSessionOwner(ChatSessionEntity session, UUID userId) {
+        if (!Objects.equals(session.getCreatedBy(), userId)) {
+            throw DmsExceptions.sessionNotFound();
+        }
     }
 
     private ChatSessionDetailResponseDto toSessionDetail(ChatSessionEntity session) {
