@@ -32,7 +32,7 @@ export function ConfirmDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent id={idFor('dialog')} data-testid={idFor('dialog')} className="sm:max-w-sm">
+      <DialogContent id={idFor('dialog')} data-testid={idFor('dialog')}>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
