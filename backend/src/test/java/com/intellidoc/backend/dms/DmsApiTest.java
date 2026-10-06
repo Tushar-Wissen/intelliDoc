@@ -219,6 +219,20 @@ class DmsApiTest {
     }
 
     @Test
+    void doxFileExtensionIsNormalizedToDocx() throws Exception {
+        String workspaceId = createWorkspace(token, "DoxNormalization");
+        mockMvc.perform(multipart("/workspaces/" + workspaceId + "/documents")
+                        .file(file("report.dox", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", new byte[]{4, 5}))
+                        .header("Authorization", bearer(token)))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.documents", hasSize(1)))
+                .andExpect(jsonPath("$.documents[0].fileName", is("report.dox")));
+
+        DocumentEntity saved = documentRepository.findAll().get(0);
+        assertEquals("docx", saved.getFileType());
+    }
+
+    @Test
     void mixedInvalidFilesDoNotCreateRows() throws Exception {
         String workspaceId = createWorkspace(token, "Mixed");
         mockMvc.perform(multipart("/workspaces/" + workspaceId + "/documents")

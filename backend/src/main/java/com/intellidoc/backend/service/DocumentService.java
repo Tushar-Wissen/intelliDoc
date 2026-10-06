@@ -300,7 +300,11 @@ public class DocumentService {
         if (dot < 0 || dot == base.length() - 1) {
             return "";
         }
-        return base.substring(dot + 1).toLowerCase(Locale.ROOT);
+        String extension = base.substring(dot + 1).toLowerCase(Locale.ROOT);
+        if ("dox".equals(extension)) {
+            return "docx";
+        }
+        return extension;
     }
 
     private DocumentEntity requireActiveDocument(UUID documentId) {
@@ -362,10 +366,11 @@ public class DocumentService {
         if (storedType != null && !storedType.isBlank() && !"application/octet-stream".equalsIgnoreCase(storedType)) {
             return storedType;
         }
-        if ("pdf".equalsIgnoreCase(fileType)) {
+        String normalizedType = "dox".equalsIgnoreCase(fileType) ? "docx" : fileType;
+        if ("pdf".equalsIgnoreCase(normalizedType)) {
             return "application/pdf";
         }
-        if ("docx".equalsIgnoreCase(fileType)) {
+        if ("docx".equalsIgnoreCase(normalizedType)) {
             return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
         }
         return storedType == null || storedType.isBlank() ? "application/octet-stream" : storedType;
