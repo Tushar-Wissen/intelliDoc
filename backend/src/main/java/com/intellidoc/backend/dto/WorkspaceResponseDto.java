@@ -15,7 +15,6 @@ import java.util.UUID;
 public class WorkspaceResponseDto {
     private UUID id;
     private String name;
-    private String description;
     private String status;
     private OffsetDateTime createdAt;
 }

@@ -130,10 +130,9 @@ class DmsApiTest {
         MvcResult created = mockMvc.perform(post("/workspaces")
                         .header("Authorization", bearer(token))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Q3 Vendor Contracts Review\",\"description\":\"Contract review workspace\"}"))
+                        .content("{\"name\":\"Q3 Vendor Contracts Review\"}"))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.name", is("Q3 Vendor Contracts Review")))
-                .andExpect(jsonPath("$.description", is("Contract review workspace")))
                 .andExpect(jsonPath("$.status", is("ACTIVE")))
                 .andReturn();
         String workspaceId = objectMapper.readTree(created.getResponse().getContentAsString()).get("id").asText();
@@ -147,10 +146,9 @@ class DmsApiTest {
         mockMvc.perform(patch("/workspaces/" + workspaceId)
                         .header("Authorization", bearer(token))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Renamed\",\"description\":\"Updated description\"}"))
+                        .content("{\"name\":\"Renamed\"}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name", is("Renamed")))
-                .andExpect(jsonPath("$.description", is("Updated description")));
+                .andExpect(jsonPath("$.name", is("Renamed")));
 
         mockMvc.perform(delete("/workspaces/" + workspaceId).header("Authorization", bearer(token)))
                 .andExpect(status().isOk())
@@ -159,36 +157,6 @@ class DmsApiTest {
         mockMvc.perform(get("/workspaces").header("Authorization", bearer(token)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$", hasSize(0)));
-    }
-
-    @Test
-    void moduleLifecycleSupportsDescription() throws Exception {
-        String workspaceId = createWorkspace(token, "ModuleDescription");
-
-        MvcResult created = mockMvc.perform(post("/workspaces/" + workspaceId + "/modules")
-                        .header("Authorization", bearer(token))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Finance\",\"description\":\"Quarterly finance review\"}"))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.name", is("Finance")))
-                .andExpect(jsonPath("$.description", is("Quarterly finance review")))
-                .andReturn();
-
-        String moduleId = objectMapper.readTree(created.getResponse().getContentAsString()).get("id").asText();
-
-        mockMvc.perform(patch("/modules/" + moduleId)
-                        .header("Authorization", bearer(token))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"name\":\"Finance Ops\",\"description\":\"Updated finance description\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.name", is("Finance Ops")))
-                .andExpect(jsonPath("$.description", is("Updated finance description")));
-
-        mockMvc.perform(get("/workspaces/" + workspaceId + "/modules")
-                        .header("Authorization", bearer(token)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].name", is("Finance Ops")))
-                .andExpect(jsonPath("$[0].description", is("Updated finance description")));
     }
 
     @Test
@@ -216,20 +184,6 @@ class DmsApiTest {
         verify(minioStorageService, atLeastOnce()).store(any(), any(), any());
         String path = documentRepository.findAll().get(0).getStoragePath();
         assertTrue(path.matches("workspace/" + workspaceId + "/document/.+/original\\.(pdf|docx)"));
-    }
-
-    @Test
-    void doxFileExtensionIsNormalizedToDocx() throws Exception {
-        String workspaceId = createWorkspace(token, "DoxNormalization");
-        mockMvc.perform(multipart("/workspaces/" + workspaceId + "/documents")
-                        .file(file("report.dox", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", new byte[]{4, 5}))
-                        .header("Authorization", bearer(token)))
-                .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.documents", hasSize(1)))
-                .andExpect(jsonPath("$.documents[0].fileName", is("report.dox")));
-
-        DocumentEntity saved = documentRepository.findAll().get(0);
-        assertEquals("docx", saved.getFileType());
     }
 
     @Test

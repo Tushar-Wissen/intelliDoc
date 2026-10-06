@@ -31,9 +31,6 @@ public class WorkspaceEntity {
     @Column(name = "name", nullable = false, length = 255)
     private String name;
 
-    @Column(name = "description", columnDefinition = "TEXT")
-    private String description;
-
     @Column(name = "status", nullable = false, length = 64)
     private String status;
 

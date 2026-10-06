@@ -11,5 +11,4 @@ import lombok.NoArgsConstructor;
 @Builder
 public class CreateWorkspaceRequestDto {
     private String name;
-    private String description;
 }

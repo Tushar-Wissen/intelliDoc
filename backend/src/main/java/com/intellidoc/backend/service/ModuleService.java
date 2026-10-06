@@ -48,7 +48,6 @@ public class ModuleService {
             DocumentGroupEntity saved = documentGroupRepository.save(DocumentGroupEntity.builder()
                     .workspaceId(workspaceId)
                     .name(name)
-                    .description(normalizeDescription(request.getDescription()))
                     .build());
             return toDto(saved);
         } catch (DataIntegrityViolationException ex) {
@@ -74,15 +73,10 @@ public class ModuleService {
         DocumentGroupEntity module = requireModule(moduleId);
         workspaceAccessService.requireMember(module.getWorkspaceId(), principal.userId());
         String name = requireName(request == null ? null : request.getName());
-        if (request != null && request.getName() != null) {
-            if (documentGroupRepository.existsByWorkspaceIdAndNameAndIdNot(module.getWorkspaceId(), name, moduleId)) {
-                throw DmsExceptions.moduleNameTaken();
-            }
-            module.setName(name);
+        if (documentGroupRepository.existsByWorkspaceIdAndNameAndIdNot(module.getWorkspaceId(), name, moduleId)) {
+            throw DmsExceptions.moduleNameTaken();
         }
-        if (request != null && request.getDescription() != null) {
-            module.setDescription(normalizeDescription(request.getDescription()));
-        }
+        module.setName(name);
         try {
             return toDto(documentGroupRepository.save(module));
         } catch (DataIntegrityViolationException ex) {
@@ -153,19 +147,11 @@ public class ModuleService {
         return name.trim();
     }
 
-    private static String normalizeDescription(String description) {
-        if (description == null || description.isBlank()) {
-            return null;
-        }
-        return description.trim();
-    }
-
     static ModuleResponseDto toDto(DocumentGroupEntity module) {
         return ModuleResponseDto.builder()
                 .id(module.getId())
                 .workspaceId(module.getWorkspaceId())
                 .name(module.getName())
-                .description(module.getDescription())
                 .createdAt(module.getCreatedAt())
                 .build();
     }
@@ -179,7 +165,6 @@ public class ModuleService {
                 .id(module.getId())
                 .workspaceId(module.getWorkspaceId())
                 .name(module.getName())
-                .description(module.getDescription())
                 .createdAt(module.getCreatedAt())
                 .totalFiles(files.size())
                 .files(new ArrayList<>(files))

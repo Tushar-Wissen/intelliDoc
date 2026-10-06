@@ -30,9 +30,7 @@ class WorkspaceServiceTest {
     void emptyNameIsRejected() {
         AuthPrincipal principal = new AuthPrincipal(UUID.randomUUID(), UUID.randomUUID());
         ApiException ex = assertThrows(ApiException.class, () ->
-            workspaceService.create(principal, com.intellidoc.backend.dto.CreateWorkspaceRequestDto.builder()
-                .name("  ")
-                .build()));
+                workspaceService.create(principal, new com.intellidoc.backend.dto.CreateWorkspaceRequestDto("  ")));
         assertEquals("WORKSPACE_INVALID_NAME", ex.getCode());
         assertEquals(400, ex.getStatus());
     }

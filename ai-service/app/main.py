@@ -1,5 +1,4 @@
 import logging
-from threading import Thread
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
     _init_neo4j_schema()
-    Thread(target=_warm_embedding_model, name="embedding-model-warmup", daemon=True).start()
+    _warm_embedding_model()
     yield
 
 
