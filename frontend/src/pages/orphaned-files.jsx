@@ -103,9 +103,9 @@ export function OrphanedFilesPage() {
     setLoading(true);
 
     documentsApi
-      .list(selectedWorkspaceId)
+      .listOrphaned(selectedWorkspaceId)
       .then((documents) => {
-        if (!cancelled) setFiles(keepUnassigned(documents));
+        if (!cancelled) setFiles(documents);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -165,12 +165,11 @@ export function OrphanedFilesPage() {
     setSelectedIds(allSelected ? new Set() : new Set(items.map((f) => f.id)));
   };
 
-  // Quietly re-sync with the server; on failure keep what is already on screen.
   const refreshFiles = useCallback(() => {
     if (!selectedWorkspaceId) return;
     documentsApi
-      .list(selectedWorkspaceId)
-      .then((documents) => setFiles(keepUnassigned(documents)))
+      .listOrphaned(selectedWorkspaceId)
+      .then((documents) => setFiles(documents))
       .catch(() => {});
   }, [selectedWorkspaceId]);
 
@@ -260,7 +259,11 @@ export function OrphanedFilesPage() {
           data-testid="orphaned-files-page"
           className="flex min-h-0 flex-1 flex-col gap-5"
         >
-          {activeFile ? (
+          {loading ? (
+            <div className="flex flex-1 items-center justify-center p-12">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-wissen-navy border-t-transparent" aria-label="Loading files..." />
+            </div>
+          ) : activeFile ? (
             <>
               {/* Back to the list (left) + file actions (right) */}
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -426,13 +429,7 @@ export function OrphanedFilesPage() {
               {/* File list */}
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card">
                 <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
-                  {loading ? (
-                    <div className="flex flex-col gap-2 p-4" aria-busy="true">
-                      {Array.from({ length: 6 }).map((_, idx) => (
-                        <div key={idx} className="h-12 animate-pulse rounded-lg bg-muted/60" />
-                      ))}
-                    </div>
-                  ) : error ? (
+                  {error ? (
                     <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
                       <p className="text-sm text-muted-foreground">{error.message}</p>
                       <Button type="button" variant="outline" onClick={() => setReloadKey((k) => k + 1)}>
