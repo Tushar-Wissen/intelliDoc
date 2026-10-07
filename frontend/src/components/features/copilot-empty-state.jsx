@@ -2,6 +2,7 @@ import React from 'react';
 import { AlertTriangle, FileClock, FileWarning, FolderOpen, Loader2, Plus } from 'lucide-react';
 
 import { DOCUMENT_STATUS } from '@/hooks/use-document-processing-status';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 // Same layout as the folder sidebar's "No folders yet" card: icon tile with a corner badge,
@@ -124,7 +125,23 @@ export function DocumentProcessingState({ status, documentName }) {
       icon={FileClock}
       badge={<Loader2 className="h-3 w-3 animate-spin" />}
       title="Document is not ready yet"
-      description={`${documentName ? `"${documentName}"` : 'This document'} is still being processed. You can start chatting once it's ready.`}
+      description={(
+        <>
+          {documentName ? (
+            <>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="block max-w-full cursor-default truncate font-medium" title={documentName}>
+                    &quot;{documentName}&quot;
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent className="max-w-sm break-all">{documentName}</TooltipContent>
+              </Tooltip>{' '}
+            </>
+          ) : 'This document '}
+          is still being processed. You can start chatting once it&apos;s ready.
+        </>
+      )}
     >
       <p className="text-[11px] text-muted-foreground">
         Chat unlocks automatically when processing finishes.

@@ -305,7 +305,17 @@ export function CopilotSidebar({
                   Hello! I&apos;m your AI assistant
                   {activeTabName ? (
                     <>
-                      {' '}for <span className="font-semibold">{activeTabName}</span>
+                      {' '}for{' '}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="block max-w-full truncate font-semibold" title={activeTabName}>
+                            {activeTabName}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" align="start" className="max-w-sm break-all">
+                          {activeTabName}
+                        </TooltipContent>
+                      </Tooltip>
                     </>
                   ) : null}
                   . Ask me anything about your documents.
