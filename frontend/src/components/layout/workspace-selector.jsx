@@ -64,7 +64,7 @@ export function WorkspaceSelector() {
                   onSelect={() => selectWorkspace(workspace.id)}
                 >
                   <span className="flex min-w-0 items-center gap-2">
-                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-wissen-navy/10 text-[10px] font-semibold text-wissen-navy dark:text-wissen-navy-light">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-wissen-navy/10 text-[8px] leading-none font-semibold text-wissen-navy dark:text-wissen-navy-light">
                       {getInitials(workspace.name)}
                     </span>
                     <span className="truncate">{workspace.name}</span>

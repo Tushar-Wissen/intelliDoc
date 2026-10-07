@@ -70,6 +70,7 @@ export function OrphanedFilesPage() {
   const [reloadKey, setReloadKey] = useState(0);
 
   const [files, setFiles] = useState([]);
+  const [loadedWorkspaceId, setLoadedWorkspaceId] = useState(undefined);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -95,6 +96,7 @@ export function OrphanedFilesPage() {
 
     if (!selectedWorkspaceId) {
       setFiles([]);
+      setLoadedWorkspaceId(null);
       setLoading(false);
       return;
     }
@@ -105,11 +107,15 @@ export function OrphanedFilesPage() {
     documentsApi
       .list(selectedWorkspaceId)
       .then((documents) => {
-        if (!cancelled) setFiles(keepUnassigned(documents));
+        if (!cancelled) {
+          setFiles(keepUnassigned(documents));
+          setLoadedWorkspaceId(selectedWorkspaceId);
+        }
       })
       .catch((err) => {
         if (cancelled) return;
         setFiles([]);
+        setLoadedWorkspaceId(selectedWorkspaceId);
         setError(err);
       })
       .finally(() => {
@@ -240,13 +246,14 @@ export function OrphanedFilesPage() {
   const handleOpenFile = useCallback((file) => setActiveFileId(file.id), []);
   const handleCloseFile = useCallback(() => setActiveFileId(null), []);
 
-  const isEmpty = !loading && !error && totalCount === 0;
-  const hasNoMatches = !loading && !error && totalCount > 0 && items.length === 0;
+  const pageLoading = workspaceLoading || loading || loadedWorkspaceId !== selectedWorkspaceId;
+  const isEmpty = !pageLoading && !error && totalCount === 0;
+  const hasNoMatches = !pageLoading && !error && totalCount > 0 && items.length === 0;
 
   return (
     <AppShell
       title="Orphaned Files"
-      badge={!activeFile && !loading && !error ? `${totalCount} ${totalCount === 1 ? 'file' : 'files'}` : undefined}
+      badge={!activeFile && !pageLoading && !error ? `${totalCount} ${totalCount === 1 ? 'file' : 'files'}` : undefined}
       subtitle={
         activeFile
           ? 'Orphaned file — not assigned to any folder/module.'
@@ -260,7 +267,12 @@ export function OrphanedFilesPage() {
           data-testid="orphaned-files-page"
           className="flex min-h-0 flex-1 flex-col gap-5"
         >
-          {activeFile ? (
+          {pageLoading ? (
+            <div className="flex flex-col gap-3" aria-busy="true" aria-label="Loading orphaned files">
+              <div className="h-12 animate-pulse rounded-xl bg-muted/60" />
+              <div className="h-64 animate-pulse rounded-xl bg-muted/60" />
+            </div>
+          ) : activeFile ? (
             <>
               {/* Back to the list (left) + file actions (right) */}
               <div className="flex flex-wrap items-center justify-between gap-3">
