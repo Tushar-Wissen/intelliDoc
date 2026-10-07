@@ -84,6 +84,17 @@ export const documentsApi = {
     }
   },
 
+  // GET /workspaces/{workspaceId}/orphan-documents -> { documents: [...] }
+  async listOrphaned(workspaceId) {
+    try {
+      const { data } = await axios.get(`${API_BASE_URL}/workspaces/${encodeURIComponent(workspaceId)}/orphan-documents`, { headers: authHeaders() });
+      const items = Array.isArray(data) ? data : data?.documents;
+      return (Array.isArray(items) ? items : []).map(toAppDocument);
+    } catch (err) {
+      throw toApiError(err, DOCUMENT_ERROR_MESSAGES);
+    }
+  },
+
   // POST /modules/{moduleId}/documents  (multipart: files[, title])
   //   -> { documents: [...accepted], rejections: [{ fileName, code, message }] }
   // Every accepted document is stored in the given folder (module); a folder that no longer
