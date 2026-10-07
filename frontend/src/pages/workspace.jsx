@@ -19,6 +19,7 @@ import { WorkspaceRequiredAction } from '@/components/features/workspace-require
 
 import { useHealthStatus } from '@/hooks/use-health-status';
 import { useDocumentProcessingStatus } from '@/hooks/use-document-processing-status';
+import { CHAT_SCOPE_TYPES } from '@/lib/chat-api';
 import { useAuth } from '@/context/auth-context';
 import { useWorkspace } from '@/context/workspace-context';
 import { useFolders } from '@/context/folder-context';
@@ -218,11 +219,24 @@ export function WorkspacePage() {
   // Document-level chat stays locked until this document is READY; polled so it unlocks on its own.
   const activeDocumentStatus = useDocumentProcessingStatus(activeDocumentId);
 
+  const activeScopeFolderId = activeDocumentId
+    ? null
+    : activeTabId
+      ? activeTabId.slice('folder:'.length)
+      : activeFolder?.id ?? null;
+
   const copilotScope = useMemo(() => {
     if (activeDocumentId) return { type: 'DOCUMENTS', documentIds: [activeDocumentId] };
-    const folderId = activeTabId ? activeTabId.slice('folder:'.length) : activeFolder?.id;
-    return folderId ? { type: 'MODULE', moduleId: folderId } : { type: 'WORKSPACE' };
-  }, [activeDocumentId, activeTabId, activeFolder]);
+    return activeScopeFolderId ? { type: 'MODULE', moduleId: activeScopeFolderId } : { type: 'WORKSPACE' };
+  }, [activeDocumentId, activeScopeFolderId]);
+
+  // Same context, addressed the way the chat-history API expects: the id of the document,
+  // folder or workspace itself, tagged with its scope type.
+  const copilotHistoryScope = useMemo(() => {
+    if (activeDocumentId) return { scopeType: CHAT_SCOPE_TYPES.DOCUMENT, scopeId: activeDocumentId };
+    if (activeScopeFolderId) return { scopeType: CHAT_SCOPE_TYPES.FOLDER, scopeId: activeScopeFolderId };
+    return { scopeType: CHAT_SCOPE_TYPES.WORKSPACE, scopeId: selectedWorkspaceId };
+  }, [activeDocumentId, activeScopeFolderId, selectedWorkspaceId]);
 
   // `messages` may be an updater function so streamed tokens always build on the latest history.
   const handleUpdateChatHistory = useCallback((key, messages) => {
@@ -315,7 +329,7 @@ export function WorkspacePage() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <div className="flex items-center gap-3 mr-80 sm:mr-96">
+            <div className="flex items-center gap-3 mr-80 sm:mr-96" data-tour="workspace-actions">
               <WorkspaceRequiredAction disabled={!selectedWorkspaceId}>
                 <Button
                   id="create-folder-button"
@@ -440,7 +454,7 @@ export function WorkspacePage() {
                   </div>
 
                   <TooltipProvider delayDuration={200}>
-                    <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-2" data-tour="folder-list">
                       {filteredFolders.map((folder) => (
                         <FolderCard
                           key={folder.id}
@@ -493,6 +507,7 @@ export function WorkspacePage() {
         onUpdateHistory={handleUpdateChatHistory}
         workspaceId={selectedWorkspaceId}
         scope={copilotScope}
+        historyScope={copilotHistoryScope}
         disabled={!foldersLoading && folders.length === 0}
         documentStatus={activeDocumentStatus}
       />

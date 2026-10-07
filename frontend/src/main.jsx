@@ -7,6 +7,7 @@ import { AuthProvider } from './context/auth-context.jsx';
 import { WorkspaceProvider } from './context/workspace-context.jsx';
 import { FolderProvider } from './context/folder-context.jsx';
 import { ToastProvider } from './context/toast-context.jsx';
+import { OnboardingProvider } from './context/onboarding-context.jsx';
 import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -17,7 +18,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <ToastProvider>
             <WorkspaceProvider>
               <FolderProvider>
-                <App />
+                <OnboardingProvider>
+                  <App />
+                </OnboardingProvider>
               </FolderProvider>
             </WorkspaceProvider>
           </ToastProvider>
