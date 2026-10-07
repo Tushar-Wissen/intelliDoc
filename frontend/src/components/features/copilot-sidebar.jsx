@@ -1,5 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, Send, Square, RotateCcw, FileText, AlertCircle, Maximize2, Minimize2 } from 'lucide-react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo, useTransition } from 'react';
+import {
+  Sparkles,
+  Send,
+  Square,
+  RotateCcw,
+  FileText,
+  AlertCircle,
+  Maximize2,
+  Minimize2,
+  Loader2,
+} from 'lucide-react';
 
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -9,6 +19,8 @@ import { AiModelDropdown, ModelIcon } from '@/components/features/ai-model-selec
 import { DocumentProcessingState, NoDocumentsState } from '@/components/features/copilot-empty-state';
 import { getAiModel } from '@/constants/ai-models';
 import { useAiModel } from '@/hooks/use-ai-model';
+import { CHAT_HISTORY_STATUS, useChatHistory } from '@/hooks/use-chat-history';
+import { useInfiniteScroll } from '@/hooks/use-infinite-scroll';
 import { DOCUMENT_STATUS } from '@/hooks/use-document-processing-status';
 import { chatApi } from '@/lib/chat-api';
 import { cn } from '@/lib/utils';
@@ -17,6 +29,50 @@ let messageSeq = 0;
 const nextMessageId = () => `msg-${Date.now()}-${(messageSeq += 1)}`;
 
 const NOT_FOUND_TEXT = "I couldn't find an answer to that in these documents.";
+
+// Messages revealed per step when scrolling up through a loaded chat history.
+const MESSAGE_PAGE_SIZE = 20;
+
+// Maps a message from a saved chat session to the shape the chat renders.
+function toChatMessage(message) {
+  return {
+    id: message.id,
+    role: message.role?.toLowerCase() === 'user' ? 'user' : 'assistant',
+    text: message.content || (message.isNotFound ? NOT_FOUND_TEXT : ''),
+    citations: [],
+    status: 'done',
+  };
+}
+
+function ChatHistoryLoader() {
+  return (
+    <div
+      id="copilot-history-loader"
+      className="flex flex-1 flex-col items-center justify-center gap-2 text-xs text-muted-foreground"
+      role="status"
+      aria-live="polite"
+    >
+      <Loader2 className="h-5 w-5 animate-spin text-wissen-navy dark:text-wissen-navy-light" aria-hidden="true" />
+      Loading chat history&hellip;
+    </div>
+  );
+}
+
+function ChatHistoryError({ message, onRetry }) {
+  return (
+    <div
+      id="copilot-history-error"
+      className="flex flex-col items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-center text-sm text-destructive"
+      role="alert"
+    >
+      <AlertCircle className="h-4 w-4" aria-hidden="true" />
+      <p>{message}</p>
+      <Button id="copilot-history-retry-button" variant="outline" size="sm" className="h-7 text-xs" onClick={onRetry}>
+        Try again
+      </Button>
+    </div>
+  );
+}
 
 function CitationChips({ citations, tooltipBoundary }) {
   if (!citations?.length) return null;
@@ -85,10 +141,13 @@ function ChatMessage({ message, tooltipBoundary }) {
         {message.text}
         <CitationChips citations={message.citations} tooltipBoundary={tooltipBoundary} />
       </div>
-      <div className="flex items-center gap-1.5 pl-1 text-[11px] text-muted-foreground">
-        <ModelIcon model={model} className="h-4 w-4 rounded-full [&_svg]:h-2.5 [&_svg]:w-2.5" />
-        {model.label}
-      </div>
+      {/* Saved history doesn't record which model answered, so only label answers from this session. */}
+      {message.modelId && (
+        <div className="flex items-center gap-1.5 pl-1 text-[11px] text-muted-foreground">
+          <ModelIcon model={model} className="h-4 w-4 rounded-full [&_svg]:h-2.5 [&_svg]:w-2.5" />
+          {model.label}
+        </div>
+      )}
     </div>
   );
 }
@@ -102,6 +161,8 @@ export function CopilotSidebar({
   onUpdateHistory,
   workspaceId,
   scope,
+  // Where to load saved chat history from: { scopeType, scopeId } (see CHAT_SCOPE_TYPES).
+  historyScope,
   // disabled=true hides the chat UI and shows an empty-state prompt instead
   disabled = false,
   // Processing status of the open document (document-level chat only); chat stays locked
@@ -112,7 +173,14 @@ export function CopilotSidebar({
   const [isLoading, setIsLoading] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
   const [panelElement, setPanelElement] = useState(null);
+  const [messagesElement, setMessagesElement] = useState(null);
+  // Per chat context: how many of the oldest messages are still hidden above the visible ones.
+  const [hiddenCounts, setHiddenCounts] = useState({});
+  const [isRevealingOlder, startRevealingOlder] = useTransition();
   const messagesEndRef = useRef(null);
+  // Scroll metrics captured just before older messages are revealed, to keep the view in place.
+  const scrollAnchorRef = useRef(null);
+  const lastAutoScrollRef = useRef({ key: null, count: 0 });
   const abortRef = useRef(null);
   // Chat session id per workspace + context, created on the first question.
   const sessionIdsRef = useRef({});
@@ -123,17 +191,84 @@ export function CopilotSidebar({
   const messages = chatHistories[currentKey] ?? [];
   const hasMessages = messages.length > 0;
   const documentPending = Boolean(documentStatus) && documentStatus !== DOCUMENT_STATUS.READY;
-  const locked = disabled || documentPending;
+
+  // Resume the saved conversation for this context and continue it with new questions.
+  const handleHistoryLoaded = useCallback(
+    (key, session) => {
+      if (!session) return;
+      const restored = session.messages.map(toChatMessage);
+      sessionIdsRef.current[`${workspaceId}:${key}`] = session.id;
+      setHiddenCounts((prev) => ({ ...prev, [key]: Math.max(0, restored.length - MESSAGE_PAGE_SIZE) }));
+      onUpdateHistory(key, (prev) => (prev.length ? prev : restored));
+    },
+    [workspaceId, onUpdateHistory]
+  );
+
+  const history = useChatHistory({
+    workspaceId,
+    scopeType: historyScope?.scopeType,
+    scopeId: historyScope?.scopeId,
+    historyKey: currentKey,
+    enabled: Boolean(workspaceId) && !disabled && !documentPending,
+    onLoad: handleHistoryLoaded,
+  });
+  const historyLoading = history.status === CHAT_HISTORY_STATUS.LOADING;
+  const historyFailed = history.status === CHAT_HISTORY_STATUS.ERROR;
+  // Block sending until history arrives, so a question never starts a second session.
+  const locked = disabled || documentPending || historyLoading;
+
+  const hiddenCount = Math.min(hiddenCounts[currentKey] ?? 0, messages.length);
+  const visibleMessages = hiddenCount ? messages.slice(hiddenCount) : messages;
+  const hasOlderMessages = hiddenCount > 0;
+
+  const handleRevealOlder = useCallback(() => {
+    if (!hasOlderMessages || isRevealingOlder) return;
+    if (messagesElement) {
+      scrollAnchorRef.current = { height: messagesElement.scrollHeight, top: messagesElement.scrollTop };
+    }
+    startRevealingOlder(() => {
+      setHiddenCounts((prev) => ({
+        ...prev,
+        [currentKey]: Math.max(0, Math.min(prev[currentKey] ?? 0, messages.length) - MESSAGE_PAGE_SIZE),
+      }));
+    });
+  }, [hasOlderMessages, isRevealingOlder, messagesElement, currentKey, messages.length]);
+
+  const scrollRoot = useMemo(() => ({ current: messagesElement }), [messagesElement]);
+  const olderSentinelRef = useInfiniteScroll({
+    hasMore: hasOlderMessages,
+    loading: isRevealingOlder,
+    onLoadMore: handleRevealOlder,
+    root: scrollRoot,
+  });
+
+  // Older messages are inserted above the viewport; shift the scroll by their height so what
+  // the user was reading stays put.
+  useLayoutEffect(() => {
+    const anchor = scrollAnchorRef.current;
+    if (!anchor || !messagesElement) return;
+    scrollAnchorRef.current = null;
+    messagesElement.scrollTop = anchor.top + (messagesElement.scrollHeight - anchor.height);
+  }, [hiddenCount, messagesElement]);
+
+  // Chat histories are reset per workspace, so their paging positions go with them.
+  useEffect(() => {
+    setHiddenCounts({});
+  }, [workspaceId]);
 
   // Clear input whenever we switch tabs
   useEffect(() => {
     setInputText('');
   }, [activeTabId]);
 
-  // Auto-scroll to the latest message
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  // Auto-scroll to the latest message: jump straight there when a conversation is opened or its
+  // history arrives, and glide for messages added while chatting.
+  useLayoutEffect(() => {
+    const last = lastAutoScrollRef.current;
+    const jump = last.key !== currentKey || last.count === 0;
+    lastAutoScrollRef.current = { key: currentKey, count: messages.length };
+    messagesEndRef.current?.scrollIntoView({ behavior: jump ? 'auto' : 'smooth', block: 'end' });
+  }, [currentKey, messages]);
 
   // Stop any in-flight answer when the panel goes away.
   useEffect(() => () => abortRef.current?.abort(), []);
@@ -152,6 +287,7 @@ export function CopilotSidebar({
 
   const handleNewChat = () => {
     delete sessionIdsRef.current[sessionKey];
+    setHiddenCounts((prev) => ({ ...prev, [currentKey]: 0 }));
     onUpdateHistory(currentKey, []);
   };
 
@@ -293,12 +429,31 @@ export function CopilotSidebar({
         ) : (
           <div
             id="copilot-sidebar-messages"
-            className="flex-1 overflow-y-auto scrollbar-thin p-4 flex flex-col gap-3"
+            ref={setMessagesElement}
+            className="flex-1 overflow-y-auto scrollbar-thin p-4 flex flex-col gap-3 [overflow-anchor:none]"
+            aria-busy={historyLoading || isRevealingOlder}
           >
             {hasMessages ? (
-              messages.map((msg) => (
-                <ChatMessage key={msg.id} message={msg} tooltipBoundary={panelElement} />
-              ))
+              <>
+                {hasOlderMessages && (
+                  // Fixed height so showing the spinner never shifts the messages below it.
+                  <div ref={olderSentinelRef} className="flex h-6 shrink-0 items-center justify-center">
+                    {isRevealingOlder && (
+                      <span role="status" className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                        <span className="sr-only">Loading earlier messages</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+                {visibleMessages.map((msg) => (
+                  <ChatMessage key={msg.id} message={msg} tooltipBoundary={panelElement} />
+                ))}
+              </>
+            ) : historyLoading ? (
+              <ChatHistoryLoader />
+            ) : historyFailed ? (
+              <ChatHistoryError message={history.error} onRetry={history.retry} />
             ) : (
               <div id="copilot-empty-state" className="flex flex-col gap-4 animate-fade-in">
                 <div className="rounded-xl border border-border/50 bg-muted/50 p-3 text-sm leading-relaxed text-foreground shadow-sm">
@@ -338,7 +493,9 @@ export function CopilotSidebar({
               placeholder={
                 documentPending
                   ? 'AI chat unlocks once processing finishes'
-                  : placeholder || 'Ask DocuMind AI...'
+                  : historyLoading
+                    ? 'Loading chat history…'
+                    : placeholder || 'Ask DocuMind AI...'
               }
               className="pr-10 rounded-full bg-background shadow-sm text-sm"
               value={inputText}

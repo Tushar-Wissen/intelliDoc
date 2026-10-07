@@ -208,7 +208,7 @@ function FoldersSection({ onNavigate }) {
 
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 flex-col" data-tour="sidebar-folders">
         <div className="flex items-center justify-between px-3 pb-1.5">
           <div className="flex items-center gap-2">
             <h2 className="text-[11px] font-semibold uppercase tracking-wide text-sidebar-foreground/60">Folders</h2>
@@ -334,12 +334,12 @@ function SidebarBody({ onNavigate, scrollContainerRef }) {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
+      <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground" data-tour-bounds>
         <div className="flex h-16 shrink-0 items-center gap-2.5 border-b border-sidebar-border px-4">
           <img src={documindSidebarLogo} alt="Documind — Your Documents. Smarter Answers." className="h-auto w-full max-w-[224px]" />
         </div>
 
-        <nav className="space-y-1 px-3 pt-4">
+        <nav className="space-y-1 px-3 pt-4" data-tour="main-nav">
           {NAV_ITEMS.map((item) => (
             <NavLink key={item.key} item={item} onNavigate={onNavigate} />
           ))}

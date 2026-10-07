@@ -8,12 +8,21 @@ const CHAT_ERROR_MESSAGES = {
   [API_ERROR_CODES.SERVER]: 'DocuMind AI could not answer right now. Please try again in a moment.',
 };
 
+// Scope types for GET /workspaces/{id}/chat-sessions/latest. The id in the path is the
+// workspace, document or folder id that matches the scope type.
+export const CHAT_SCOPE_TYPES = {
+  WORKSPACE: 'WORKSPACE',
+  DOCUMENT: 'DOCUMENT',
+  FOLDER: 'FOLDER',
+};
+
 // Maps an API message object to the shape used by the UI.
 function toAppMessage(apiMessage) {
   return {
     id: apiMessage.id,
     role: apiMessage.role, // 'user' | 'assistant'
     content: apiMessage.content ?? apiMessage.text ?? '',
+    isNotFound: Boolean(apiMessage.isNotFound),
     createdAt: apiMessage.createdAt,
   };
 }
@@ -134,6 +143,27 @@ export const chatApi = {
       return toAppSession(data);
     } catch (err) {
       throw toApiError(err, CHAT_ERROR_MESSAGES);
+    }
+  },
+
+  // GET /workspaces/{scopeId}/chat-sessions/latest?scopeType={scopeType}
+  //   -> same shape as GET /chat-sessions/{sessionId}; 404 when this scope has no chat yet.
+  // `scopeId` is the workspace, document or folder id, per `scopeType` (see CHAT_SCOPE_TYPES).
+  // Resolves with null when there is no session yet.
+  async getLatestSession(scopeId, scopeType, { signal } = {}) {
+    try {
+      const { data } = await axios.get(
+        `${API_BASE_URL}/workspaces/${encodeURIComponent(scopeId)}/chat-sessions/latest`,
+        { params: { scopeType }, headers: authHeaders(), signal }
+      );
+      return data ? toAppSession(data) : null;
+    } catch (err) {
+      if (axios.isCancel(err)) throw err;
+      if (err?.response?.status === 404) return null;
+      throw toApiError(err, {
+        ...CHAT_ERROR_MESSAGES,
+        [API_ERROR_CODES.SERVER]: 'Chat history could not be loaded right now. Please try again.',
+      });
     }
   },
 };

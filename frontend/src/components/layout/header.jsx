@@ -1,9 +1,10 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Menu, Database, Server, Cpu, LogOut } from 'lucide-react';
+import { Menu, Database, Server, Cpu, LogOut, Compass } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/context/auth-context';
+import { useOnboarding } from '@/context/onboarding-context';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -48,6 +49,7 @@ function getInitials(user) {
 export function Header({ title, subtitle, badge, testId, healthStatus, onMenuClick }) {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
+  const { startTour } = useOnboarding();
 
   const handleSignOut = async () => {
     await signOut();
@@ -114,7 +116,7 @@ export function Header({ title, subtitle, badge, testId, healthStatus, onMenuCli
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button id="account-menu-trigger" variant="ghost" className="gap-2 px-1.5">
+          <Button id="account-menu-trigger" variant="ghost" className="gap-2 px-1.5" aria-label="Account and help">
             <Avatar className="h-7 w-7">
               <AvatarFallback className="bg-wissen-navy text-xs font-semibold text-white dark:bg-wissen-navy-light">
                 {getInitials(user)}
@@ -127,6 +129,10 @@ export function Header({ title, subtitle, badge, testId, healthStatus, onMenuCli
           <DropdownMenuSeparator />
           <DropdownMenuItem id="profile-menu-item" onClick={() => navigate('/profile')}>
             Profile
+          </DropdownMenuItem>
+          <DropdownMenuItem id="product-tour-menu-item" onClick={startTour}>
+            <Compass className="h-4 w-4" />
+            Product tour
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem id="sign-out-menu-item" onClick={handleSignOut}>
